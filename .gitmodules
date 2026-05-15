@@ -1,0 +1,3 @@
+[submodule "upstream/zapret2"]
+	path = upstream/zapret2
+	url = https://github.com/bol-van/zapret2.git

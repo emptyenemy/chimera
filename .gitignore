@@ -1,0 +1,43 @@
+# Binaries / build artifacts
+*.exe
+*.dll
+*.so
+*.dylib
+*.o
+*.a
+bin/
+build/
+dist/
+target/
+
+# IDE / editor
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# Local secrets / overrides
+.env
+.env.local
+*.local
+
+# Logs
+*.log
+logs/
+
+# Go
+vendor/
+
+# Rust
+Cargo.lock
+
+# Node (если вдруг)
+node_modules/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
