@@ -1,3 +1,9 @@
 [submodule "upstream/zapret2"]
 	path = upstream/zapret2
 	url = https://github.com/bol-van/zapret2.git
+[submodule "upstream/tg-ws-proxy"]
+	path = upstream/tg-ws-proxy
+	url = https://github.com/Flowseal/tg-ws-proxy
+[submodule "upstream/zapret-discord-youtube"]
+	path = upstream/zapret-discord-youtube
+	url = https://github.com/Flowseal/zapret-discord-youtube.git

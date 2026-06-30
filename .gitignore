@@ -10,6 +10,9 @@ build/
 dist/
 target/
 
+# zapret prebuilt bundles (fetched separately, not part of our repo)
+bin/zapret-win-bundle/
+
 # IDE / editor
 .vscode/
 .idea/
@@ -23,15 +26,25 @@ Thumbs.db
 .env.local
 *.local
 
+# Runtime state
+modules/hosts/state.json
+# Настройки winws/zapret2 (последняя стратегия + автозапуск)
+modules/winws/state.json
+# Настройки tg-прокси (содержат секрет)
+modules/tgproxy/state.json
+# Настройки прокси (содержат ссылку с ключами) + сгенерированный конфиг sing-box и PAC
+modules/proxy/state.json
+modules/proxy/singbox-config.json
+modules/proxy/proxy.pac
+# Пользовательские DNS-провайдеры (добавляются из UI)
+modules/dns_providers.user.json
+
+# Local config (auto-создаётся с дефолтами, modules/appconfig.py)
+config.json
+
 # Logs
 *.log
 logs/
-
-# Go
-vendor/
-
-# Rust
-Cargo.lock
 
 # Node (если вдруг)
 node_modules/
