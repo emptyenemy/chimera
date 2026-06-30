@@ -1,0 +1,17 @@
+# Netflix (гео: сервис ушёл из РФ — нужен ПРОКСИ в поддерж. регионе; winws/hosts не помогут)
+netflix.com
+www.netflix.com
+netflix.net
+nflxext.com
+nflximg.com
+nflximg.net
+nflxso.net
+nflxsearch.net
+nflxvideo.net
+fast.com
+assets.nflxext.com
+api-global.netflix.com
+ichnaea.netflix.com
+customerevents.netflix.com
+secure.netflix.com
+help.netflix.com

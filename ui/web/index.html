@@ -1,0 +1,437 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>CHIMERA</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<!-- Иконки Lucide (lucide.dev, ISC) — встроенный SVG-спрайт, работает офлайн.
+     Геометрия здесь, оформление (обводка/толщина) — в .ic в style.css. -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-dashboard" viewBox="0 0 24 24"><rect width="7" height="9" x="3" y="3" rx="1"/><rect width="7" height="5" x="14" y="3" rx="1"/><rect width="7" height="9" x="14" y="12" rx="1"/><rect width="7" height="5" x="3" y="16" rx="1"/></symbol>
+  <symbol id="i-shield" viewBox="0 0 24 24"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/></symbol>
+  <symbol id="i-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><path d="M2 12h20"/></symbol>
+  <symbol id="i-send" viewBox="0 0 24 24"><path d="M14.536 21.686a.5.5 0 0 0 .937-.024l6.5-19a.496.496 0 0 0-.635-.635l-19 6.5a.5.5 0 0 0-.024.937l7.93 3.18a2 2 0 0 1 1.112 1.11z"/><path d="m21.854 2.147-10.94 10.939"/></symbol>
+  <symbol id="i-unlock" viewBox="0 0 24 24"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 9.9-1"/></symbol>
+  <symbol id="i-server" viewBox="0 0 24 24"><rect width="20" height="8" x="2" y="2" rx="2" ry="2"/><rect width="20" height="8" x="2" y="14" rx="2" ry="2"/><line x1="6" x2="6.01" y1="6" y2="6"/><line x1="6" x2="6.01" y1="18" y2="18"/></symbol>
+  <symbol id="i-network" viewBox="0 0 24 24"><rect x="16" y="16" width="6" height="6" rx="1"/><rect x="2" y="16" width="6" height="6" rx="1"/><rect x="9" y="2" width="6" height="6" rx="1"/><path d="M5 16v-3a1 1 0 0 1 1-1h12a1 1 0 0 1 1 1v3"/><path d="M12 12V8"/></symbol>
+  <symbol id="i-list" viewBox="0 0 24 24"><path d="M3 5h.01"/><path d="M3 12h.01"/><path d="M3 19h.01"/><path d="M8 5h13"/><path d="M8 12h13"/><path d="M8 19h13"/></symbol>
+  <symbol id="i-search" viewBox="0 0 24 24"><path d="m21 21-4.34-4.34"/><circle cx="11" cy="11" r="8"/></symbol>
+  <symbol id="i-settings" viewBox="0 0 24 24"><path d="M9.671 4.136a2.34 2.34 0 0 1 4.659 0 2.34 2.34 0 0 0 3.319 1.915 2.34 2.34 0 0 1 2.33 4.033 2.34 2.34 0 0 0 0 3.831 2.34 2.34 0 0 1-2.33 4.033 2.34 2.34 0 0 0-3.319 1.915 2.34 2.34 0 0 1-4.659 0 2.34 2.34 0 0 0-3.32-1.915 2.34 2.34 0 0 1-2.33-4.033 2.34 2.34 0 0 0 0-3.831A2.34 2.34 0 0 1 6.35 6.051a2.34 2.34 0 0 0 3.319-1.915"/><circle cx="12" cy="12" r="3"/></symbol>
+  <symbol id="i-warn" viewBox="0 0 24 24"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/></symbol>
+</svg>
+<div class="layout">
+  <nav class="sidebar">
+    <div class="logo">CHIMERA</div>
+    <button class="nav-item active" data-tab="dashboard"><svg class="ic"><use href="#i-dashboard"/></svg>Дашборд</button>
+    <button class="nav-item" data-tab="hosts"><svg class="ic"><use href="#i-server"/></svg>Hosts</button>
+    <button class="nav-item" data-tab="dns"><svg class="ic"><use href="#i-network"/></svg>DNS</button>
+    <button class="nav-item" data-tab="lists"><svg class="ic"><use href="#i-list"/></svg>Списки</button>
+    <button class="nav-item" data-tab="blocks"><svg class="ic"><use href="#i-search"/></svg>Блокировки</button>
+    <button class="nav-item" data-tab="telegram"><svg class="ic"><use href="#i-send"/></svg>Telegram</button>
+    <button class="nav-item" data-tab="strategies"><svg class="ic"><use href="#i-shield"/></svg>Стратегии</button>
+    <button class="nav-item" data-tab="proxy"><svg class="ic"><use href="#i-globe"/></svg>Прокси</button>
+    <button class="nav-item" data-tab="settings"><svg class="ic"><use href="#i-settings"/></svg>Настройки</button>
+    <div class="sidebar-footer" id="admin-badge"></div>
+  </nav>
+
+  <main class="content">
+    <section id="tab-dashboard" class="tab active">
+      <div id="dash-hero" class="dash-hero"></div>
+      <div id="dash-grid" class="dash-grid"></div>
+      <div id="dash-foot" class="dash-foot"></div>
+    </section>
+
+    <section id="tab-hosts" class="tab">
+      <h1>Hosts — разблокировка</h1>
+
+      <div class="hosts-toggle">
+        <label class="switch"><input type="checkbox" id="hosts-enabled"><span class="slider"></span></label>
+        <span class="hosts-toggle-label">Разблокировка через hosts</span>
+      </div>
+
+      <div id="hosts-status" class="hosts-status" hidden></div>
+
+      <div class="hosts-columns">
+        <div class="card hosts-col providers-col">
+          <h2>DNS-провайдер</h2>
+          <div class="hosts-providers" id="hosts-providers"></div>
+          <details class="add-prov">
+            <summary>+ свой провайдер</summary>
+            <input id="hprov-new-name" type="text" placeholder="Название">
+            <input id="hprov-new-doh" type="text" placeholder="DoH: https://host/dns-query">
+            <input id="hprov-new-ip1" type="text" placeholder="IP сервера (необязательно)">
+            <input id="hprov-new-ip2" type="text" placeholder="Доп. IP (необязательно)">
+            <button class="btn" id="hprov-add-btn">Добавить</button>
+            <span class="form-error" id="hprov-add-error"></span>
+          </details>
+        </div>
+
+        <div class="card hosts-col">
+          <h2>Что разблокировать</h2>
+          <div class="hosts-lists" id="hosts-lists"></div>
+        </div>
+      </div>
+
+      <div class="form-error" id="hosts-error"></div>
+    </section>
+
+    <section id="tab-dns" class="tab">
+      <h1>DNS — переключатель</h1>
+      <p class="hint">
+        Смена системного DNS в один клик (как DNS Jumper). Выбери адаптер,
+        проверь пинг провайдеров и применяй. «Сбросить» возвращает DNS от DHCP (роутера).
+      </p>
+
+      <div class="card">
+        <div class="dns-toolbar">
+          <select id="dns-adapter"></select>
+          <button class="btn danger" id="dns-reset-btn">Сбросить (DHCP)</button>
+        </div>
+        <div class="set-meta" id="dns-current"></div>
+      </div>
+
+      <div id="dns-providers"></div>
+
+      <details class="add-prov card">
+        <summary>+ свой DNS</summary>
+        <input id="dns-new-name" type="text" placeholder="Название">
+        <input id="dns-new-ip1" type="text" placeholder="Основной DNS (напр. 1.1.1.1)">
+        <input id="dns-new-ip2" type="text" placeholder="Дополнительный (необязательно)">
+        <input id="dns-new-ip6" type="text" placeholder="IPv6 через пробел (необязательно)">
+        <input id="dns-new-doh" type="text" placeholder="DoH: https://…/dns-query (шифрование, необязательно)">
+        <input id="dns-new-dot" type="text" placeholder="DoT: хост, напр. dns.example.com (необязательно)">
+        <label class="list-check" style="padding-left:0">
+          <input type="checkbox" id="dns-new-unblock">
+          <span class="lc-name">обходит блокировки (показывать в Hosts)</span>
+        </label>
+        <label class="list-check" style="padding-left:0">
+          <input type="checkbox" id="dns-new-filter">
+          <span class="lc-name">режет рекламу/малварь/фишинг (тег «защита»)</span>
+        </label>
+        <button class="btn" id="dns-add-btn">Добавить</button>
+        <span class="form-error" id="dns-add-error"></span>
+      </details>
+
+      <details class="add-prov card">
+        <summary><svg class="ic"><use href="#i-settings"/></svg> домены для пробы возможностей</summary>
+        <p class="hint" style="margin:0 0 4px">Кнопка «Проба» у провайдера проверяет через него DNSSEC, обход и фильтрацию рекламы. Обход меряется достижимостью — указывай домены, реально заблокированные у тебя (а не гео-блок вроде chatgpt).</p>
+        <input id="probe-bypass" type="text" spellcheck="false" placeholder="Обход: домены через пробел (напр. rutracker.org)">
+        <input id="probe-ad" type="text" spellcheck="false" placeholder="Реклама: домен-маркер (напр. doubleclick.net)">
+        <button class="btn" id="probe-save-btn">Сохранить</button>
+        <span class="form-error" id="probe-error"></span>
+      </details>
+    </section>
+
+    <section id="tab-lists" class="tab">
+      <h1>Списки доменов</h1>
+      <p class="hint">
+        Один список = один сервис (по домену на строку, <code>#</code> — комментарий).
+        Метки справа показывают, через что список уже идёт:
+        <span class="lf-badge proxy"><svg class="ic"><use href="#i-globe"/></svg></span> прокси и
+        <span class="lf-badge hosts"><svg class="ic"><use href="#i-server"/></svg></span> hosts (можно оба сразу).
+      </p>
+
+      <div class="lists-layout">
+        <div class="lists-side card">
+          <div id="lists-files"></div>
+          <div class="lists-new">
+            <input id="list-new-name" type="text" placeholder="новый-список">
+            <button class="btn" id="list-new-btn">+</button>
+          </div>
+        </div>
+
+        <div class="lists-editor card">
+          <div class="editor-head">
+            <span id="editor-title">Выбери список слева</span>
+            <span class="set-meta" id="editor-meta"></span>
+          </div>
+          <textarea id="editor-text" spellcheck="false"
+            placeholder="domain.com&#10;sub.domain.com&#10;# комментарий" disabled></textarea>
+          <div class="editor-actions">
+            <button class="btn primary" id="list-save-btn" disabled>Сохранить</button>
+            <button class="btn danger" id="list-delete-btn" disabled>Удалить список</button>
+            <span class="form-error" id="list-error"></span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="tab-strategies" class="tab">
+      <h1>Стратегии обхода DPI</h1>
+      <p class="hint">
+        Запуск <b>zapret2</b> (winws2) с выбранной стратегией обхода. Стратегии
+        портированы из <a href="https://github.com/Flowseal/zapret-discord-youtube" target="_blank">Flowseal/zapret-discord-youtube</a>
+        на движок запрета 2. Нужны права администратора.
+      </p>
+
+      <div id="winws-status" class="hosts-status off">Загружаю…</div>
+
+      <div class="card">
+        <div class="winws-toolbar">
+          <button class="btn primary" id="winws-toggle-btn" disabled>Запустить</button>
+          <label class="toolbar-auto" title="Поднимать последнюю выбранную стратегию при старте программы (нужны права администратора)">
+            <span class="switch"><input type="checkbox" id="winws-autostart"><span class="slider"></span></span>
+            Автозапуск
+          </label>
+          <span class="tg-version" id="winws-version"></span>
+        </div>
+        <div class="form-error" id="winws-error"></div>
+      </div>
+
+      <div id="winws-list"></div>
+
+      <div class="card">
+        <h2>Фильтры</h2>
+        <div class="filter-row">
+          <div class="filter-text">
+            <b>Game-фильтр</b>
+            <span class="hint">Десинк для игр на высоких портах (1024-65535) по IPSet-списку. Применится после перезапуска стратегии.</span>
+          </div>
+          <div class="seg" id="game-seg">
+            <button data-mode="off">Выкл</button>
+            <button data-mode="all">TCP+UDP</button>
+            <button data-mode="tcp">TCP</button>
+            <button data-mode="udp">UDP</button>
+          </div>
+        </div>
+        <div class="filter-row">
+          <div class="filter-text">
+            <b>IPSet-фильтр</b> <span id="ipset-info" class="ipset-info"></span>
+            <span class="hint">Список подсетей для fallback-профилей «по IP» (нужен и для game-фильтра).</span>
+          </div>
+          <div class="seg" id="ipset-seg">
+            <button data-mode="none">Нет</button>
+            <button data-mode="any">Любой IP</button>
+            <button data-mode="loaded">Список</button>
+          </div>
+          <button class="btn" id="ipset-update-btn">Обновить список</button>
+        </div>
+        <div class="form-error" id="filters-error"></div>
+      </div>
+
+      <div class="card">
+        <h2>Логи winws2</h2>
+        <pre id="winws-log" class="log-view">—</pre>
+      </div>
+    </section>
+
+    <section id="tab-blocks" class="tab">
+      <h1>Проверка блокировок</h1>
+      <p class="hint">
+        Два взгляда на домен: <b>по реестру</b> — заблокирован ли он официально, и
+        <b>с этой машины</b> — достучишься ли ты до него прямо сейчас. Можно проверить
+        один домен или весь список целиком.
+      </p>
+
+      <div id="chebur-status" class="hosts-status off">Загружаю статус реестра…</div>
+
+      <div class="card">
+        <h2>По реестру РКН — cheburcheck</h2>
+        <p class="hint">Заблокирован ли домен официально, в реестрах РКН.</p>
+        <div class="chebur-toolbar">
+          <input id="chebur-domain" type="text" spellcheck="false" placeholder="домен (напр. youtube.com)">
+          <button class="btn primary" id="chebur-one-btn">Проверить домен</button>
+          <span class="chebur-sep">или список:</span>
+          <select id="chebur-list"></select>
+          <button class="btn" id="chebur-list-btn">Проверить список</button>
+        </div>
+        <div class="form-error" id="chebur-error"></div>
+        <div class="chebur-results" id="chebur-results" hidden></div>
+      </div>
+
+      <div class="card">
+        <h2>С этой машины — blockcheck</h2>
+        <p class="hint">
+          Достучимся ли мы до домена прямо сейчас, с текущими настройками (TCP+TLS на
+          443 с настоящим SNI) — как будто ты сам открыл его в браузере. Результат отражает
+          <b>всё, что активно на машине</b>: winws-стратегию, смену DNS или подмену hosts,
+          а также VPN/прокси sing-box (в режиме TUN; в режиме PAC сырые проверки идут мимо
+          него). Включи любой из способов обхода и перепроверь — заблокированные должны
+          стать «ok».
+        </p>
+        <div class="chebur-toolbar">
+          <input id="block-domain" type="text" spellcheck="false" placeholder="домен (напр. youtube.com)">
+          <button class="btn primary" id="block-one-btn">Проверить домен</button>
+          <span class="chebur-sep">или список:</span>
+          <select id="block-list"></select>
+          <button class="btn" id="block-list-btn">Проверить список</button>
+        </div>
+        <div class="form-error" id="block-error"></div>
+        <div class="chebur-results" id="block-results" hidden></div>
+      </div>
+    </section>
+
+    <section id="tab-telegram" class="tab">
+      <h1>Telegram-прокси</h1>
+      <p class="hint">
+        Локальный MTProto-прокси на базе
+        <a href="https://github.com/Flowseal/tg-ws-proxy" target="_blank">tg-ws-proxy</a> (Flowseal):
+        Telegram Desktop → локальный прокси → WebSocket → дата-центры Telegram.
+        Чинит частичную загрузку Telegram без внешних серверов.
+      </p>
+
+      <div id="tg-status" class="hosts-status off">Загружаю состояние…</div>
+
+      <div class="card">
+        <div class="tg-toolbar">
+          <button class="btn primary" id="tg-toggle-btn" disabled>Запустить</button>
+          <button class="btn" id="tg-open-btn" disabled>Подключить в Telegram</button>
+          <button class="btn" id="tg-copy-btn" disabled>Скопировать ссылку</button>
+          <label class="toolbar-auto" title="Поднимать прокси при старте программы">
+            <span class="switch"><input type="checkbox" id="tg-autostart"><span class="slider"></span></span>
+            Автозапуск
+          </label>
+          <span class="tg-version" id="tg-version"></span>
+        </div>
+        <div class="set-meta tg-stats" id="tg-stats" hidden></div>
+        <div class="form-error" id="tg-error"></div>
+      </div>
+
+      <div class="card">
+        <h2>Настройки</h2>
+        <div class="setting-row">
+          <div class="setting-label">
+            <div class="setting-title">Адрес</div>
+            <div class="setting-desc">127.0.0.1 — только этот ПК · 0.0.0.0 — доступен по локальной сети.</div>
+          </div>
+          <input class="tg-input" id="tg-host" type="text" spellcheck="false">
+        </div>
+        <div class="setting-row">
+          <div class="setting-label">
+            <div class="setting-title">Порт</div>
+            <div class="setting-desc">По умолчанию 1443.</div>
+          </div>
+          <input class="tg-input" id="tg-port" type="number" min="1" max="65535">
+        </div>
+        <div class="setting-row">
+          <div class="setting-label">
+            <div class="setting-title">Секрет</div>
+            <div class="setting-desc">32 hex-символа, в ссылку подставляется с префиксом dd.</div>
+          </div>
+          <input class="tg-input wide" id="tg-secret" type="text" spellcheck="false">
+          <button class="btn" id="tg-regen-btn" title="Сгенерировать новый секрет">⟳</button>
+        </div>
+        <p class="set-meta">Сохраняется сразу; если прокси запущен — перезапустится с новыми настройками.</p>
+      </div>
+
+      <div class="card">
+        <h2>Логи TG-прокси</h2>
+        <pre id="tg-log" class="log-view">—</pre>
+      </div>
+    </section>
+
+    <section id="tab-proxy" class="tab">
+      <h1>Прокси — выборочно по доменам</h1>
+      <p class="hint">
+        Поднимает <a href="https://sing-box.sagernet.org" target="_blank">sing-box</a> по твоей
+        VLESS-ссылке. Через прокси идут <b>только домены из выбранных списков</b> (вкладка «Списки»),
+        весь остальной трафик — напрямую.
+      </p>
+
+      <div id="proxy-status" class="hosts-status off">Загружаю…</div>
+
+      <div class="card">
+        <div class="winws-toolbar">
+          <button class="btn primary" id="proxy-toggle-btn" disabled>Запустить</button>
+          <button class="btn" id="proxy-download-btn" hidden>Скачать sing-box</button>
+          <label class="toolbar-auto" title="Поднимать прокси при старте программы (нужен админ для TUN)">
+            <span class="switch"><input type="checkbox" id="proxy-autostart"><span class="slider"></span></span>
+            Автозапуск
+          </label>
+          <span class="tg-version" id="proxy-version"></span>
+        </div>
+        <div class="form-error" id="proxy-error"></div>
+      </div>
+
+      <div class="card">
+        <div class="filter-row">
+          <div class="filter-text">
+            <b>Режим</b>
+            <span class="hint" id="proxy-mode-hint"></span>
+          </div>
+          <div class="seg" id="proxy-mode-seg">
+            <button data-mode="pac">Прокси (PAC)</button>
+            <button data-mode="tun">TUN</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Сервер</h2>
+        <p class="hint">Ссылка-подписка сервера: <code>vless://</code>, а также vmess/trojan/ss.</p>
+        <textarea id="proxy-link" class="proxy-link" spellcheck="false"
+          placeholder="vless://uuid@host:443?security=reality&sni=...#Мой сервер"></textarea>
+        <div class="set-meta" id="proxy-parsed"></div>
+      </div>
+
+      <div class="card" id="proxy-lists-card">
+        <h2>Какие списки гнать через прокси</h2>
+        <p class="hint">Домены из отмеченных списков пойдут через VLESS. Остальное — мимо прокси.</p>
+        <div class="hosts-lists" id="proxy-lists"></div>
+      </div>
+
+      <div class="card">
+        <h2>Логи sing-box</h2>
+        <pre id="proxy-log" class="log-view">—</pre>
+      </div>
+    </section>
+
+    <section id="tab-settings" class="tab">
+      <h1>Настройки</h1>
+      <p class="hint">Изменения сохраняются сразу. Режим интерфейса применится при следующем запуске.</p>
+
+      <div class="card">
+        <div class="setting-row">
+          <div class="setting-label">
+            <div class="setting-title">Режим интерфейса</div>
+            <div class="setting-desc">ui — окно · tui — терминал (в разработке) · service — служба без окна (в разработке)</div>
+          </div>
+          <select id="set-interface">
+            <option value="ui">ui</option>
+            <option value="tui">tui</option>
+            <option value="service">service</option>
+          </select>
+        </div>
+
+        <div class="setting-row">
+          <div class="setting-label">
+            <div class="setting-title">Авто-повышение прав (UAC)</div>
+            <div class="setting-desc">Перезапускать от имени администратора, если запущено без прав.</div>
+          </div>
+          <label class="switch">
+            <input type="checkbox" id="set-elevate">
+            <span class="slider"></span>
+          </label>
+        </div>
+
+        <div class="setting-row">
+          <div class="setting-label">
+            <div class="setting-title">Запускать вместе с Windows</div>
+            <div class="setting-desc">Задача в планировщике стартует приложение при входе в систему — сразу с правами админа, без окна UAC.</div>
+          </div>
+          <label class="switch">
+            <input type="checkbox" id="set-autostart">
+            <span class="slider"></span>
+          </label>
+        </div>
+      </div>
+      <div class="form-error" id="config-error"></div>
+
+      <div class="card">
+        <div class="src-head">
+          <h2>Источники и обновления</h2>
+          <button class="btn" id="src-check-btn">Проверить обновления</button>
+        </div>
+        <p class="hint">Версии внешних компонентов, из которых собран проект.</p>
+        <div id="src-list" class="src-list">Загружаю…</div>
+        <div class="form-error" id="src-error"></div>
+      </div>
+    </section>
+  </main>
+</div>
+<div id="toast"></div>
+<script src="app.js"></script>
+</body>
+</html>

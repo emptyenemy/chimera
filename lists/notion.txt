@@ -1,0 +1,5 @@
+# Notion
+notion.so
+www.notion.so
+notion.com
+api.notion.com

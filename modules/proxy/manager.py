@@ -1,0 +1,444 @@
+"""Выборочный прокси на sing-box.
+
+Домены из выбранных списков (modules/domains) заворачиваются в VLESS-аутбаунд,
+весь остальной трафик идёт напрямую. Транспорт — TUN (ловит все приложения),
+но route-правила гонят через прокси ТОЛЬКО наши домены. Нужны права админа.
+
+sing-box.exe тянется одним пиннутым релизом в bin/sing-box/ (см. SINGBOX_*).
+Настройки (ссылка, выбранные списки, autostart) — в state.json рядом с модулем.
+"""
+
+import ctypes
+import io
+import json
+import subprocess
+import threading
+import time
+import urllib.request
+import winreg
+import zipfile
+from pathlib import Path
+
+from modules import domains
+from . import parser
+
+ROOT = Path(__file__).parent.parent.parent
+SINGBOX_DIR = ROOT / "bin" / "sing-box"
+SINGBOX_EXE = SINGBOX_DIR / "sing-box.exe"
+CONFIG_PATH = Path(__file__).parent / "singbox-config.json"
+STATE_PATH = Path(__file__).parent / "state.json"
+LOG_PATH = Path(__file__).parent / "proxy.log"
+PAC_PATH = Path(__file__).parent / "proxy.pac"
+
+# ветка реестра WinINet: туда пишем AutoConfigURL, чтобы браузеры подхватили PAC
+_INET_SETTINGS = r"Software\Microsoft\Windows\CurrentVersion\Internet Settings"
+
+# Пиннутая версия: схема конфига sing-box заметно менялась по версиям, поэтому
+# бинарь и генератор конфига должны соответствовать друг другу.
+SINGBOX_VERSION = "1.13.14"
+SINGBOX_URL = (
+    f"https://github.com/SagerNet/sing-box/releases/download/v{SINGBOX_VERSION}/"
+    f"sing-box-{SINGBOX_VERSION}-windows-amd64.zip"
+)
+
+# mode: "pac" — SOCKS+PAC (только выбранные домены, без админа) ИЛИ "tun" — системно.
+DEFAULTS = {"link": "", "lists": [], "autostart": False, "mode": "pac", "socks_port": 2080}
+
+_CREATE_NO_WINDOW = 0x08000000
+
+
+class ProxyManager:
+    def __init__(self):
+        self._proc: subprocess.Popen | None = None
+        self._log = None
+        self._error: str | None = None
+        self._sysproxy_on = False  # проставили ли мы PAC в системный прокси
+        self._lock = threading.RLock()
+        self.config = self._load()
+        self._core_version_cache: str | None = None  # версия бинаря меняется только при download_core
+        self._core_version_cached = False
+
+    # --- конфиг (state.json) -------------------------------------------------
+
+    def _load(self) -> dict:
+        data = dict(DEFAULTS)
+        if STATE_PATH.exists():
+            try:
+                data.update(json.loads(STATE_PATH.read_text(encoding="utf-8")))
+            except (json.JSONDecodeError, ValueError, OSError):
+                pass
+        return data
+
+    def _save(self) -> None:
+        STATE_PATH.write_text(
+            json.dumps(self.config, ensure_ascii=False, indent=4) + "\n",
+            encoding="utf-8",
+        )
+
+    def set_link(self, raw: str) -> dict:
+        raw = (raw or "").strip()
+        if raw:
+            parser.parse_link(raw)  # валидация: бросит ValueError, если кривая
+        self.config["link"] = raw
+        self._save()
+        if self.running:
+            self.restart()
+        return self.state()
+
+    def set_lists(self, names) -> dict:
+        valid = {i["name"] for i in domains.list_info()}
+        self.config["lists"] = [n for n in (names or []) if n in valid]
+        self._save()
+        if self.running:
+            self.restart()
+        return self.state()
+
+    def set_autostart(self, value: bool) -> dict:
+        self.config["autostart"] = bool(value)
+        self._save()
+        return self.state()
+
+    def set_mode(self, mode: str) -> dict:
+        if mode not in ("pac", "tun"):
+            raise ValueError("Режим — 'pac' или 'tun'")
+        self.config["mode"] = mode
+        self._save()
+        if self.running:
+            self.restart()
+        return self.state()
+
+    # --- бинарь sing-box -----------------------------------------------------
+
+    def core_version(self) -> str | None:
+        """Версия sing-box.exe. Кэшируем: запуск бинаря на каждый опрос дашборда
+        (раз в 3 c, таймаут до 5 c) — главный источник лагов. Меняется только после
+        download_core(), который сбрасывает кэш. Отсутствие бинаря не кэшируем —
+        его могут скачать позже."""
+        if self._core_version_cached:
+            return self._core_version_cache
+        if not SINGBOX_EXE.exists():
+            return None
+        try:
+            out = subprocess.run(
+                [str(SINGBOX_EXE), "version"],
+                capture_output=True, text=True, creationflags=_CREATE_NO_WINDOW,
+                timeout=5,
+            ).stdout
+        except (OSError, subprocess.SubprocessError):
+            return None
+        ver = None
+        for line in out.splitlines():
+            if "version" in line.lower():
+                parts = line.split()
+                ver = parts[-1] if parts else None
+                break
+        ver = ver or out.strip() or None
+        self._core_version_cache = ver
+        self._core_version_cached = True
+        return ver
+
+    def download_core(self) -> dict:
+        """Качает пиннутый релиз sing-box и кладёт sing-box.exe в bin/sing-box/."""
+        SINGBOX_DIR.mkdir(parents=True, exist_ok=True)
+        req = urllib.request.Request(SINGBOX_URL, headers={"User-Agent": "chimera"})
+        with urllib.request.urlopen(req, timeout=60) as resp:
+            blob = resp.read()
+        with zipfile.ZipFile(io.BytesIO(blob)) as z:
+            name = next((n for n in z.namelist() if n.endswith("sing-box.exe")), None)
+            if not name:
+                raise RuntimeError("В архиве нет sing-box.exe")
+            with z.open(name) as src, open(SINGBOX_EXE, "wb") as dst:
+                dst.write(src.read())
+        self._core_version_cached = False  # скачали новый бинарь — пересчитать версию
+        return {"present": True, "version": self.core_version()}
+
+    # --- генерация конфига sing-box -----------------------------------------
+
+    def _domains(self) -> list[str]:
+        """Домены выбранных списков -> список для domain_suffix."""
+        if not self.config["lists"]:
+            return []
+        seen, out = set(), []
+        for d in domains.load_lists(self.config["lists"]):
+            d = d.strip().lower().lstrip(".")
+            if d and d not in seen:
+                seen.add(d)
+                out.append(d)
+        return out
+
+    @property
+    def _pac_mode(self) -> bool:
+        return self.config.get("mode", "pac") != "tun"
+
+    def build_config(self) -> dict:
+        if not self.config["link"]:
+            raise ValueError("Не вставлена ссылка на прокси (vless:// и т.п.)")
+        proxy_ob = dict(parser.parse_link(self.config["link"])["outbound"])
+        proxy_ob["tag"] = "proxy"
+
+        dns_servers = [
+            {"tag": "dns-proxy", "type": "https", "server": "1.1.1.1", "detour": "proxy"},
+            {"tag": "dns-direct", "type": "local"},
+        ]
+
+        if self._pac_mode:
+            # PAC: выборочно — через прокси идут ТОЛЬКО домены из выбранных списков,
+            # остальной трафик ядро вообще не видит (PAC отправляет в SOCKS лишь их).
+            dom = self._domains()
+            dns = {
+                "servers": dns_servers,
+                "rules": ([{"domain_suffix": dom, "server": "dns-proxy"}] if dom else []),
+                "final": "dns-direct",
+                "strategy": "prefer_ipv4",
+            }
+            inbound = {
+                "type": "mixed", "tag": "mixed-in",
+                "listen": "127.0.0.1", "listen_port": int(self.config["socks_port"]),
+            }
+            route_rules = [{"action": "sniff"}]
+            if dom:
+                route_rules.append({"domain_suffix": dom, "outbound": "proxy"})
+            route = {
+                "rules": route_rules,
+                "final": "direct",  # не-наши домены (если влезут) — мимо
+                "default_domain_resolver": {"server": "dns-direct"},
+            }
+        else:
+            # TUN: полный VPN — ВЕСЬ трафик и DNS идут через прокси (списки
+            # игнорируются), напрямую остаётся только локальная сеть (LAN/localhost),
+            # иначе отвалятся роутер/принтеры/соседние устройства.
+            dns = {
+                "servers": dns_servers,
+                "final": "dns-proxy",  # весь DNS через прокси — без утечек
+                "strategy": "prefer_ipv4",
+            }
+            inbound = {
+                "type": "tun", "tag": "tun-in",
+                "address": ["172.18.0.1/30"],
+                "auto_route": True, "strict_route": True,
+                "stack": "system", "mtu": 9000,
+            }
+            route = {
+                "rules": [
+                    {"action": "sniff"},
+                    {"protocol": "dns", "action": "hijack-dns"},
+                    {"ip_is_private": True, "outbound": "direct"},
+                ],
+                "final": "proxy",  # всё, кроме локалки, — в туннель
+                "auto_detect_interface": True,
+                "default_domain_resolver": {"server": "dns-proxy"},
+            }
+
+        return {
+            "log": {"level": "info", "timestamp": True},
+            "dns": dns,
+            "inbounds": [inbound],
+            "outbounds": [proxy_ob, {"type": "direct", "tag": "direct"}],
+            "route": route,
+        }
+
+    # --- PAC-файл и системный прокси (только режим pac) ----------------------
+
+    def _write_pac(self) -> None:
+        """Генерит PAC: наши домены → SOCKS5, всё остальное → DIRECT."""
+        dom = [d.replace('"', "") for d in self._domains()]
+        port = int(self.config["socks_port"])
+        # именно SOCKS5 (не SOCKS4): браузер шлёт имя хоста в прокси, а не резолвит
+        # сам локально — иначе для наших доменов сработал бы заблокированный DNS
+        proxy = f"SOCKS5 127.0.0.1:{port}; DIRECT"
+        arr = ", ".join('"%s"' % d for d in dom)
+        pac = (
+            "function FindProxyForURL(url, host) {\n"
+            '  var P = "%s";\n'
+            "  var d = [%s];\n"
+            "  for (var i = 0; i < d.length; i++) {\n"
+            '    if (host === d[i] || host.slice(-(d[i].length + 1)) === "." + d[i]) return P;\n'
+            "  }\n"
+            '  return "DIRECT";\n'
+            "}\n"
+        ) % (proxy, arr)
+        PAC_PATH.write_text(pac, encoding="utf-8")
+
+    def _pac_url(self) -> str:
+        return "file:///" + str(PAC_PATH).replace("\\", "/")
+
+    @staticmethod
+    def _wininet_refresh() -> None:
+        """Уведомляем WinINet — PAC подхватывается без перезапуска браузера."""
+        try:
+            wininet = ctypes.windll.wininet
+            wininet.InternetSetOptionW(0, 39, 0, 0)  # SETTINGS_CHANGED
+            wininet.InternetSetOptionW(0, 37, 0, 0)  # REFRESH
+        except (OSError, AttributeError):
+            pass
+
+    def _enable_system_proxy(self) -> None:
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, _INET_SETTINGS, 0,
+                            winreg.KEY_SET_VALUE) as k:
+            winreg.SetValueEx(k, "AutoConfigURL", 0, winreg.REG_SZ, self._pac_url())
+        self._sysproxy_on = True
+        self._wininet_refresh()
+
+    def _disable_system_proxy(self) -> None:
+        try:
+            with winreg.OpenKey(winreg.HKEY_CURRENT_USER, _INET_SETTINGS, 0,
+                                winreg.KEY_SET_VALUE) as k:
+                try:
+                    winreg.DeleteValue(k, "AutoConfigURL")
+                except FileNotFoundError:
+                    pass
+            self._wininet_refresh()
+        except OSError:
+            pass
+        self._sysproxy_on = False
+
+    # --- жизненный цикл ------------------------------------------------------
+
+    @property
+    def _ours_alive(self) -> bool:
+        return self._proc is not None and self._proc.poll() is None
+
+    @property
+    def running(self) -> bool:
+        return self._ours_alive or bool(self._system_pids())
+
+    @staticmethod
+    def _system_pids() -> list[int]:
+        try:
+            out = subprocess.run(
+                ["tasklist", "/FI", "IMAGENAME eq sing-box.exe", "/FO", "CSV", "/NH"],
+                capture_output=True, text=True, creationflags=_CREATE_NO_WINDOW,
+            ).stdout
+        except OSError:
+            return []
+        pids = []
+        for line in out.splitlines():
+            cols = [c.strip('"') for c in line.split('","')]
+            if len(cols) >= 2 and cols[0].lower() == "sing-box.exe":
+                try:
+                    pids.append(int(cols[1]))
+                except ValueError:
+                    pass
+        return pids
+
+    def start(self) -> dict:
+        with self._lock:
+            if self.running:
+                self.stop()
+            if not SINGBOX_EXE.exists():
+                raise FileNotFoundError(
+                    "sing-box не установлен. Нажми «Скачать sing-box»."
+                )
+            cfg = self.build_config()
+            CONFIG_PATH.write_text(json.dumps(cfg, ensure_ascii=False, indent=2), encoding="utf-8")
+            if self._pac_mode:
+                self._write_pac()
+            self._error = None
+            self._log = open(LOG_PATH, "w", encoding="utf-8")
+            try:
+                self._proc = subprocess.Popen(
+                    [str(SINGBOX_EXE), "run", "-c", str(CONFIG_PATH)],
+                    cwd=str(SINGBOX_DIR),
+                    stdout=self._log, stderr=subprocess.STDOUT,
+                    creationflags=_CREATE_NO_WINDOW,
+                )
+            except OSError as e:
+                self._close_log()
+                self._proc = None
+                raise RuntimeError(f"Не удалось запустить sing-box: {e}") from e
+            # ловим мгновенную смерть (кривой конфиг, нет прав на TUN, занят адаптер/порт)
+            time.sleep(1.5)
+            if self._proc.poll() is not None:
+                code = self._proc.returncode
+                self._proc = None
+                self._close_log()
+                self._error = self._read_error(code)
+                raise RuntimeError(self._error)
+            # ядро поднялось — теперь заворачиваем браузеры на PAC
+            if self._pac_mode:
+                self._enable_system_proxy()
+            return self.state()
+
+    def _read_error(self, code: int) -> str:
+        lines = [ln.strip() for ln in LOG_PATH.read_text(encoding="utf-8", errors="replace").splitlines() if ln.strip()]
+        tail = " | ".join(lines[-4:]) if lines else "нет вывода"
+        return f"sing-box завершился (код {code}). {tail}"
+
+    def log_read(self, offset: int = 0) -> dict:
+        """Инкрементальное чтение лога sing-box (живой стрим в UI)."""
+        from modules import logutil
+        return logutil.read_from(LOG_PATH, offset)
+
+    def _close_log(self) -> None:
+        if self._log:
+            try:
+                self._log.close()
+            except OSError:
+                pass
+            self._log = None
+
+    def stop(self) -> dict:
+        with self._lock:
+            # сперва снимаем PAC из системного прокси — иначе браузер будет слать
+            # наши домены на уже мёртвый SOCKS-порт
+            self._disable_system_proxy()
+            if self._proc and self._proc.poll() is None:
+                self._proc.terminate()  # sing-box по SIGTERM снимает TUN и маршруты
+                try:
+                    self._proc.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    self._proc.kill()
+            self._proc = None
+            self._close_log()
+            self._kill_leftovers()
+            return self.state()
+
+    @staticmethod
+    def _kill_leftovers() -> None:
+        if not ProxyManager._system_pids():
+            return
+        try:
+            subprocess.run(
+                ["taskkill", "/F", "/T", "/IM", "sing-box.exe"],
+                capture_output=True, creationflags=_CREATE_NO_WINDOW,
+            )
+        except OSError:
+            pass
+        for _ in range(20):
+            if not ProxyManager._system_pids():
+                return
+            time.sleep(0.15)
+
+    def restart(self) -> dict:
+        self.stop()
+        time.sleep(0.2)
+        return self.start()
+
+    # --- состояние для UI ----------------------------------------------------
+
+    def state(self) -> dict:
+        parsed = err = None
+        if self.config["link"]:
+            try:
+                p = parser.parse_link(self.config["link"])
+                parsed = {"label": p["label"], "protocol": p["protocol"],
+                          "server": p["server"], "security": p["security"]}
+            except ValueError as e:
+                err = f"Ссылка не разобрана: {e}"
+        ours = self._ours_alive
+        running = ours or bool(self._system_pids())
+        return {
+            "running": running,
+            "external": running and not ours,
+            "link": self.config["link"],
+            "parsed": parsed,
+            "lists": self.config["lists"],
+            "domains": len(self._domains()),
+            "all_lists": [i["name"] for i in domains.list_info()],
+            "core": {"present": SINGBOX_EXE.exists(), "version": self.core_version()},
+            "autostart": self.config["autostart"],
+            "mode": self.config.get("mode", "pac"),
+            "socks_port": int(self.config["socks_port"]),
+            "needs_admin": not self._pac_mode,  # админ нужен только TUN
+            "error": self._error or err,
+        }

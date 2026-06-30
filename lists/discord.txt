@@ -1,0 +1,10 @@
+# Discord (блок РКН — для zapret/VPN-правил)
+discord.com
+discord.gg
+discordapp.com
+discordapp.net
+cdn.discordapp.com
+media.discordapp.net
+gateway.discord.gg
+updates.discord.com
+discord.media

@@ -1,0 +1,68 @@
+[
+  {
+    "id": "cloudflare", "name": "Cloudflare", "unblock": false,
+    "servers": ["1.1.1.1", "1.0.0.1"],
+    "ipv6": ["2606:4700:4700::1111", "2606:4700:4700::1001"],
+    "doh": "https://cloudflare-dns.com/dns-query", "dot": "one.one.one.one"
+  },
+  {
+    "id": "google", "name": "Google Public DNS", "unblock": false,
+    "servers": ["8.8.8.8", "8.8.4.4"],
+    "ipv6": ["2001:4860:4860::8888", "2001:4860:4860::8844"],
+    "doh": "https://dns.google/dns-query", "dot": "dns.google"
+  },
+  {
+    "id": "quad9", "name": "Quad9", "unblock": false, "filter": true,
+    "servers": ["9.9.9.9", "149.112.112.112"],
+    "ipv6": ["2620:fe::fe", "2620:fe::9"],
+    "doh": "https://dns.quad9.net/dns-query", "dot": "dns.quad9.net"
+  },
+  {
+    "id": "adguard", "name": "AdGuard DNS", "unblock": false, "filter": true,
+    "servers": ["94.140.14.14", "94.140.15.15"],
+    "ipv6": ["2a10:50c0::ad1:ff", "2a10:50c0::ad2:ff"],
+    "doh": "https://dns.adguard-dns.com/dns-query", "dot": "dns.adguard-dns.com"
+  },
+  {
+    "id": "yandex", "name": "Яндекс DNS", "unblock": false,
+    "servers": ["77.88.8.8", "77.88.8.1"],
+    "ipv6": ["2a02:6b8::feed:0ff", "2a02:6b8:0:1::feed:0ff"],
+    "doh": "", "dot": "common.dot.dns.yandex.net"
+  },
+  {
+    "id": "opendns", "name": "OpenDNS", "unblock": false, "filter": true,
+    "servers": ["208.67.222.222", "208.67.220.220"],
+    "ipv6": ["2620:119:35::35", "2620:119:53::53"],
+    "doh": "https://doh.opendns.com/dns-query", "dot": ""
+  },
+  {
+    "id": "xbox", "name": "XBOX DNS", "unblock": true,
+    "servers": ["111.88.96.50", "111.88.96.51"],
+    "ipv6": ["2a00:ab00:1233:26::50", "2a00:ab00:1233:26::51"],
+    "doh": "https://xbox-dns.ru/dns-query", "dot": "xbox-dns.ru"
+  },
+  {
+    "id": "comss", "name": "Comss DNS", "unblock": true,
+    "servers": ["83.220.169.155", "212.109.195.93"],
+    "ipv6": [],
+    "doh": "https://dns.comss.one/dns-query", "dot": "dns.comss.one"
+  },
+  {
+    "id": "malw", "name": "Malw DNS", "unblock": true,
+    "servers": ["80.253.249.40", "193.23.209.189"],
+    "ipv6": ["2a12:bec4:1460:5b7::2", "2a01:ecc0:680:120::2"],
+    "doh": "https://dns.malw.link/dns-query", "dot": "dns.malw.link"
+  },
+  {
+    "id": "geohide", "name": "GeoHide DNS", "unblock": true,
+    "servers": ["45.155.204.190", "37.230.192.51"],
+    "ipv6": [],
+    "doh": "", "dot": "dns.geohide.ru"
+  },
+  {
+    "id": "astracat", "name": "Astracat DNS", "unblock": true,
+    "servers": [],
+    "ipv6": [],
+    "doh": "https://dns.astracat.ru/dns-query", "dot": "dns.astracat.ru"
+  }
+]

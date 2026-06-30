@@ -38,6 +38,8 @@ modules/proxy/singbox-config.json
 modules/proxy/proxy.pac
 # Пользовательские DNS-провайдеры (добавляются из UI)
 modules/dns_providers.user.json
+# Бэкап загруженного ipset-листа при переключении фильтра (modules/winws/filters.py)
+strategies/hostlists/ipset-all.txt.backup
 
 # Local config (auto-создаётся с дефолтами, modules/appconfig.py)
 config.json

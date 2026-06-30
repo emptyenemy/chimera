@@ -1,0 +1,14 @@
+# Grok / xAI (grok.com + x.ai)
+grok.com
+www.grok.com
+assets.grok.com
+cdn.grok.com
+grok.x.ai
+x.ai
+www.x.ai
+api.x.ai
+accounts.x.ai
+auth.x.ai
+console.x.ai
+docs.x.ai
+status.x.ai

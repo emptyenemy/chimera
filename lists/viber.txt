@@ -1,0 +1,10 @@
+# Viber (блок РКН с 2024)
+viber.com
+www.viber.com
+account.viber.com
+media.viber.com
+dl-media.viber.com
+support.viber.com
+share.viber.com
+chatapi.viber.com
+content.cdn.viber.com

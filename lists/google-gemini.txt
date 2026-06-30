@@ -1,0 +1,7 @@
+# Google Gemini / AI Studio / NotebookLM
+gemini.google.com
+aistudio.google.com
+generativelanguage.googleapis.com
+alkalimakersuite-pa.clients6.google.com
+notebooklm.google.com
+labs.google

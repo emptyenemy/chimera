@@ -1,0 +1,121 @@
+# name: ALT12
+# desc: fake + multisplit/hostfakesplit, двойной discord-фейк.
+# source: Flowseal "general (ALT12).bat" -> winws2 (lua-desync). Генератор: tools/port_flowseal.py
+# order: 41
+#
+# Один аргумент winws2 на строку. # — комментарий. Плейсхолдеры путей: {WINWS} {ASSETS} {LISTS}.
+# {GAME_TCP}/{GAME_UDP} — игровые профили (управляются game-фильтром),
+# {GAME_TCP_WF}/{GAME_UDP_WF} — игровые порты в --wf-*-out (подставляются менеджером).
+
+--wf-tcp-out=80,443,2053,2083,2087,2096,8443{GAME_TCP_WF}
+--wf-udp-out=443,19294-19344,50000-50100{GAME_UDP_WF}
+--lua-init=@{WINWS}/lua/zapret-lib.lua
+--lua-init=@{WINWS}/lua/zapret-antidpi.lua
+--blob=quic_google:@{ASSETS}/quic_initial_www_google_com.bin
+--blob=quic_dbank:@{ASSETS}/quic_initial_dbankcloud_ru.bin
+--blob=tls_google:@{ASSETS}/tls_clienthello_www_google_com.bin
+--blob=tls_max:@{ASSETS}/tls_clienthello_max_ru.bin
+--blob=stun_fake:@{ASSETS}/stun.bin
+
+# --- профиль 1: QUIC по hostlist ---
+--filter-udp=443
+--hostlist={LISTS}/list-general.txt
+--hostlist={LISTS}/list-general-user.txt
+--hostlist-exclude={LISTS}/list-exclude.txt
+--hostlist-exclude={LISTS}/list-exclude-user.txt
+--ipset-exclude={LISTS}/ipset-exclude.txt
+--ipset-exclude={LISTS}/ipset-exclude-user.txt
+--payload=quic_initial
+--lua-desync=fake:blob=quic_google:repeats=11
+--new
+
+# --- профиль 2: Discord/STUN — голосовой UDP ---
+--filter-udp=19294-19344,50000-50100
+--filter-l7=discord,stun
+--payload=discord_ip_discovery
+--lua-desync=fake:blob=stun_fake:repeats=3
+--lua-desync=fake:blob=quic_dbank:repeats=3
+--payload=stun
+--lua-desync=fake:blob=quic_dbank:repeats=3
+--new
+
+# --- профиль 3: discord.media (TCP) ---
+--filter-tcp=2053,2083,2087,2096,8443
+--hostlist-domains=discord.media
+--payload=tls_client_hello
+--lua-desync=fake:blob=tls_google:tcp_ts=-1000:repeats=8
+--lua-desync=multisplit:pos=1:seqovl=681:seqovl_pattern=tls_google
+--new
+
+# --- профиль 4: Google TLS (443) ---
+--filter-tcp=443
+--hostlist={LISTS}/list-google.txt
+--payload=tls_client_hello
+--lua-desync=hostfakesplit:host=www.google.com:tcp_ts=-1000:ip_id=zero
+--new
+
+# --- профиль 5: Общий HTTP/TLS по hostlist ---
+--filter-tcp=80,443
+--hostlist={LISTS}/list-general.txt
+--hostlist={LISTS}/list-general-user.txt
+--hostlist-exclude={LISTS}/list-exclude.txt
+--hostlist-exclude={LISTS}/list-exclude-user.txt
+--ipset-exclude={LISTS}/ipset-exclude.txt
+--ipset-exclude={LISTS}/ipset-exclude-user.txt
+--payload=tls_client_hello
+--lua-desync=fake:blob=stun_fake:tcp_ts=-1000:repeats=8
+--lua-desync=fake:blob=tls_max:tcp_ts=-1000:repeats=8
+--payload=http_req
+--lua-desync=fake:blob=tls_max:tcp_ts=-1000:repeats=8
+--payload=tls_client_hello,http_req
+--lua-desync=multisplit:pos=1:seqovl=664:seqovl_pattern=tls_max
+--new
+
+# --- профиль 6: QUIC fallback по IP (ipset) ---
+--filter-udp=443
+--ipset={LISTS}/ipset-all.txt
+--hostlist-exclude={LISTS}/list-exclude.txt
+--hostlist-exclude={LISTS}/list-exclude-user.txt
+--ipset-exclude={LISTS}/ipset-exclude.txt
+--ipset-exclude={LISTS}/ipset-exclude-user.txt
+--payload=quic_initial
+--lua-desync=fake:blob=quic_google:repeats=11
+--new
+
+# --- профиль 7: TCP fallback по IP (ipset) ---
+--filter-tcp=80,443,8443
+--ipset={LISTS}/ipset-all.txt
+--hostlist-exclude={LISTS}/list-exclude.txt
+--hostlist-exclude={LISTS}/list-exclude-user.txt
+--ipset-exclude={LISTS}/ipset-exclude.txt
+--ipset-exclude={LISTS}/ipset-exclude-user.txt
+--payload=tls_client_hello
+--lua-desync=fake:blob=stun_fake:tcp_ts=-1000:repeats=8
+--lua-desync=fake:blob=tls_max:tcp_ts=-1000:repeats=8
+--payload=http_req
+--lua-desync=fake:blob=tls_max:tcp_ts=-1000:repeats=8
+--payload=tls_client_hello,http_req
+--lua-desync=multisplit:pos=1:seqovl=664:seqovl_pattern=tls_max
+--new
+
+# --- профиль 8: GAME TCP (включается game-фильтром) ---
+--filter-tcp={GAME_TCP}
+--ipset={LISTS}/ipset-all.txt
+--ipset-exclude={LISTS}/ipset-exclude.txt
+--ipset-exclude={LISTS}/ipset-exclude-user.txt
+--out-range=-n4
+--payload=all
+--lua-desync=fake:blob=stun_fake:tcp_ts=-1000:repeats=8
+--lua-desync=fake:blob=tls_max:tcp_ts=-1000:repeats=8
+--lua-desync=fake:blob=tls_max:tcp_ts=-1000:repeats=8
+--lua-desync=multisplit:pos=1:seqovl=664:seqovl_pattern=tls_max
+--new
+
+# --- профиль 9: GAME UDP (включается game-фильтром) ---
+--filter-udp={GAME_UDP}
+--ipset={LISTS}/ipset-all.txt
+--ipset-exclude={LISTS}/ipset-exclude.txt
+--ipset-exclude={LISTS}/ipset-exclude-user.txt
+--out-range=-n4
+--payload=all
+--lua-desync=fake:blob=quic_dbank:repeats=10

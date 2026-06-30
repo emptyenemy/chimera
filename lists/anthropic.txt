@@ -1,0 +1,18 @@
+# Anthropic / Claude
+anthropic.com
+www.anthropic.com
+a-api.anthropic.com
+a-cdn.anthropic.com
+s-cdn.anthropic.com
+api.anthropic.com
+auth.anthropic.com
+console.anthropic.com
+api.console.anthropic.com
+statsig.anthropic.com
+status.anthropic.com
+support.anthropic.com
+claude.ai
+www.claude.ai
+api.claude.ai
+claude.com
+platform.claude.com

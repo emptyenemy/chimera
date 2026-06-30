@@ -1,0 +1,11 @@
+# Signal (блок РКН с 2024)
+signal.org
+signal.art
+whispersystems.org
+chat.signal.org
+cdn.signal.org
+cdn2.signal.org
+storage.signal.org
+updates.signal.org
+updates2.signal.org
+sfu.voip.signal.org

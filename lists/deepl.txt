@@ -1,0 +1,25 @@
+# DeepL (переводчик + Write + API)
+# Геобан Meta-стайл (сервис банит РФ-IP) → обходные DNS/hosts помогают.
+
+deepl.com
+www.deepl.com
+www2.deepl.com
+w.deepl.com
+app.deepl.com
+api.deepl.com
+api-free.deepl.com
+login.deepl.com
+auth.deepl.com
+backend.deepl.com
+home.deepl.com
+link.deepl.com
+lp.deepl.com
+labs.deepl.com
+developers.deepl.com
+support.deepl.com
+customers.deepl.com
+# статика / CDN
+s.deepl.com
+static.deepl.com
+assets.deepl.com
+k.deepl.com

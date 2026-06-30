@@ -1,0 +1,9 @@
+# Spotify
+spotify.com
+open.spotify.com
+api.spotify.com
+accounts.spotify.com
+apresolve.spotify.com
+spclient.wg.spotify.com
+scdn.co
+i.scdn.co

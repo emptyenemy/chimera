@@ -1,0 +1,9 @@
+# YouTube (для hosts-подмены почти бесполезен — блок РКН по SNI, это для zapret/VPN-правил)
+youtube.com
+www.youtube.com
+m.youtube.com
+youtu.be
+ytimg.com
+i.ytimg.com
+yt3.ggpht.com
+googlevideo.com
