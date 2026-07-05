@@ -24,10 +24,15 @@ WINWS_DIR = ROOT / "bin" / "zapret-win-bundle" / "zapret-winws"
 WINWS_EXE = WINWS_DIR / "winws2.exe"
 LOG_PATH = Path(__file__).parent / "winws.log"
 STATE_PATH = Path(__file__).parent / "state.json"
+# Управляется выбором списков в UI (set_lists) — перезаписывается целиком на каждое
+# изменение выбора, ручные правки между изменениями переживут, но при следующем
+# сохранении выбора в UI затрутся.
+USER_HOSTLIST_PATH = HOSTLISTS_DIR / "list-general-user.txt"
 
 # last_strategy — последняя успешно запущенная стратегия (восстанавливается в UI и
-# для автозапуска); autostart — поднимать её при старте программы (нужен админ).
-DEFAULTS = {"last_strategy": None, "autostart": False}
+# для автозапуска); autostart — поднимать её при старте программы (нужен админ);
+# lists — какие списки (lists/*.txt) гнать через winws — пишутся в list-general-user.txt.
+DEFAULTS = {"last_strategy": None, "autostart": False, "lists": []}
 
 _META_RE = re.compile(r"^#\s*(name|desc|source|order)\s*:\s*(.+)$", re.I)
 
@@ -111,6 +116,8 @@ class WinwsManager:
         self.config = self._load()
         self._version_cache: str | None = None  # git-тег zapret2 в рантайме не меняется — кэшируем
         self._version_cached = False
+        if not USER_HOSTLIST_PATH.exists():  # рантайм-файл, не в git — досоздать на свежем клоне
+            self._regenerate_user_hostlist()
         atexit.register(self.stop)  # не оставлять winws2 висеть после закрытия приложения
 
     # --- конфиг (state.json) -------------------------------------------------
@@ -134,6 +141,32 @@ class WinwsManager:
         self.config["autostart"] = bool(value)
         self._save()
         return self.state()
+
+    def set_lists(self, names) -> dict:
+        """Какие списки доменов (lists/*.txt) гнать через winws по hostlist-профилям
+        стратегии. Перегенерирует list-general-user.txt и, если winws сейчас запущен,
+        сразу перезапускает текущую стратегию — иначе новый список не подхватится
+        (хостлист читается winws2 один раз при старте)."""
+        from modules import domains
+        valid = {i["name"] for i in domains.list_info()}
+        self.config["lists"] = [n for n in (names or []) if n in valid]
+        self._save()
+        self._regenerate_user_hostlist()
+        sid = self._current or self.config.get("last_strategy")
+        if self.running and sid:
+            self.start(sid)
+        return self.state()
+
+    def _regenerate_user_hostlist(self) -> None:
+        from modules import domains
+        seen, out = set(), []
+        for d in domains.load_lists(self.config.get("lists") or []):
+            d = d.strip().lower().lstrip(".")
+            if d and d not in seen:
+                seen.add(d)
+                out.append(d)
+        text = ("\n".join(out) + "\n") if out else ""
+        USER_HOSTLIST_PATH.write_text(text, encoding="utf-8")
 
     def autostart(self) -> dict | None:
         """Поднять последнюю стратегию при старте программы, если включён автозапуск.
@@ -409,6 +442,7 @@ class WinwsManager:
         return self._version_cache
 
     def state(self) -> dict:
+        from modules import domains
         ours = self._ours_alive
         running = ours or bool(_system_pids())
         return {
@@ -421,6 +455,10 @@ class WinwsManager:
             # UI подсвечивает её, даже когда winws2 не запущен.
             "last_strategy": self.config.get("last_strategy"),
             "autostart": bool(self.config.get("autostart")),
+            # списки доменов, которые гонит через себя winws (list-general-user.txt)
+            "lists": self.config.get("lists") or [],
+            "all_lists": [i["name"] for i in domains.list_info()],
+            "list_domains": len(domains.load_lists(self.config.get("lists") or [])),
             # статус драйвера WinDivert (служба ядра живёт отдельно от winws2):
             "windivert": _divert_status(),  # RUNNING / STOPPED / None
             "version": self.version(),
