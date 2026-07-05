@@ -215,19 +215,21 @@ class Api:
     def lists_all(self):
         """Списки + пометки, через какой транспорт каждый идёт.
 
-        lists/*.txt читают только прокси (config["lists"]) и hosts (assignments);
-        winws берёт свои встроенные хостлисты и сюда не относится. Список может
-        идти через оба пути одновременно — это нормально, ничего не запрещаем.
+        lists/*.txt читают прокси (config["lists"]), hosts (assignments) и winws
+        (config["lists"] -> list-general-user.txt). Список может идти сразу
+        несколькими путями одновременно — это нормально, ничего не запрещаем.
         """
         try:
             info = domains.list_info()
             proxy_lists = set(self.proxy.config.get("lists") or [])
+            winws_lists = set(self.winws.config.get("lists") or [])
             hosts_lists = set()
             for names in self.hosts.assignments().values():
                 hosts_lists.update(names or [])
             for it in info:
                 it["proxy"] = it["name"] in proxy_lists
                 it["hosts"] = it["name"] in hosts_lists
+                it["winws"] = it["name"] in winws_lists
             return _ok(info)
         except Exception as e:
             return _err(e)
@@ -254,6 +256,25 @@ class Api:
         try:
             domains.delete_list(name)
             return _ok()
+        except Exception as e:
+            return _err(e)
+
+    def lists_rename(self, old, new):
+        """Переименовывает файл списка и переносит на новое имя все ссылки на
+        него — иначе proxy/winws/hosts после ребилда конфига будут ссылаться
+        на уже не существующее имя файла.
+        """
+        try:
+            info = domains.rename_list(old, new)
+            if old in (self.proxy.config.get("lists") or []):
+                self.proxy.set_lists([new if n == old else n for n in self.proxy.config["lists"]])
+            if old in (self.winws.config.get("lists") or []):
+                self.winws.set_lists([new if n == old else n for n in self.winws.config["lists"]])
+            assignments = self.hosts.assignments()
+            if any(old in lists for lists in assignments.values()):
+                patched = {pid: [new if n == old else n for n in lists] for pid, lists in assignments.items()}
+                self.hosts.set_assignments(patched)
+            return _ok(info)
         except Exception as e:
             return _err(e)
 
@@ -299,9 +320,30 @@ class Api:
 
     # --- blockcheck (локальная достижимость с этой машины) -------------------
 
+    def _proxy_socks_addr(self, target: str) -> tuple[str, int] | None:
+        """Адрес локального SOCKS5 нашего sing-box, ЕСЛИ домен реально уйдёт через
+        него у пользователя прямо сейчас: режим PAC (в TUN это видно и так — см.
+        modules/blockcheck.py), прокси запущен, домен попадает в один из его списков.
+        Иначе None — обычная прямая проверка.
+        """
+        cfg = self.proxy.config
+        if cfg.get("mode", "pac") == "tun" or not cfg.get("lists"):
+            return None
+        try:
+            if not self.proxy.state().get("running"):
+                return None
+        except Exception:
+            return None
+        t = target.strip().lower().lstrip(".")
+        for suffix in domains.load_lists(cfg["lists"]):
+            suffix = suffix.strip().lower().lstrip(".")
+            if suffix and (t == suffix or t.endswith("." + suffix)):
+                return ("127.0.0.1", int(cfg.get("socks_port", 2080)))
+        return None
+
     def block_check_one(self, domain):
         try:
-            return _ok(blockcheck.check(domain))
+            return _ok(blockcheck.check(domain, socks_addr=self._proxy_socks_addr(domain)))
         except Exception as e:
             return _err(e)
 
@@ -324,10 +366,9 @@ class Api:
                 self._push("blockResult", fut.result())
         self._push("blockDone", {})
 
-    @staticmethod
-    def _block_one(domain):
+    def _block_one(self, domain):
         try:
-            return blockcheck.check(domain)
+            return blockcheck.check(domain, socks_addr=self._proxy_socks_addr(domain))
         except Exception:
             return {"target": domain, "status": "error", "ip": None, "ms": 0, "reason": None}
 
@@ -359,6 +400,14 @@ class Api:
     def winws_set_autostart(self, value):
         try:
             return _ok(self.winws.set_autostart(value))
+        except Exception as e:
+            return _err(e)
+
+    def winws_set_lists(self, names):
+        try:
+            if self.winws.running and not is_admin():
+                raise PermissionError("Нужны права администратора для перезапуска zapret2")
+            return _ok(self.winws.set_lists(names))
         except Exception as e:
             return _err(e)
 

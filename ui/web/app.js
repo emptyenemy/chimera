@@ -26,6 +26,91 @@ function icon(name, cls = "") {
   return `<svg class="ic ${cls}" aria-hidden="true"><use href="#i-${name}"/></svg>`;
 }
 
+// --- модалки (замена нативным confirm()/prompt() — блюр фона + карточка) ---
+
+function confirmModal({ title, description, confirmLabel = "Удалить", cancelLabel = "Отмена", danger = true }) {
+  return new Promise(resolve => {
+    const backdrop = $("#confirm-modal");
+    $("#confirm-title").textContent = title;
+    $("#confirm-desc").textContent = description;
+    const okBtn = $("#confirm-ok-btn");
+    const cancelBtn = $("#confirm-cancel-btn");
+    okBtn.textContent = confirmLabel;
+    okBtn.className = "btn" + (danger ? " danger" : " primary");
+    cancelBtn.textContent = cancelLabel;
+
+    const done = result => {
+      backdrop.classList.remove("show");
+      okBtn.removeEventListener("click", onOk);
+      cancelBtn.removeEventListener("click", onCancel);
+      backdrop.removeEventListener("mousedown", onBackdrop);
+      document.removeEventListener("keydown", onKey);
+      resolve(result);
+    };
+    const onOk = () => done(true);
+    const onCancel = () => done(false);
+    const onBackdrop = e => { if (e.target === backdrop) done(false); };
+    const onKey = e => {
+      if (e.key === "Escape") done(false);
+      if (e.key === "Enter") done(true);
+    };
+
+    okBtn.addEventListener("click", onOk);
+    cancelBtn.addEventListener("click", onCancel);
+    backdrop.addEventListener("mousedown", onBackdrop);
+    document.addEventListener("keydown", onKey);
+    backdrop.classList.add("show");
+    okBtn.focus();
+  });
+}
+
+function promptModal({ title, description, value = "", confirmLabel = "Сохранить", validate }) {
+  return new Promise(resolve => {
+    const backdrop = $("#prompt-modal");
+    const input = $("#prompt-input");
+    const errEl = $("#prompt-error");
+    $("#prompt-title").textContent = title;
+    $("#prompt-desc").textContent = description || "";
+    $("#prompt-desc").style.display = description ? "" : "none";
+    $("#prompt-ok-btn").textContent = confirmLabel;
+    input.value = value;
+    errEl.textContent = "";
+
+    const done = result => {
+      backdrop.classList.remove("show");
+      okBtn.removeEventListener("click", onOk);
+      cancelBtn.removeEventListener("click", onCancel);
+      backdrop.removeEventListener("mousedown", onBackdrop);
+      input.removeEventListener("keydown", onKey);
+      resolve(result);
+    };
+    const onOk = () => {
+      const v = input.value.trim();
+      if (validate) {
+        const err = validate(v);
+        if (err) { errEl.textContent = err; return; }
+      }
+      done(v);
+    };
+    const onCancel = () => done(null);
+    const onBackdrop = e => { if (e.target === backdrop) done(null); };
+    const onKey = e => {
+      if (e.key === "Escape") done(null);
+      if (e.key === "Enter") onOk();
+    };
+
+    const okBtn = $("#prompt-ok-btn");
+    const cancelBtn = $("#prompt-cancel-btn");
+    okBtn.addEventListener("click", onOk);
+    cancelBtn.addEventListener("click", onCancel);
+    backdrop.addEventListener("mousedown", onBackdrop);
+    input.addEventListener("keydown", onKey);
+    backdrop.classList.add("show");
+    input.focus();
+    input.select();
+  });
+}
+
 // --- hosts tab --------------------------------------------------------------
 
 let hostsState = { applied: false, assignments: {}, count: 0 };
@@ -225,7 +310,8 @@ async function onHostsProviderClick(e) {
   if (del) {
     const id = del.closest(".prov-row").dataset.id;
     const p = hostsProviders.find(x => x.id === id);
-    if (!confirm(`Удалить провайдер «${p?.name || id}»?`)) return;
+    const ok = await confirmModal({ title: "Удалить провайдера?", description: `Провайдер «${p?.name || id}» будет удалён.` });
+    if (!ok) return;
     try {
       await api("hosts_delete_provider", id);
       if (selectedProvider === id) selectedProvider = null;
@@ -464,7 +550,8 @@ async function onDnsProviderAction(e) {
 
   if (btn.dataset.act === "del") {
     const p = dnsProviders.find(x => x.id === id);
-    if (!confirm(`Удалить провайдер «${p?.name || id}»?`)) return;
+    const ok = await confirmModal({ title: "Удалить провайдера?", description: `Провайдер «${p?.name || id}» будет удалён.` });
+    if (!ok) return;
     try {
       await api("dns_delete_provider", id);
       toast("Провайдер удалён.");
@@ -521,6 +608,7 @@ async function onDnsReset() {
 
 let currentList = null;
 let editorDirty = false;
+let listsData = [];  // кэш последнего lists_all — читает контекстное меню
 
 async function loadLists() {
   const side = $("#lists-files");
@@ -531,11 +619,19 @@ async function loadLists() {
     side.innerHTML = `<div class="empty">Ошибка: ${esc(e.message)}</div>`;
     return;
   }
-  side.innerHTML = files.map(f => {
-    // метки «через что идёт список»: прокси (globe) и hosts (server); только активные
+  listsData = files;
+  renderListsFiles();
+}
+
+// рендер из кэша listsData — без похода в бэкенд, для мгновенного отклика тоглов
+function renderListsFiles() {
+  const side = $("#lists-files");
+  side.innerHTML = listsData.map(f => {
+    // метки «через что идёт список»: прокси (globe), hosts (server), winws (shield); только активные
     const badges = [
       f.proxy ? `<span class="lf-badge proxy" title="Идёт через прокси (sing-box)">${icon("globe")}</span>` : "",
       f.hosts ? `<span class="lf-badge hosts" title="Идёт через hosts">${icon("server")}</span>` : "",
+      f.winws ? `<span class="lf-badge winws" title="Идёт через запрет (winws2)">${icon("shield")}</span>` : "",
     ].join("");
     return `
     <div class="list-file ${f.name === currentList ? "active" : ""}" data-name="${esc(f.name)}">
@@ -547,7 +643,7 @@ async function loadLists() {
 }
 
 async function openList(name) {
-  if (editorDirty && !confirm("Несохранённые изменения пропадут. Открыть другой список?")) return;
+  await flushAutosave();  // сохранить хвост правок в предыдущем списке перед переключением
   $("#list-error").textContent = "";
   let text;
   try {
@@ -562,12 +658,25 @@ async function openList(name) {
   const ta = $("#editor-text");
   ta.value = text;
   ta.disabled = false;
-  $("#list-save-btn").disabled = true;
-  $("#list-delete-btn").disabled = false;
+  setEditorStatus("");
   updateEditorMeta();
   document.querySelectorAll(".list-file").forEach(el =>
     el.classList.toggle("active", el.dataset.name === name)
   );
+}
+
+function closeEditor() {
+  currentList = null;
+  editorDirty = false;
+  clearTimeout(autosaveTimer);
+  autosaveTimer = null;
+  const ta = $("#editor-text");
+  ta.value = "";
+  ta.disabled = true;
+  $("#editor-title").textContent = "Выбери список слева";
+  $("#editor-meta").textContent = "";
+  $("#list-error").textContent = "";
+  setEditorStatus("");
 }
 
 function updateEditorMeta() {
@@ -576,24 +685,42 @@ function updateEditorMeta() {
   $("#editor-meta").textContent = `${count} доменов`;
 }
 
+function setEditorStatus(state) {
+  const el = $("#editor-status");
+  el.className = "editor-status" + (state ? ` ${state}` : "");
+  el.textContent = state === "saving" ? "Сохраняю…" : state === "saved" ? "Сохранено" : state === "error" ? "Ошибка сохранения" : "";
+}
+
+// автосохранение: правки летят в бэк сами, без отдельной кнопки «Сохранить»
+let autosaveTimer = null;
+
 function onEditorInput() {
   if (!currentList) return;
   editorDirty = true;
-  $("#list-save-btn").disabled = false;
   updateEditorMeta();
+  setEditorStatus("saving");
+  clearTimeout(autosaveTimer);
+  autosaveTimer = setTimeout(flushAutosave, 600);
 }
 
-async function saveList() {
-  if (!currentList) return;
-  $("#list-error").textContent = "";
+async function flushAutosave() {
+  clearTimeout(autosaveTimer);
+  autosaveTimer = null;
+  if (!editorDirty || !currentList) return;
+  const name = currentList;
+  const content = $("#editor-text").value;
+  editorDirty = false;
   try {
-    const info = await api("lists_save", currentList, $("#editor-text").value);
-    editorDirty = false;
-    $("#list-save-btn").disabled = true;
-    toast(`Сохранено: ${info.name} (${info.count} доменов).`);
-    loadLists();
+    const info = await api("lists_save", name, content);
+    const item = listsData.find(f => f.name === name);
+    if (item) { item.count = info.count; renderListsFiles(); }
+    if (currentList === name) setEditorStatus("saved");
   } catch (e) {
-    $("#list-error").textContent = e.message;
+    editorDirty = true;  // не потерять правки, если сохранить не вышло
+    if (currentList === name) {
+      setEditorStatus("error");
+      $("#list-error").textContent = e.message;
+    }
   }
 }
 
@@ -612,22 +739,45 @@ async function createList() {
   }
 }
 
-async function deleteList() {
-  if (!currentList) return;
-  if (!confirm(`Удалить список «${currentList}»? Действие необратимо.`)) return;
+async function deleteList(name) {
+  const ok = await confirmModal({
+    title: "Удалить список?",
+    description: `Список «${name}» будет удалён без возможности восстановления.`,
+    confirmLabel: "Удалить",
+  });
+  if (!ok) return;
   try {
-    await api("lists_delete", currentList);
-    toast(`Список ${currentList} удалён.`);
-    currentList = null;
-    editorDirty = false;
-    const ta = $("#editor-text");
-    ta.value = "";
-    ta.disabled = true;
-    $("#editor-title").textContent = "Выбери список слева";
-    $("#editor-meta").textContent = "";
-    $("#list-save-btn").disabled = true;
-    $("#list-delete-btn").disabled = true;
-    loadLists();
+    await api("lists_delete", name);
+    toast(`Список ${name} удалён.`);
+    if (currentList === name) closeEditor();
+    await loadLists();
+  } catch (e) {
+    toast(e.message, true);
+  }
+}
+
+async function renameList(name) {
+  const next = await promptModal({
+    title: "Переименовать список",
+    description: `Новое имя для «${name}» (без .txt).`,
+    value: name,
+    confirmLabel: "Переименовать",
+    validate: v => {
+      if (!v) return "Имя не может быть пустым";
+      if (!/^[A-Za-z0-9._-]+$/.test(v)) return "Только латиница, цифры, точка, дефис и подчёркивание";
+      if (v !== name && listsData.some(f => f.name === v)) return `Список «${v}» уже существует`;
+      return null;
+    },
+  });
+  if (next === null || next === name) return;
+  try {
+    const info = await api("lists_rename", name, next);
+    toast(`${name} → ${info.name}`);
+    if (currentList === name) {
+      currentList = info.name;
+      $("#editor-title").textContent = info.name + ".txt";
+    }
+    await loadLists();
   } catch (e) {
     toast(e.message, true);
   }
@@ -636,6 +786,80 @@ async function deleteList() {
 function onListsClick(e) {
   const file = e.target.closest(".list-file");
   if (file) openList(file.dataset.name);
+}
+
+// --- контекстное меню списка: ПКМ → включить/выключить транспорт прямо тут ---
+
+let listCtxTarget = null;
+
+function closeListCtxMenu() {
+  $("#list-ctx-menu").classList.remove("show");
+  listCtxTarget = null;
+}
+
+function onListsContext(e) {
+  const file = e.target.closest(".list-file");
+  if (!file) return closeListCtxMenu();
+  e.preventDefault();
+  const item = listsData.find(f => f.name === file.dataset.name);
+  if (!item) return;
+  listCtxTarget = item.name;
+
+  const toggleRow = (transport, iconName, label, disabled, hint) => `
+    <div class="ctx-item ${disabled ? "disabled" : ""}" data-transport="${disabled ? "" : transport}" title="${esc(hint || "")}">
+      ${icon(iconName)}<span class="ctx-label">${label}</span>
+      <span class="switch"><input type="checkbox" ${item[transport] ? "checked" : ""} disabled tabindex="-1"><span class="slider"></span></span>
+    </div>`;
+  const actionRow = (action, iconName, label, danger) => `
+    <div class="ctx-item ${danger ? "danger" : ""}" data-action="${action}">
+      ${icon(iconName)}<span class="ctx-label">${label}</span>
+    </div>`;
+
+  const menu = $("#list-ctx-menu");
+  menu.innerHTML =
+    `<div class="ctx-menu-title">${esc(item.name)}.txt</div>` +
+    toggleRow("proxy", "globe", "Прокси (VPN)", false) +
+    toggleRow("winws", "shield", "Запрет (winws)", false) +
+    toggleRow("hosts", "server", "Hosts", true, "Hosts привязывается к DNS-провайдеру — выбери его во вкладке Hosts") +
+    `<div class="ctx-sep"></div>` +
+    actionRow("rename", "pencil", "Переименовать", false) +
+    actionRow("delete", "trash", "Удалить", true);
+
+  menu.classList.add("show");
+  const x = Math.min(e.clientX, window.innerWidth - menu.offsetWidth - 8);
+  const y = Math.min(e.clientY, window.innerHeight - menu.offsetHeight - 8);
+  menu.style.left = `${Math.max(4, x)}px`;
+  menu.style.top = `${Math.max(4, y)}px`;
+}
+
+function onListCtxMenuClick(e) {
+  const row = e.target.closest(".ctx-item");
+  if (!row || row.classList.contains("disabled") || !listCtxTarget) return;
+  const name = listCtxTarget;
+  if (row.dataset.transport) {
+    toggleListTransport(name, row.dataset.transport);
+  } else if (row.dataset.action === "rename") {
+    closeListCtxMenu();
+    renameList(name);
+  } else if (row.dataset.action === "delete") {
+    closeListCtxMenu();
+    deleteList(name);
+  }
+}
+
+function toggleListTransport(name, transport) {
+  const item = listsData.find(f => f.name === name);
+  closeListCtxMenu();
+  if (!item) return;
+  const makeActive = !item[transport];
+  item[transport] = makeActive;  // оптимистично: бейдж меняется сразу, не ждём рестарта движка
+  renderListsFiles();
+  const next = listsData.filter(f => f[transport]).map(f => f.name);
+  const apiMethod = transport === "proxy" ? "proxy_set_lists" : "winws_set_lists";
+  const label = transport === "proxy" ? "прокси" : "запрет";
+  toast(`${name}: ${label} ${makeActive ? "включён" : "выключен"}.`);
+  // применяется в фоне (может перезапустить движок) — если не взлетит, смотреть в логе нужной вкладки
+  api(apiMethod, next).catch(() => {});
 }
 
 // --- cheburcheck: проверка блокировок РКН (своя вкладка) ---
@@ -764,7 +988,7 @@ window.cheburDone = function () {
 };
 
 // --- blockcheck: локальная достижимость с этой машины (тот же таб) ---
-const BLOCK_LABELS = { ok: "ok", blocked: "БЛОК", dns: "нет DNS", error: "ошибка" };
+const BLOCK_LABELS = { ok: "ok", challenge: "CLOUDFLARE", denied: "ОТКАЗ", blocked: "БЛОК", dns: "нет DNS", error: "ошибка" };
 let blockExpected = 0, blockDoneN = 0, blockOk = 0, blockRunning = false;
 
 function blockResetResults(label) {
@@ -773,8 +997,10 @@ function blockResetResults(label) {
   box.innerHTML = `<div class="check-summary" id="block-summary">${label}</div>`;
 }
 
+const BLOCK_CLASSES = { ok: "ok", challenge: "cf", denied: "fail", blocked: "fail" };
+
 function blockRow(r) {
-  const cls = r.status === "ok" ? "ok" : (r.status === "blocked" ? "fail" : "tcp");
+  const cls = BLOCK_CLASSES[r.status] || "tcp";
   const detail = [r.ip, r.reason, r.ms ? `${r.ms} мс` : null].filter(Boolean).join(" · ");
   return `
     <div class="check-row">
@@ -830,7 +1056,8 @@ window.blockDone = function () {
   $("#block-list-btn").disabled = false;
   const s = $("#block-summary");
   if (s) s.innerHTML = `Достучались: <b>${blockOk}/${blockExpected}</b>
-    <span class="ms">(ok — TLS прошёл; БЛОК — RST/таймаут; нет DNS — не резолвится)</span>`;
+    <span class="ms">(CF — пройдёт сам в браузере; ОТКАЗ — бан на стороне сайта, не DPI;
+    БЛОК — RST/таймаут; нет DNS — не резолвится)</span>`;
 };
 
 // --- telegram proxy tab ---------------------------------------------------------
@@ -1064,6 +1291,26 @@ function renderWinwsStatus() {
   $("#winws-version").textContent = [winwsState.version ? `zapret2 ${winwsState.version}` : "", wdTxt].filter(Boolean).join(" · ");
   $("#winws-error").textContent = winwsState.error || "";
   $("#winws-autostart").checked = !!winwsState.autostart;
+  renderWinwsLists();
+}
+
+function renderWinwsLists() {
+  const box = $("#winws-lists");
+  const all = winwsState.all_lists || [];
+  if (!all.length) { box.innerHTML = `<div class="empty">Списков нет — добавь во вкладке «Списки».</div>`; return; }
+  const sel = new Set(winwsState.lists || []);
+  box.innerHTML = all.map(n => `
+    <label class="list-check">
+      <input type="checkbox" value="${esc(n)}" ${sel.has(n) ? "checked" : ""}>
+      <span class="lc-name">${esc(n)}</span>
+    </label>`).join("");
+}
+
+async function onWinwsListToggle(e) {
+  if (!e.target.closest("input[type=checkbox]")) return;
+  const names = [...document.querySelectorAll("#winws-lists input:checked")].map(c => c.value);
+  try { winwsState = { ...winwsState, ...await api("winws_set_lists", names) }; renderWinwsStatus(); }
+  catch (err) { $("#winws-error").textContent = err.message; renderWinwsLists(); }
 }
 
 async function setWinwsAutostart(v) {
@@ -1325,10 +1572,11 @@ function dashTool(o) {
 function renderDashHero() {
   const el = $("#dash-hero");
   if (!el) return;
-  const { winws, proxy, tg } = dashState;
-  const tools = [winws, proxy, tg].filter(Boolean);
-  const onCount = tools.filter(t => t.running).length;
-  const guard = !!(winws?.running || proxy?.running);  // «защита» = обход или прокси
+  const { winws, proxy, tg, hosts } = dashState;
+  const tools = [winws, proxy, tg, hosts].filter(Boolean);
+  // у hosts нет процесса/running — «включено» там значит applied (см. dashToggle)
+  const onCount = tools.filter(t => t.running ?? t.applied).length;
+  const guard = !!(winws?.running || proxy?.running || hosts?.applied);  // «защита» = обход, прокси или hosts
   el.className = "dash-hero " + (guard ? "guard" : "idle");
   el.innerHTML = `
     <div class="dash-shield">${icon("shield")}</div>
@@ -1470,6 +1718,7 @@ function switchTab(e) {
   if (btn.dataset.tab === "dns") startDnsPing();
   else stopDnsPing();
   if (btn.dataset.tab === "lists") loadLists();  // обновить метки прокси/hosts (могли поменять на др. вкладке)
+  closeListCtxMenu();
 }
 
 // --- proxy tab (sing-box, выборочно по доменам) -----------------------------
@@ -1651,9 +1900,13 @@ async function init() {
   $("#hprov-add-btn").addEventListener("click", addHostsProvider);
   $("#hosts-enabled").addEventListener("change", onHostsToggle);
   $("#lists-files").addEventListener("click", onListsClick);
+  $("#lists-files").addEventListener("contextmenu", onListsContext);
+  $("#list-ctx-menu").addEventListener("click", onListCtxMenuClick);
+  document.addEventListener("click", e => { if (!e.target.closest("#list-ctx-menu")) closeListCtxMenu(); });
+  document.addEventListener("contextmenu", e => { if (!e.target.closest(".list-file")) closeListCtxMenu(); });
+  document.addEventListener("keydown", e => { if (e.key === "Escape") closeListCtxMenu(); });
   $("#editor-text").addEventListener("input", onEditorInput);
-  $("#list-save-btn").addEventListener("click", saveList);
-  $("#list-delete-btn").addEventListener("click", deleteList);
+  $("#editor-text").addEventListener("blur", flushAutosave);
 
   $("#chebur-one-btn").addEventListener("click", checkOneDomain);
   $("#chebur-domain").addEventListener("keydown", e => { if (e.key === "Enter") checkOneDomain(); });
@@ -1664,6 +1917,7 @@ async function init() {
   $("#block-list-btn").addEventListener("click", checkListReach);
 
   $("#winws-list").addEventListener("click", onWinwsSelect);
+  $("#winws-lists").addEventListener("change", onWinwsListToggle);
   $("#winws-toggle-btn").addEventListener("click", winwsToggle);
   $("#game-seg").addEventListener("click", e => {
     const b = e.target.closest("button[data-mode]"); if (b) setGameFilter(b.dataset.mode);

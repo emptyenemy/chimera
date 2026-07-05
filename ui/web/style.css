@@ -41,6 +41,7 @@
   --accent: #7aa2f7;
   --green: #9ece6a;
   --yellow: #e0af68;
+  --orange: #ff9e64;
   --red: #f7768e;
   --border: #2c3047;
   --scroll-thumb: #2c3047;
@@ -201,6 +202,7 @@ h2 { font-size: 15px; margin-bottom: 10px; }
 .check-row .st { width: 60px; font-weight: 700; }
 .st.ok { color: var(--green); }
 .st.tcp { color: var(--yellow); }
+.st.cf { color: var(--orange); }
 .st.fail { color: var(--red); }
 .check-row .ms { color: var(--text-dim); width: 70px; }
 .check-row .hostname { color: var(--text); }
@@ -353,7 +355,104 @@ h2 { font-size: 15px; margin-bottom: 10px; }
 .lf-badge { display: inline-flex; }
 .lf-badge.proxy { color: var(--accent); }
 .lf-badge.hosts { color: var(--green); }
+.lf-badge.winws { color: var(--orange); }
 .lf-badge .ic { font-size: 14px; }
+
+/* контекстное меню на списке доменов: ПКМ → переключить прокси/запрет/hosts */
+.ctx-menu {
+  position: fixed;
+  z-index: 50;
+  display: none;
+  min-width: 220px;
+  padding: 6px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, .35);
+}
+.ctx-menu.show { display: block; }
+.ctx-menu-title {
+  padding: 6px 10px 4px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: .04em;
+}
+.ctx-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+}
+.ctx-item:hover { background: var(--card-2); }
+.ctx-item .ic { flex-shrink: 0; font-size: 15px; }
+.ctx-item .ctx-label { flex: 1; }
+.ctx-item .switch { pointer-events: none; }
+.ctx-item.disabled {
+  cursor: not-allowed;
+  opacity: .45;
+}
+.ctx-item.disabled:hover { background: none; }
+.ctx-sep { height: 1px; background: var(--border); margin: 6px 6px; }
+.ctx-item.danger { color: var(--red); }
+.ctx-item.danger:hover { background: rgba(247, 118, 142, .12); }
+
+/* модалка подтверждения — 1:1 размеры/тайминги shadcn/ui AlertDialog
+   (apps/v4/registry/new-york-v4/ui/alert-dialog.tsx), без React и Tailwind.
+   Отличие от оригинала: blur на фоне — там его нет, добавлен по запросу. */
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, .5);       /* bg-black/50 */
+  backdrop-filter: blur(4px);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .2s ease;         /* fade-in-0/fade-out-0 */
+}
+.modal-backdrop.show { opacity: 1; pointer-events: auto; }
+.modal-card {
+  width: 100%;
+  max-width: 512px;                     /* sm:max-w-lg */
+  margin: 0 16px;                       /* max-w-[calc(100%-2rem)] на узких окнах */
+  display: flex;
+  flex-direction: column;
+  gap: 16px;                            /* gap-4 */
+  background: var(--card);              /* bg-background */
+  border: 1px solid var(--border);
+  border-radius: 10px;                  /* rounded-lg */
+  padding: 24px;                         /* p-6 */
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, .3), 0 4px 6px -4px rgba(0, 0, 0, .3); /* shadow-lg */
+  opacity: 0;
+  transform: scale(.95);                /* zoom-in-95/zoom-out-95 */
+  transition: transform .2s ease, opacity .2s ease; /* duration-200 */
+}
+.modal-backdrop.show .modal-card { opacity: 1; transform: scale(1); }
+.modal-header { display: flex; flex-direction: column; gap: 6px; }  /* gap-1.5 */
+.modal-card h3 { font-size: 18px; font-weight: 600; line-height: 1.4; } /* text-lg font-semibold */
+.modal-card p { font-size: 14px; color: var(--text-dim); line-height: 1.5; } /* text-sm text-muted-foreground */
+.modal-actions { display: flex; justify-content: flex-end; gap: 8px; } /* sm:flex-row sm:justify-end gap-2 */
+/* AlertDialogAction с variant="destructive" — залитая красная кнопка, не только обводка на ховере */
+#confirm-modal .btn.danger { background: var(--red); color: #16161e; border: none; font-weight: 600; }
+#confirm-modal .btn.danger:hover:not(:disabled) { opacity: .85; }
+.modal-input {
+  width: 100%;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  padding: 8px 10px;
+  font: 13px "JetBrains Mono", Consolas, monospace;
+}
+.modal-input:focus { outline: 1px solid var(--accent); }
+#prompt-modal .form-error { margin: 0; }
 .lists-new { display: flex; gap: 6px; margin-top: 8px; padding: 8px 4px 4px; border-top: 1px solid var(--border); }
 .lists-new input {
   flex: 1; min-width: 0;
@@ -365,7 +464,11 @@ h2 { font-size: 15px; margin-bottom: 10px; }
   font: 13px "JetBrains Mono", Consolas, monospace;
 }
 .editor-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 10px; }
-#editor-title, .editor-title { font-size: 15px; font-weight: 600; }
+#editor-title, .editor-title { font-size: 15px; font-weight: 600; flex: 1; }
+.editor-status { font-size: 12px; flex: none; }
+.editor-status.saving { color: var(--text-dim); }
+.editor-status.saved { color: var(--green); }
+.editor-status.error { color: var(--red); }
 #editor-text {
   width: 100%;
   min-height: 380px;
@@ -496,8 +599,7 @@ h2 { font-size: 15px; margin-bottom: 10px; }
   word-break: break-word;
   user-select: text;
 }
-.editor-actions { display: flex; align-items: center; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
-.editor-actions .form-error { margin: 0; }
+#tab-lists .form-error { margin-top: 10px; }
 
 /* cheburcheck: вкладка проверки блокировок */
 .chebur-toolbar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }

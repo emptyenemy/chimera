@@ -57,6 +57,17 @@ def delete_list(name: str) -> None:
         path.unlink()
 
 
+def rename_list(old: str, new: str) -> dict:
+    old_path = _safe_path(old)
+    new_path = _safe_path(new)
+    if not old_path.exists():
+        raise FileNotFoundError(f"Список {old!r} не найден")
+    if old != new and new_path.exists():
+        raise ValueError(f"Список {new!r} уже существует")
+    old_path.rename(new_path)
+    return {"name": new, "count": len(load_list(new))}
+
+
 def load_list(name: str) -> list[str]:
     path = LISTS_DIR / f"{name}.txt"
     if not path.exists():

@@ -20,6 +20,8 @@
   <symbol id="i-search" viewBox="0 0 24 24"><path d="m21 21-4.34-4.34"/><circle cx="11" cy="11" r="8"/></symbol>
   <symbol id="i-settings" viewBox="0 0 24 24"><path d="M9.671 4.136a2.34 2.34 0 0 1 4.659 0 2.34 2.34 0 0 0 3.319 1.915 2.34 2.34 0 0 1 2.33 4.033 2.34 2.34 0 0 0 0 3.831 2.34 2.34 0 0 1-2.33 4.033 2.34 2.34 0 0 0-3.319 1.915 2.34 2.34 0 0 1-4.659 0 2.34 2.34 0 0 0-3.32-1.915 2.34 2.34 0 0 1-2.33-4.033 2.34 2.34 0 0 0 0-3.831A2.34 2.34 0 0 1 6.35 6.051a2.34 2.34 0 0 0 3.319-1.915"/><circle cx="12" cy="12" r="3"/></symbol>
   <symbol id="i-warn" viewBox="0 0 24 24"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/></symbol>
+  <symbol id="i-pencil" viewBox="0 0 24 24"><path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/><path d="m15 5 4 4"/></symbol>
+  <symbol id="i-trash" viewBox="0 0 24 24"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" x2="10" y1="11" y2="17"/><line x1="14" x2="14" y1="11" y2="17"/></symbol>
 </svg>
 <div class="layout">
   <nav class="sidebar">
@@ -129,8 +131,10 @@
       <p class="hint">
         Один список = один сервис (по домену на строку, <code>#</code> — комментарий).
         Метки справа показывают, через что список уже идёт:
-        <span class="lf-badge proxy"><svg class="ic"><use href="#i-globe"/></svg></span> прокси и
-        <span class="lf-badge hosts"><svg class="ic"><use href="#i-server"/></svg></span> hosts (можно оба сразу).
+        <span class="lf-badge proxy"><svg class="ic"><use href="#i-globe"/></svg></span> прокси,
+        <span class="lf-badge hosts"><svg class="ic"><use href="#i-server"/></svg></span> hosts и
+        <span class="lf-badge winws"><svg class="ic"><use href="#i-shield"/></svg></span> запрет (можно сразу несколько).
+        ПКМ по списку — быстро включить/выключить прокси или запрет, не уходя на другую вкладку.
       </p>
 
       <div class="lists-layout">
@@ -145,15 +149,12 @@
         <div class="lists-editor card">
           <div class="editor-head">
             <span id="editor-title">Выбери список слева</span>
+            <span class="editor-status" id="editor-status"></span>
             <span class="set-meta" id="editor-meta"></span>
           </div>
           <textarea id="editor-text" spellcheck="false"
             placeholder="domain.com&#10;sub.domain.com&#10;# комментарий" disabled></textarea>
-          <div class="editor-actions">
-            <button class="btn primary" id="list-save-btn" disabled>Сохранить</button>
-            <button class="btn danger" id="list-delete-btn" disabled>Удалить список</button>
-            <span class="form-error" id="list-error"></span>
-          </div>
+          <div class="form-error" id="list-error"></div>
         </div>
       </div>
     </section>
@@ -181,6 +182,12 @@
       </div>
 
       <div id="winws-list"></div>
+
+      <div class="card" id="winws-lists-card">
+        <h2>Какие домены гнать через запрет</h2>
+        <p class="hint">Домены из отмеченных списков пишутся в хостлист winws (list-general-user.txt) — десинк применяется только к ним, плюс к тому, что уже покрывает сама стратегия. Меняется на лету: если winws запущен, перезапустит текущую стратегию.</p>
+        <div class="hosts-lists" id="winws-lists"></div>
+      </div>
 
       <div class="card">
         <h2>Фильтры</h2>
@@ -432,6 +439,33 @@
   </main>
 </div>
 <div id="toast"></div>
+<div id="list-ctx-menu" class="ctx-menu"></div>
+<div id="confirm-modal" class="modal-backdrop">
+  <div class="modal-card">
+    <div class="modal-header">
+      <h3 id="confirm-title"></h3>
+      <p id="confirm-desc"></p>
+    </div>
+    <div class="modal-actions">
+      <button class="btn" id="confirm-cancel-btn">Отмена</button>
+      <button class="btn danger" id="confirm-ok-btn">Удалить</button>
+    </div>
+  </div>
+</div>
+<div id="prompt-modal" class="modal-backdrop">
+  <div class="modal-card">
+    <div class="modal-header">
+      <h3 id="prompt-title"></h3>
+      <p id="prompt-desc"></p>
+    </div>
+    <input id="prompt-input" type="text" class="modal-input" spellcheck="false">
+    <div class="form-error" id="prompt-error"></div>
+    <div class="modal-actions">
+      <button class="btn" id="prompt-cancel-btn">Отмена</button>
+      <button class="btn primary" id="prompt-ok-btn">Переименовать</button>
+    </div>
+  </div>
+</div>
 <script src="app.js"></script>
 </body>
 </html>
