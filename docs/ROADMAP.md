@@ -2,7 +2,7 @@
 
 ## Готово
 
-- **UI (pywebview / Edge WebView2)** — графический интерфейс, выбор режима через `config.json`.
+- **UI (PySide6 / QWebEngineView)** — графический интерфейс, выбор режима через `config.json`.
 - **Вкладка Hosts** — наборы подмен IP в системном hosts-файле:
   - тип `static` — готовый список (руками или по URL hosts-файла, напр. malw hosts);
   - тип `dns` — DNS-провайдер (XBOX / Comss / Malw): домены из списков резолвятся через его DoH/UDP, полученные IP пишутся в hosts;
@@ -55,7 +55,7 @@
 | Hosts | ✅ | ⏳ | ⏳ | путь `/etc/hosts`, flush: `resolvectl flush-caches` (Linux) / `dscacheutil -flushcache; killall -HUP mDNSResponder` (macOS) |
 | DNS-переключатель | ✅ | ⏳ | ⏳ | весь ОС-слой заново: `nmcli`/systemd-resolved (Linux), `networksetup` (macOS) вместо DnsClient-командлетов |
 | Элевация прав | ✅ (UAC) | ⏳ | ⏳ | на Unix `os.geteuid()`; повышение через polkit/`sudo` (Linux) или `osascript ... administrator privileges` (macOS) |
-| UI (pywebview) | ✅ | ⏳ | ⏳ | проверить рендер: GTK/Qt WebKit (Linux), WebKit/Cocoa (macOS) |
+| UI (PySide6/QWebEngineView) | ✅ | ⏳ | ⏳ | тот же бандленный Chromium на всех трёх ОС (Qt WebEngine) — переносится проще, чем на pywebview с его per-OS нативными вебвью |
 | **DPI-обход (zapret)** | ✅ winws2 + WinDivert | ⏳ **nfqws2** | ❌ **под вопросом** | см. ниже |
 
 **DPI-обход — главный затык и он разный по ОС.** На Windows перехват пакетов делает WinDivert; на Linux эквивалент — `nfqws2` через NFQUEUE + правила nftables/iptables (нужен root). Формат стратегий близок (`--lua-desync` тот же), но `--wf-*` (windivert-фильтр) на Linux заменяется правилами NFQUEUE — генератор стратегий и менеджер winws придётся развести по бэкендам. На **macOS нативного механизма нет**: divert-сокеты Apple фактически убрала, NFQUEUE отсутствует, готового zapret под мак нет — без своего kernel-extension (подпись Apple + SIP) полноценный winws на маке нереалистичен.
@@ -71,6 +71,6 @@
 - `bin/zapret-win-bundle/` — бинарный бандл winws/winws2 + lua + WinDivert (в gitignore, тянется отдельно; держать COMPAT_VER одинаковым с сабмодулем zapret2).
 - `strategies/` — портированные стратегии (`*.txt`), их fake-блобы (`assets/`) и hostlist'ы (`hostlists/`).
 - `lists/` — списки доменов по сервисам, один файл = один сервис.
-- `ui/` — pywebview-приложение (`app.py` = JS-мост к модулям, `web/` = фронт).
+- `ui/` — PySide6-приложение (`app.py` = QWebChannel-мост к модулям, `web/` = фронт).
 - Режим интерфейса: `config.json` → `"ui"` | `"tui"` | `"service"`.
 - Транспорты (DNS-подмена / VPN / zapret) — поверх общих списков доменов, выбираются правилами.

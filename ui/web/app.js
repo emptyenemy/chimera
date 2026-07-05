@@ -11,8 +11,27 @@ function toast(msg, isError = false) {
   toastTimer = setTimeout(() => (el.className = ""), 3500);
 }
 
+// --- мост к Python через QWebChannel (см. ui/app.py: Api.call/Api.pushed) ---
+
+let _bridge = null;
+
+function initBridge() {
+  return new Promise(resolve => {
+    new QWebChannel(qt.webChannelTransport, channel => {
+      _bridge = channel.objects.api;
+      // сигнал pushed(fn, jsonPayload) — стриминг результатов (чебур/блокчек)
+      _bridge.pushed.connect((fn, payloadJson) => {
+        const handler = window[fn];
+        if (handler) handler(JSON.parse(payloadJson));
+      });
+      resolve();
+    });
+  });
+}
+
 async function api(method, ...args) {
-  const res = await window.pywebview.api[method](...args);
+  const resJson = await new Promise(resolve => _bridge.call(method, JSON.stringify(args), resolve));
+  const res = JSON.parse(resJson);
   if (!res.ok) throw new Error(res.error);
   return res.data;
 }
@@ -1963,7 +1982,7 @@ async function init() {
   ["#tg-host", "#tg-port", "#tg-secret"].forEach(sel =>
     $(sel).addEventListener("keydown", e => { if (e.key === "Enter") e.target.blur(); }));
 
-  // внешние ссылки — в системный браузер, а не внутри WebView2
+  // внешние ссылки — в системный браузер, а не внутри встроенного Chromium
   document.addEventListener("click", e => {
     const a = e.target.closest('a[target="_blank"]');
     if (!a) return;
@@ -2004,4 +2023,4 @@ async function init() {
   dashAuto(true);
 }
 
-window.addEventListener("pywebviewready", init);
+initBridge().then(init);

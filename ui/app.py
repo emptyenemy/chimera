@@ -1,11 +1,15 @@
-"""UI-режим: окно pywebview (Edge WebView2 на Windows) + JS-мост к модулям."""
+"""UI-режим: окно PySide6/QWebEngineView (Chromium) + JS-мост к модулям через QWebChannel."""
 
 import json
+import sys
 import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
-import webview
+from PySide6.QtCore import QObject, QUrl, Signal, Slot
+from PySide6.QtWebChannel import QWebChannel
+from PySide6.QtWebEngineWidgets import QWebEngineView
+from PySide6.QtWidgets import QApplication, QMainWindow
 
 from modules import appconfig, autostart, blockcheck, cheburcheck, domains, upstream
 from modules.dns_jumper import DnsJumper
@@ -27,8 +31,13 @@ def _err(e: Exception):
     return {"ok": False, "error": str(e)}
 
 
-class Api:
+class Api(QObject):
+    # (jsFnName, jsonPayload) — стриминг результатов в UI (см. _push); QWebChannel
+    # сам форвардит сигналы зарегистрированного объекта в JS без доп. настройки.
+    pushed = Signal(str, str)
+
     def __init__(self):
+        super().__init__()
         self.hosts = HostsManager()
         self.dns = DnsJumper()
         self.tg = TgProxy()
@@ -78,12 +87,27 @@ class Api:
         except Exception as e:
             return _err(e)
 
-    @staticmethod
-    def _push(fn: str, payload) -> None:
-        """Зовёт JS-функцию window.<fn>(payload) — для стриминга результатов в UI."""
-        win = webview.windows[0] if webview.windows else None
-        if win:
-            win.evaluate_js(f"window.{fn} && window.{fn}({json.dumps(payload)})")
+    def _push(self, fn: str, payload) -> None:
+        """Зовёт JS-функцию window.<fn>(payload) — для стриминга результатов в UI.
+
+        Эмиттер сигнала thread-safe сам по себе (можно звать из фоновых потоков
+        ThreadPoolExecutor) — Qt сам маршализует доставку в поток GUI."""
+        self.pushed.emit(fn, json.dumps(payload))
+
+    @Slot(str, str, result=str)
+    def call(self, method: str, args_json: str) -> str:
+        """Единая точка входа для JS (см. ui/web/app.js: api()) — диспатчит по имени
+        на обычные методы ниже, они как были — так и остались (_ok/_err, любые сигнатуры).
+        Не заворачиваем каждый метод в отдельный @Slot: их ~60, и QWebChannel всё равно
+        не умеет в произвольные *args/**kwargs — единый JSON-RPC поверх одного слота проще."""
+        fn = getattr(self, method, None)
+        if fn is None or method.startswith("_"):
+            return json.dumps(_err(AttributeError(f"Неизвестный метод: {method}")))
+        try:
+            args = json.loads(args_json)
+            return json.dumps(fn(*args))
+        except Exception as e:
+            return json.dumps(_err(e))
 
     # --- hosts -------------------------------------------------------------
 
@@ -603,20 +627,27 @@ class Api:
 
 
 def run():
-    api = Api()
-    window = webview.create_window(
-        "CHIMERA",
-        str(WEB_DIR / "index.html"),
-        js_api=api,
-        width=1080,
-        height=720,
-        min_size=(860, 560),
-        background_color="#16161e",
-    )
+    app = QApplication(sys.argv)
+    app.setApplicationName("CHIMERA")
 
-    # Гасим winws2 при закрытии окна явно: на atexit полагаться нельзя — при
-    # закрытии окна WebView2 интерпретатор не всегда доходит до atexit-хендлеров,
-    # и winws2 (вместе с WinDivert) оставался висеть до перезагрузки.
+    api = Api()
+    channel = QWebChannel()
+    channel.registerObject("api", api)
+
+    view = QWebEngineView()
+    view.page().setWebChannel(channel)
+    view.page().setBackgroundColor("#16161e")
+    view.load(QUrl.fromLocalFile(str(WEB_DIR / "index.html")))
+
+    window = QMainWindow()
+    window.setWindowTitle("CHIMERA")
+    window.setCentralWidget(view)
+    window.resize(1080, 720)
+    window.setMinimumSize(860, 560)
+
+    # Гасим winws2 при закрытии окна явно: на atexit полагаться нельзя — не всегда
+    # интерпретатор доходит до atexit-хендлеров при закрытии, и winws2 (вместе с
+    # WinDivert) оставался висеть до перезагрузки.
     def _on_closing():
         try:
             api.winws.stop()
@@ -627,5 +658,6 @@ def run():
         except Exception:
             pass
 
-    window.events.closing += _on_closing
-    webview.start()
+    app.aboutToQuit.connect(_on_closing)
+    window.show()
+    sys.exit(app.exec())

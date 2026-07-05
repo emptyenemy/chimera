@@ -11,7 +11,7 @@
 
 ## Стек
 
-- **Python 3** + [pywebview](https://pywebview.flowrycode.com/) (Edge WebView2) — фронт на HTML/CSS/JS в `ui/web/`, бэкенд в `modules/`.
+- **Python 3** + [PySide6](https://doc.qt.io/qtforpython/) (`QWebEngineView`, свой Chromium) — фронт на HTML/CSS/JS в `ui/web/`, бэкенд в `modules/`, мост — `QWebChannel`.
 - Логика — в `modules/`, интерфейс (`ui/app.py`) — тонкий JS-мост. Внешние проекты подключены git-сабмодулями в `upstream/` и используются как есть.
 
 ```
@@ -19,7 +19,7 @@
 ├── main.py            # вход: UAC-элевация, выбор режима из config.json
 ├── config.json        # interface (ui|tui|service) + общие настройки
 ├── modules/           # вся логика: winws, proxy, tgproxy, hosts, dns_jumper, domains, ...
-├── ui/                # pywebview-приложение: app.py (мост) + web/ (фронт)
+├── ui/                # PySide6-приложение: app.py (мост QWebChannel) + web/ (фронт)
 ├── lists/             # списки доменов по сервисам (общий слой для всех модулей)
 ├── strategies/        # стратегии winws2 (*.txt) + assets/ (fake-блобы) + hostlists/
 ├── tools/             # port_flowseal.py — генератор стратегий из .bat Flowseal
