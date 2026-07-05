@@ -64,3 +64,7 @@ python tools/port_flowseal.py
 ## Статус
 
 Ранняя стадия, активная разработка. Реализован только UI-режим; TUI и service-режим — заглушки. Подробности — в [`docs/ROADMAP.md`](docs/ROADMAP.md).
+
+## Лицензия
+
+[MIT](LICENSE). Все используемые внешние источники (`upstream/zapret2`, `upstream/tg-ws-proxy`, `upstream/zapret-discord-youtube`) — тоже MIT.

@@ -40,6 +40,12 @@ modules/proxy/proxy.pac
 modules/dns_providers.user.json
 # Бэкап загруженного ipset-листа при переключении фильтра (modules/winws/filters.py)
 strategies/hostlists/ipset-all.txt.backup
+# Активный ipset-фильтр — рантайм-состояние (any/none/скачанный список), самовосстанавливается
+# как "any" при отсутствии файла (modules/winws/filters.py)
+strategies/hostlists/ipset-all.txt
+# Хостлист выбранных в UI списков доменов (modules/winws/manager.set_lists) — личный
+# выбор пользователя, перегенерируется на пустой при отсутствии (WinwsManager.__init__)
+strategies/hostlists/list-general-user.txt
 
 # Local config (auto-создаётся с дефолтами, modules/appconfig.py)
 config.json
