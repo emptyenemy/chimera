@@ -2,6 +2,11 @@
 # Блокируется РКН (не геобан Meta) → обходные DNS НЕ помогут, нужен zapret/VPN.
 # Для zapret суффиксный матч по whatsapp.com/.net накрывает поддомены;
 # для hosts-подмены нужны точные FQDN (поэтому ключевые перечислены явно).
+#
+# Чистили вручную (2026-07-01): убрали мёртвые записи (NXDOMAIN — media/mmg/support.whatsapp.com,
+# cdn/media/snr.whatsapp.net, whatsapp.org) и defensive-регистрации Meta, которые сайтом не
+# используются — просто редиректят на whatsapp.com, реального трафика приложения там нет
+# (whatsapp.cc/.tv/.info, whatsapp-plus.info/.me/.net, whatsappbrand.com, business.whatsapp.com).
 
 # --- .com ---
 whatsapp.com
@@ -11,29 +16,22 @@ api.whatsapp.com
 chat.whatsapp.com
 call.whatsapp.com
 graph.whatsapp.com
-media.whatsapp.com
-mmg.whatsapp.com
 acs.whatsapp.com
-support.whatsapp.com
 faq.whatsapp.com
-business.whatsapp.com
 wa.me
 
 # --- .net (CDN/медиа) ---
 whatsapp.net
-cdn.whatsapp.net
 static.whatsapp.net
 scontent.whatsapp.net
-media.whatsapp.net
 mmg.whatsapp.net
 pps.whatsapp.net
-snr.whatsapp.net
 graph.whatsapp.net
 dit.whatsapp.net
 external.whatsapp.net
 www-cdn.whatsapp.net
 
-# --- соединение и звонки (edge-серверы) ---
+# --- соединение и звонки (edge-серверы, часть на AWS Global Accelerator — это нормально) ---
 g.whatsapp.net
 v.whatsapp.net
 e1.whatsapp.net
@@ -52,16 +50,3 @@ e13.whatsapp.net
 e14.whatsapp.net
 e15.whatsapp.net
 e16.whatsapp.net
-
-# дополнительно
-wa.me
-whatsapp-plus.info
-whatsapp-plus.me
-whatsapp-plus.net
-whatsapp.cc
-whatsapp.com
-whatsapp.info
-whatsapp.net
-whatsapp.org
-whatsapp.tv
-whatsappbrand.com
