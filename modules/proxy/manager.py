@@ -25,6 +25,7 @@ from . import parser
 ROOT = Path(__file__).parent.parent.parent
 SINGBOX_DIR = ROOT / "bin" / "sing-box"
 SINGBOX_EXE = SINGBOX_DIR / "sing-box.exe"
+Path(__file__).parent.mkdir(parents=True, exist_ok=True)  # в standalone-сборке (Nuitka) этой папки на диске нет
 CONFIG_PATH = Path(__file__).parent / "singbox-config.json"
 STATE_PATH = Path(__file__).parent / "state.json"
 LOG_PATH = Path(__file__).parent / "proxy.log"

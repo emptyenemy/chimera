@@ -22,6 +22,7 @@ from ..domains import load_lists
 from .resolver import resolve_domains, timed_resolve
 
 MODULE_DIR = Path(__file__).parent
+MODULE_DIR.mkdir(parents=True, exist_ok=True)  # в standalone-сборке (Nuitka) этой папки на диске нет
 STATE_PATH = MODULE_DIR / "state.json"
 HOSTS_PATH = Path(os.environ.get("SystemRoot", r"C:\Windows")) / "System32" / "drivers" / "etc" / "hosts"
 

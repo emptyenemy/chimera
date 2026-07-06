@@ -28,7 +28,7 @@ def relaunch_as_admin() -> bool:
     """
     if sys.platform != "win32":
         return False
-    if getattr(sys, "frozen", False):  # собранный .exe
+    if getattr(sys, "frozen", False) or "__compiled__" in globals():  # собранный .exe (PyInstaller/Nuitka)
         program, params = sys.executable, sys.argv[1:]
     else:
         program, params = sys.executable, sys.argv

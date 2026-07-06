@@ -22,6 +22,7 @@ ASSETS_DIR = STRATEGIES_DIR / "assets"
 HOSTLISTS_DIR = STRATEGIES_DIR / "hostlists"
 WINWS_DIR = ROOT / "bin" / "zapret-win-bundle" / "zapret-winws"
 WINWS_EXE = WINWS_DIR / "winws2.exe"
+Path(__file__).parent.mkdir(parents=True, exist_ok=True)  # в standalone-сборке (Nuitka) этой папки на диске нет
 LOG_PATH = Path(__file__).parent / "winws.log"
 STATE_PATH = Path(__file__).parent / "state.json"
 # Управляется выбором списков в UI (set_lists) — перезаписывается целиком на каждое

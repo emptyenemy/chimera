@@ -21,6 +21,7 @@ import urllib.request
 from pathlib import Path
 
 UPSTREAM = Path(__file__).parent.parent.parent / "upstream" / "tg-ws-proxy"
+Path(__file__).parent.mkdir(parents=True, exist_ok=True)  # в standalone-сборке (Nuitka) этой папки на диске нет
 STATE_PATH = Path(__file__).parent / "state.json"
 LOG_PATH = Path(__file__).parent / "tgproxy.log"
 # ядро tg-ws-proxy логирует в этот логгер (см. proxy/*.py: getLogger('tg-mtproto-proxy'))
