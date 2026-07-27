@@ -1,9 +1,12 @@
-"""Общие списки доменов (lists/*.txt) — единый источник для всех модулей.
+"""Общие списки доменов и IP (lists/*.txt) — единый источник для всех модулей.
 
-Один файл = один сервис (openai.txt, discord.txt, ...), по домену на строку,
-# — комментарий. Эти же списки дальше пойдут в hostlist'ы zapret и VPN-правила.
+Один файл = один сервис (openai.txt, discord.txt, ...), по записи на строку,
+# — комментарий. В одном файле можно мешать домены и IP/подсети: разделением
+занимается split_entries(), а каждый потребитель уводит две половины в свой
+канал (hostlist vs ipset у zapret, domain_suffix vs ip_cidr у sing-box).
 """
 
+import ipaddress
 import re
 from pathlib import Path
 
@@ -90,3 +93,52 @@ def load_lists(names: list[str]) -> list[str]:
                 seen.add(domain)
                 result.append(domain)
     return result
+
+
+# --- домены vs IP ---------------------------------------------------------------
+
+
+def as_network(entry: str) -> ipaddress.IPv4Network | ipaddress.IPv6Network | None:
+    """IP или подсеть -> сеть (голый адрес становится /32 или /128), иначе None.
+
+    ipaddress принимает только точечную/двоеточечную запись, поэтому домен вроде
+    "123.example.com" сюда не проскочит. strict=False — чтобы 10.0.0.5/24 не падал,
+    а нормализовался в 10.0.0.0/24.
+    """
+    try:
+        return ipaddress.ip_network(entry, strict=False)
+    except ValueError:
+        return None
+
+
+def split_entries(entries: list[str]) -> tuple[list[str], list[str]]:
+    """Разделяет вперемешку заданные записи на (домены, IP-подсети).
+
+    Домены приводятся к нижнему регистру без ведущей точки, IP — к каноничному
+    CIDR. Дубли внутри каждой половины схлопываются, порядок сохраняется.
+    """
+    domains: list[str] = []
+    nets: list[str] = []
+    seen_d: set[str] = set()
+    seen_n: set[str] = set()
+    for entry in entries:
+        entry = entry.strip()
+        if not entry:
+            continue
+        net = as_network(entry)
+        if net is not None:
+            key = str(net)
+            if key not in seen_n:
+                seen_n.add(key)
+                nets.append(key)
+        else:
+            key = entry.lower().lstrip(".")
+            if key and key not in seen_d:
+                seen_d.add(key)
+                domains.append(key)
+    return domains, nets
+
+
+def split_lists(names: list[str]) -> tuple[list[str], list[str]]:
+    """split_entries() поверх объединения нескольких списков."""
+    return split_entries(load_lists(names))

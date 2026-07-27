@@ -155,17 +155,18 @@ class ProxyManager:
 
     # --- генерация конфига sing-box -----------------------------------------
 
-    def _domains(self) -> list[str]:
-        """Домены выбранных списков -> список для domain_suffix."""
+    def _split(self) -> tuple[list[str], list[str]]:
+        """Выбранные списки -> (домены для domain_suffix, подсети для ip_cidr).
+
+        IP обязаны ехать отдельным правилом: у соединения на голый адрес нет ни SNI,
+        ни Host, поэтому domain_suffix по нему не сработает и трафик утёк бы в direct.
+        """
         if not self.config["lists"]:
-            return []
-        seen, out = set(), []
-        for d in domains.load_lists(self.config["lists"]):
-            d = d.strip().lower().lstrip(".")
-            if d and d not in seen:
-                seen.add(d)
-                out.append(d)
-        return out
+            return [], []
+        return domains.split_lists(self.config["lists"])
+
+    def _domains(self) -> list[str]:
+        return self._split()[0]
 
     @property
     def _pac_mode(self) -> bool:
@@ -183,11 +184,12 @@ class ProxyManager:
         ]
 
         if self._pac_mode:
-            # PAC: выборочно — через прокси идут ТОЛЬКО домены из выбранных списков,
+            # PAC: выборочно — через прокси идут ТОЛЬКО записи из выбранных списков,
             # остальной трафик ядро вообще не видит (PAC отправляет в SOCKS лишь их).
-            dom = self._domains()
+            dom, nets = self._split()
             dns = {
                 "servers": dns_servers,
+                # IP в DNS-правилах не нужны — их резолвить нечего
                 "rules": ([{"domain_suffix": dom, "server": "dns-proxy"}] if dom else []),
                 "final": "dns-direct",
                 "strategy": "prefer_ipv4",
@@ -199,6 +201,8 @@ class ProxyManager:
             route_rules = [{"action": "sniff"}]
             if dom:
                 route_rules.append({"domain_suffix": dom, "outbound": "proxy"})
+            if nets:
+                route_rules.append({"ip_cidr": nets, "outbound": "proxy"})
             route = {
                 "rules": route_rules,
                 "final": "direct",  # не-наши домены (если влезут) — мимо
@@ -241,13 +245,30 @@ class ProxyManager:
     # --- PAC-файл и системный прокси (только режим pac) ----------------------
 
     def _write_pac(self) -> None:
-        """Генерит PAC: наши домены → SOCKS5, всё остальное → DIRECT."""
-        dom = [d.replace('"', "") for d in self._domains()]
+        """Генерит PAC: наши домены и IP → SOCKS5, всё остальное → DIRECT."""
+        dom_list, nets = self._split()
+        dom = [d.replace('"', "") for d in dom_list]
+
+        # v4-подсети проверяем через isInNet (пара «сеть, маска»), одиночные v6 —
+        # строгим сравнением. Более широкие v6-подсети PAC штатно проверить не умеет
+        # (isInNet — только IPv4), они остаются рабочими в TUN-режиме.
+        v4, v6 = [], []
+        for n in nets:
+            net = domains.as_network(n)
+            if net is None:
+                continue
+            if net.version == 4:
+                v4.append((str(net.network_address), str(net.netmask)))
+            elif net.prefixlen == 128:
+                v6.append(str(net.network_address))
+
         port = int(self.config["socks_port"])
         # именно SOCKS5 (не SOCKS4): браузер шлёт имя хоста в прокси, а не резолвит
         # сам локально — иначе для наших доменов сработал бы заблокированный DNS
         proxy = f"SOCKS5 127.0.0.1:{port}; DIRECT"
         arr = ", ".join('"%s"' % d for d in dom)
+        exact = ", ".join('"%s"' % a for a in v6)
+        nets_js = ", ".join('["%s", "%s"]' % pair for pair in v4)
         pac = (
             "function FindProxyForURL(url, host) {\n"
             '  var P = "%s";\n'
@@ -255,9 +276,19 @@ class ProxyManager:
             "  for (var i = 0; i < d.length; i++) {\n"
             '    if (host === d[i] || host.slice(-(d[i].length + 1)) === "." + d[i]) return P;\n'
             "  }\n"
+            "  var x = [%s];\n"
+            "  for (var i = 0; i < x.length; i++) { if (host === x[i]) return P; }\n"
+            "  var n = [%s];\n"
+            # isInNet с доменным host резолвит его через DNS (медленно и мимо прокси),
+            # поэтому подсети проверяем, только когда host — уже готовый IPv4-литерал
+            "  if (/^[0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+$/.test(host)) {\n"
+            "    for (var i = 0; i < n.length; i++) {\n"
+            "      if (isInNet(host, n[i][0], n[i][1])) return P;\n"
+            "    }\n"
+            "  }\n"
             '  return "DIRECT";\n'
             "}\n"
-        ) % (proxy, arr)
+        ) % (proxy, arr, exact, nets_js)
         PAC_PATH.write_text(pac, encoding="utf-8")
 
     def _pac_url(self) -> str:
@@ -428,13 +459,15 @@ class ProxyManager:
                 err = f"Ссылка не разобрана: {e}"
         ours = self._ours_alive
         running = ours or bool(self._system_pids())
+        _dom, _nets = self._split()
         return {
             "running": running,
             "external": running and not ours,
             "link": self.config["link"],
             "parsed": parsed,
             "lists": self.config["lists"],
-            "domains": len(self._domains()),
+            "domains": len(_dom),
+            "ips": len(_nets),
             "all_lists": [i["name"] for i in domains.list_info()],
             "core": {"present": SINGBOX_EXE.exists(), "version": self.core_version()},
             "autostart": self.config["autostart"],

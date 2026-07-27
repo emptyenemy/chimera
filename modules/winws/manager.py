@@ -25,10 +25,17 @@ WINWS_EXE = WINWS_DIR / "winws2.exe"
 Path(__file__).parent.mkdir(parents=True, exist_ok=True)  # в standalone-сборке (Nuitka) этой папки на диске нет
 LOG_PATH = Path(__file__).parent / "winws.log"
 STATE_PATH = Path(__file__).parent / "state.json"
-# Управляется выбором списков в UI (set_lists) — перезаписывается целиком на каждое
+# Управляются выбором списков в UI (set_lists) — перезаписываются целиком на каждое
 # изменение выбора, ручные правки между изменениями переживут, но при следующем
-# сохранении выбора в UI затрутся.
+# сохранении выбора в UI затрутся. Домены из списков уезжают в hostlist, а IP и
+# подсети — в ipset (hostlist матчится по SNI/Host, IP-литерал туда не попадает).
 USER_HOSTLIST_PATH = HOSTLISTS_DIR / "list-general-user.txt"
+USER_IPSET_PATH = HOSTLISTS_DIR / "ipset-user.txt"
+
+# Пустой ipset-файл zapret трактует как «ограничения по IP нет» — то есть профиль
+# начал бы бить по ВСЕМУ трафику. Поэтому «пусто» кодируем заглушкой из TEST-NET-3,
+# которая не совпадёт ни с чем (тот же приём, что в ipset-exclude-user.txt).
+IPSET_PLACEHOLDER = "203.0.113.113/32"
 
 # last_strategy — последняя успешно запущенная стратегия (восстанавливается в UI и
 # для автозапуска); autostart — поднимать её при старте программы (нужен админ);
@@ -117,7 +124,8 @@ class WinwsManager:
         self.config = self._load()
         self._version_cache: str | None = None  # git-тег zapret2 в рантайме не меняется — кэшируем
         self._version_cached = False
-        if not USER_HOSTLIST_PATH.exists():  # рантайм-файл, не в git — досоздать на свежем клоне
+        # рантайм-файлы, не в git — досоздать на свежем клоне
+        if not USER_HOSTLIST_PATH.exists() or not USER_IPSET_PATH.exists():
             self._regenerate_user_hostlist()
         atexit.register(self.stop)  # не оставлять winws2 висеть после закрытия приложения
 
@@ -159,15 +167,13 @@ class WinwsManager:
         return self.state()
 
     def _regenerate_user_hostlist(self) -> None:
+        """Раскладывает выбранные списки по двум файлам: домены -> hostlist, IP -> ipset."""
         from modules import domains
-        seen, out = set(), []
-        for d in domains.load_lists(self.config.get("lists") or []):
-            d = d.strip().lower().lstrip(".")
-            if d and d not in seen:
-                seen.add(d)
-                out.append(d)
-        text = ("\n".join(out) + "\n") if out else ""
-        USER_HOSTLIST_PATH.write_text(text, encoding="utf-8")
+        dom, nets = domains.split_lists(self.config.get("lists") or [])
+        USER_HOSTLIST_PATH.write_text(("\n".join(dom) + "\n") if dom else "", encoding="utf-8")
+        USER_IPSET_PATH.write_text(
+            "\n".join(nets or [IPSET_PLACEHOLDER]) + "\n", encoding="utf-8"
+        )
 
     def autostart(self) -> dict | None:
         """Поднять последнюю стратегию при старте программы, если включён автозапуск.
@@ -446,6 +452,7 @@ class WinwsManager:
         from modules import domains
         ours = self._ours_alive
         running = ours or bool(_system_pids())
+        _dom, _nets = domains.split_lists(self.config.get("lists") or [])
         return {
             "running": running,
             # external = winws2 жив, но это не наш Popen (остался от прошлой сессии):
@@ -459,7 +466,8 @@ class WinwsManager:
             # списки доменов, которые гонит через себя winws (list-general-user.txt)
             "lists": self.config.get("lists") or [],
             "all_lists": [i["name"] for i in domains.list_info()],
-            "list_domains": len(domains.load_lists(self.config.get("lists") or [])),
+            "list_domains": len(_dom),
+            "list_ips": len(_nets),
             # статус драйвера WinDivert (служба ядра живёт отдельно от winws2):
             "windivert": _divert_status(),  # RUNNING / STOPPED / None
             "version": self.version(),

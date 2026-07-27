@@ -18,7 +18,7 @@ import subprocess
 from pathlib import Path
 
 from .. import dns_providers
-from ..domains import load_lists
+from ..domains import split_lists
 from .resolver import resolve_domains, timed_resolve
 
 MODULE_DIR = Path(__file__).parent
@@ -180,7 +180,10 @@ class HostsManager:
         groups, all_entries = [], []
         for provider_id, lists in plan.items():
             provider = self.get_provider(provider_id)
-            domains = load_lists(lists)
+            # IP из списков тут молча пропускаем: hosts маппит имя -> адрес, для
+            # готового адреса подменять нечего. Их обходом занимаются winws (ipset)
+            # и прокси (ip_cidr).
+            domains, _ = split_lists(lists)
             entries = resolve_domains(domains, provider.get("doh"), provider.get("servers"))
             for e in entries:
                 e["provider"] = provider_id

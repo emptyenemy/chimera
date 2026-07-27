@@ -68,6 +68,7 @@
 # --- профиль 6: QUIC fallback по IP (ipset) ---
 --filter-udp=443
 --ipset={LISTS}/ipset-all.txt
+--ipset={LISTS}/ipset-user.txt
 --hostlist-exclude={LISTS}/list-exclude.txt
 --hostlist-exclude={LISTS}/list-exclude-user.txt
 --ipset-exclude={LISTS}/ipset-exclude.txt
@@ -79,6 +80,7 @@
 # --- профиль 7: TCP fallback по IP (ipset) ---
 --filter-tcp=80,443,8443
 --ipset={LISTS}/ipset-all.txt
+--ipset={LISTS}/ipset-user.txt
 --hostlist-exclude={LISTS}/list-exclude.txt
 --hostlist-exclude={LISTS}/list-exclude-user.txt
 --ipset-exclude={LISTS}/ipset-exclude.txt
@@ -93,6 +95,7 @@
 # --- профиль 8: GAME TCP (включается game-фильтром) ---
 --filter-tcp={GAME_TCP}
 --ipset={LISTS}/ipset-all.txt
+--ipset={LISTS}/ipset-user.txt
 --ipset-exclude={LISTS}/ipset-exclude.txt
 --ipset-exclude={LISTS}/ipset-exclude-user.txt
 --out-range=-n4
@@ -105,6 +108,7 @@
 # --- профиль 9: GAME UDP (включается game-фильтром) ---
 --filter-udp={GAME_UDP}
 --ipset={LISTS}/ipset-all.txt
+--ipset={LISTS}/ipset-user.txt
 --ipset-exclude={LISTS}/ipset-exclude.txt
 --ipset-exclude={LISTS}/ipset-exclude-user.txt
 --out-range=-n3

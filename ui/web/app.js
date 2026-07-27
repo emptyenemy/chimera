@@ -1563,6 +1563,20 @@ async function loadDashboard() {
 }
 
 // карточка-инструмент: иконка + название/подпись + переключатель (или статус)
+// Списки могут содержать и домены, и IP/подсети. Для готовности прокси важна их
+// сумма: список из одних только IP — полностью рабочая настройка (ip_cidr в route),
+// поэтому гейтить запуск на количестве доменов нельзя.
+function proxyTargets(st) {
+  return (st.domains || 0) + (st.ips || 0);
+}
+
+function proxyScope(st) {
+  const parts = [];
+  if (st.domains) parts.push(`${st.domains} доменов`);
+  if (st.ips) parts.push(`${st.ips} IP`);
+  return parts.join(" · ") || "0 записей";
+}
+
 function dashTool(o) {
   // пока идёт переключение — показываем тумблер в ЦЕЛЕВОМ положении (оптимистично) и
   // подпись «Включается…», не дожидаясь, пока процесс реально поднимется
@@ -1628,13 +1642,13 @@ function renderDashboard() {
   }
   if (proxy) {
     const mode = proxy.mode === "tun" ? "TUN" : "PAC";
-    const ready = proxy.core?.present && proxy.parsed && proxy.domains > 0;
+    const ready = proxy.core?.present && proxy.parsed && proxyTargets(proxy) > 0;
     cards.push(dashTool({
       tool: "proxy", tab: "proxy", icon: icon("globe"), name: "Прокси",
       on: proxy.running, disabled: dashBusy === "proxy" || (!proxy.running && !ready),
       meta: proxy.running
-        ? `${esc(proxy.parsed?.server || "")} · ${proxy.domains || 0} доменов · ${mode}`
-        : (proxy.parsed ? `${proxy.domains || 0} доменов · режим ${mode}` : "ссылка не задана"),
+        ? `${esc(proxy.parsed?.server || "")} · ${proxyScope(proxy)} · ${mode}`
+        : (proxy.parsed ? `${proxyScope(proxy)} · режим ${mode}` : "ссылка не задана"),
     }));
   }
   if (tg) {
@@ -1799,7 +1813,7 @@ function renderProxyStatus() {
     ? `${st.parsed.protocol.toUpperCase()} · ${st.parsed.server} · ${st.parsed.security} · «${st.parsed.label}»`
     : (st.link ? "не разобрано" : "ссылка не вставлена");
 
-  const ready = core.present && st.parsed && (tun || st.domains > 0);
+  const ready = core.present && st.parsed && (tun || proxyTargets(st) > 0);
   btn.disabled = !ready && !st.running;
   btn.textContent = st.running ? "Остановить" : "Запустить";
   btn.classList.toggle("danger", st.running);
@@ -1812,13 +1826,13 @@ function renderProxyStatus() {
     box.className = "hosts-status on";
     box.textContent = tun
       ? "✓ Прокси работает · весь трафик идёт через VLESS (TUN)."
-      : `✓ Прокси работает · ${st.domains} доменов идут через VLESS, остальное напрямую.`;
+      : `✓ Прокси работает · ${proxyScope(st)} идут через VLESS, остальное напрямую.`;
   } else {
     box.className = "hosts-status off";
     if (!core.present) box.textContent = "sing-box не установлен — нажми «Скачать sing-box».";
     else if (!st.link) box.textContent = "Вставь ссылку сервера.";
     else if (!st.parsed) box.textContent = "Ссылка не разобрана — проверь формат.";
-    else if (!tun && !st.domains) box.textContent = "Отметь хотя бы один список доменов для прокси.";
+    else if (!tun && !proxyTargets(st)) box.textContent = "Отметь хотя бы один список для прокси.";
     else box.textContent = "Готово к запуску.";
   }
 }

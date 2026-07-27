@@ -359,10 +359,18 @@ class Api(QObject):
         except Exception:
             return None
         t = target.strip().lower().lstrip(".")
-        for suffix in domains.load_lists(cfg["lists"]):
-            suffix = suffix.strip().lower().lstrip(".")
-            if suffix and (t == suffix or t.endswith("." + suffix)):
-                return ("127.0.0.1", int(cfg.get("socks_port", 2080)))
+        dom, nets = domains.split_lists(cfg["lists"])
+        hit = any(t == suffix or t.endswith("." + suffix) for suffix in dom)
+        if not hit:
+            # цель-IP считаем нашей, если она попадает в любую подсеть из списков —
+            # то же правило, что уходит в PAC (isInNet) и в route-правило ip_cidr
+            addr = domains.as_network(t)
+            if addr is not None:
+                hit = any(addr.subnet_of(net) for n in nets
+                          if (net := domains.as_network(n)) is not None
+                          and net.version == addr.version)
+        if hit:
+            return ("127.0.0.1", int(cfg.get("socks_port", 2080)))
         return None
 
     def block_check_one(self, domain):

@@ -46,6 +46,9 @@ strategies/hostlists/ipset-all.txt
 # Хостлист выбранных в UI списков доменов (modules/winws/manager.set_lists) — личный
 # выбор пользователя, перегенерируется на пустой при отсутствии (WinwsManager.__init__)
 strategies/hostlists/list-general-user.txt
+# IP и подсети из тех же списков — вторая половина того же выбора, уезжает в ipset
+# вместо хостлиста (modules/winws/manager._regenerate_user_hostlist)
+strategies/hostlists/ipset-user.txt
 
 # Local config (auto-создаётся с дефолтами, modules/appconfig.py)
 config.json
