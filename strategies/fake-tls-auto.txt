@@ -12,9 +12,10 @@
 --lua-init=@{WINWS}/lua/zapret-lib.lua
 --lua-init=@{WINWS}/lua/zapret-antidpi.lua
 --blob=quic_google:@{ASSETS}/quic_initial_www_google_com.bin
---blob=quic_dbank:@{ASSETS}/quic_initial_dbankcloud_ru.bin
 --blob=tls_google:@{ASSETS}/tls_clienthello_www_google_com.bin
 --blob=tls_max:@{ASSETS}/tls_clienthello_max_ru.bin
+--blob=udp_discord:@{ASSETS}/ACTIVE_DISCORD_UDP.bin
+--blob=udp_game:@{ASSETS}/ACTIVE_GAME_UDP.bin
 
 # --- профиль 1: QUIC по hostlist ---
 --filter-udp=443
@@ -32,7 +33,7 @@
 --filter-udp=19294-19344,50000-50100
 --filter-l7=discord,stun
 --payload=discord_ip_discovery,stun
---lua-desync=fake:blob=quic_dbank:repeats=6
+--lua-desync=fake:blob=udp_discord:repeats=6
 --new
 
 # --- профиль 3: discord.media (TCP) ---
@@ -121,4 +122,4 @@
 --ipset-exclude={LISTS}/ipset-exclude-user.txt
 --out-range=-n2
 --payload=all
---lua-desync=fake:blob=quic_dbank:repeats=10
+--lua-desync=fake:blob=udp_game:repeats=10

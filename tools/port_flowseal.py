@@ -81,16 +81,25 @@ STRATS = {
                                       "чистый fake, fooling=badseq (+2)."),
     "general (SIMPLE FAKE ALT2).bat": ("simple-fake-alt2", "SIMPLE FAKE ALT2", 62,
                                        "чистый fake, в общем TLS-профиле max.ru вместо google."),
+    "general (EXP).bat": ("exp", "EXP", 70,
+                          "Экспериментальная (1.10.0): fake + multisplit со stun2-паттерном, "
+                          "hostfakesplit для google, discord/stun/unknown UDP одним профилем."),
 }
 
-# .bin Flowseal -> имя blob в нашем формате
+# .bin Flowseal -> имя blob в нашем формате.
+# ACTIVE_* появились в 1.10.0: ими заменили quic_dbank в discord/stun/game-профилях.
+# quic_dbank оставлен в таблице — нужен для регенерации стратегий до 1.10.0.
 BLOBS = {
     "quic_initial_www_google_com.bin": "quic_google",
     "quic_initial_dbankcloud_ru.bin": "quic_dbank",
+    "quic_initial_4pda.to.bin": "quic_4pda",
     "tls_clienthello_www_google_com.bin": "tls_google",
     "tls_clienthello_max_ru.bin": "tls_max",
     "tls_clienthello_4pda_to.bin": "tls_4pda",
     "stun.bin": "stun_fake",
+    "stun2.bin": "stun_fake2",
+    "ACTIVE_DISCORD_UDP.bin": "udp_discord",
+    "ACTIVE_GAME_UDP.bin": "udp_game",
 }
 BLOB_FILE = {v: k for k, v in BLOBS.items()}
 BASE_TLS = "tls_google"  # база для авто-фейков (fake-tls=! / только tls-mod)
@@ -270,32 +279,32 @@ def build_lua(d: dict, both: bool) -> list[str]:
         return "--lua-desync=" + ":".join(parts)
 
     # --- UDP-профили (без TLS/HTTP-роутинга) ---
+    # Группы копятся, а не возвращаются по первой попавшейся: с 1.10.0 в одном
+    # профиле встречаются сразу discord, stun и unknown (general (EXP)), и ранний
+    # выход молча терял бы всё, кроме первой группы. Порядок групп — как в .bat.
+    udp: list[tuple[str, list[str]]] = []
     if d["fake_quic"]:
-        lines.append("--payload=all" if payload_all else "--payload=quic_initial")
-        for b in d["fake_quic"]:
-            lines.append("--lua-desync=fake:blob=%s%s" % (blob_of(b), rep_suffix))
-        return lines
+        udp.append(("all" if payload_all else "quic_initial",
+                    [blob_of(b) for b in d["fake_quic"]]))
     if d["fake_discord"] or d["fake_stun"]:
         dbl = [blob_of(b) for b in d["fake_discord"]]
         sbl = [blob_of(b) for b in d["fake_stun"]]
         if dbl == sbl:
-            lines.append("--payload=discord_ip_discovery,stun")
-            for b in dbl:
-                lines.append("--lua-desync=fake:blob=%s%s" % (b, rep_suffix))
+            udp.append(("discord_ip_discovery,stun", dbl))
         else:
             if dbl:
-                lines.append("--payload=discord_ip_discovery")
-                for b in dbl:
-                    lines.append("--lua-desync=fake:blob=%s%s" % (b, rep_suffix))
+                udp.append(("discord_ip_discovery", dbl))
             if sbl:
-                lines.append("--payload=stun")
-                for b in sbl:
-                    lines.append("--lua-desync=fake:blob=%s%s" % (b, rep_suffix))
-        return lines
+                udp.append(("stun", sbl))
     if d["fake_unknown_udp"]:
-        lines.append("--payload=all")
-        for b in d["fake_unknown_udp"]:
-            lines.append("--lua-desync=fake:blob=%s%s" % (blob_of(b), rep_suffix))
+        # any-protocol=1 бьёт по любому payload, без него — ровно по неопознанному
+        udp.append(("all" if payload_all else "unknown",
+                    [blob_of(b) for b in d["fake_unknown_udp"]]))
+    if udp:
+        for payload, blobs in udp:
+            lines.append("--payload=%s" % payload)
+            for b in blobs:
+                lines.append("--lua-desync=fake:blob=%s%s" % (b, rep_suffix))
         return lines
 
     # --- syndata (TCP, иногда + multidisorder/multisplit) ---
@@ -323,21 +332,32 @@ def build_lua(d: dict, both: bool) -> list[str]:
         tls_entries.append((BASE_TLS, d["tls_mod"] != "none"))
 
     last_payload = None
+    block: list[str] = []  # строки после последнего --payload
 
     def emit_payload(p):
         nonlocal last_payload
         if p != last_payload:
             lines.append("--payload=%s" % p)
             last_payload = p
+            block.clear()
+
+    def add_fake(line):
+        # при any-protocol fake-tls и fake-http попадают под один --payload=all,
+        # и одинаковый блоб дал бы два идентичных фейка на пакет вместо одного
+        # (в winws1 они расходились по разным протоколам). Схлопываем.
+        if line in block:
+            return
+        block.append(line)
+        lines.append(line)
 
     if has_fake and tls_entries:
         emit_payload("all" if payload_all else "tls_client_hello")
         for b, wm in tls_entries:
-            lines.append(fake_line(b, wm))
+            add_fake(fake_line(b, wm))
     if has_fake and d["fake_http"]:
         emit_payload("all" if payload_all else "http_req")
         for b in d["fake_http"]:
-            lines.append(fake_line(blob_of(b), False))
+            add_fake(fake_line(blob_of(b), False))
 
     if splitm or has_hostfake:
         emit_payload(scope)
@@ -350,14 +370,18 @@ def build_lua(d: dict, both: bool) -> list[str]:
 
 def profile_label(passthru: list[str], lua: list[str]) -> str:
     txt = " ".join(passthru)
-    if "--filter-l7=discord,stun" in txt:
+    # l7 читаем значением, а не подстрокой: в 1.10.0 набор варьируется
+    # (discord,stun против discord,stun,unknown), а QUIC-профиль может задаваться
+    # и через --filter-l7=quic вместо --filter-udp=443.
+    l7 = next((a.split("=", 1)[1] for a in passthru if a.startswith("--filter-l7=")), "")
+    if "discord" in l7:
         return "Discord/STUN — голосовой UDP"
     if "{GAME_TCP}" in txt:
         return "GAME TCP (включается game-фильтром)"
     if "{GAME_UDP}" in txt:
         return "GAME UDP (включается game-фильтром)"
     has_ipset = any("--ipset=" in a for a in passthru)
-    if any(a.startswith("--filter-udp=443") for a in passthru):
+    if l7 == "quic" or any(a.startswith("--filter-udp=443") for a in passthru):
         return "QUIC fallback по IP (ipset)" if has_ipset else "QUIC по hostlist"
     if "hostlist-domains=discord.media" in txt:
         return "discord.media (TCP)"
@@ -387,6 +411,13 @@ def translate_profile(seg: list[str]) -> tuple[list[str], list[str]]:
         else:
             v = path_sub(v)
         passthru.append("%s=%s" % (k, v) if _ else k)
+        # ipset-all — это реестр РКН от Flowseal; рядом с ним подключаем свой
+        # ipset-user: туда winws-менеджер кладёт IP из выбранных в UI списков
+        # (домены оттуда же уезжают в list-general-user.txt, который Flowseal
+        # объявляет сам). Строка нужна в каждом ipset-профиле, поэтому её ставит
+        # генератор — дописанная руками, она терялась бы на каждом перепорте.
+        if k == "--ipset" and v.endswith("ipset-all.txt"):
+            passthru.append("--ipset={LISTS}/ipset-user.txt")
     both = "80" in [p.strip() for p in filter_tcp.split(",")]
     d = collect_desync(desync_toks)
     return passthru, build_lua(d, both)
