@@ -36,7 +36,7 @@ _INET_SETTINGS = r"Software\Microsoft\Windows\CurrentVersion\Internet Settings"
 
 # Пиннутая версия: схема конфига sing-box заметно менялась по версиям, поэтому
 # бинарь и генератор конфига должны соответствовать друг другу.
-SINGBOX_VERSION = "1.13.14"
+SINGBOX_VERSION = "1.13.16"
 SINGBOX_URL = (
     f"https://github.com/SagerNet/sing-box/releases/download/v{SINGBOX_VERSION}/"
     f"sing-box-{SINGBOX_VERSION}-windows-amd64.zip"
