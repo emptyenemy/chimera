@@ -404,6 +404,17 @@
 
         <div class="setting-row">
           <div class="setting-label">
+            <div class="setting-title">Движок окна</div>
+            <div class="setting-desc">PySide6 — свой Chromium внутри программы · pywebview — системный Edge WebView2, окно легче и стартует быстрее. Применится при следующем запуске.</div>
+          </div>
+          <select id="set-ui-backend">
+            <option value="pyside6">PySide6</option>
+            <option value="pywebview">pywebview</option>
+          </select>
+        </div>
+
+        <div class="setting-row">
+          <div class="setting-label">
             <div class="setting-title">Авто-повышение прав (UAC)</div>
             <div class="setting-desc">Перезапускать от имени администратора, если запущено без прав.</div>
           </div>

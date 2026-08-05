@@ -11,27 +11,59 @@ function toast(msg, isError = false) {
   toastTimer = setTimeout(() => (el.className = ""), 3500);
 }
 
-// --- мост к Python через QWebChannel (см. ui/app.py: Api.call/Api.pushed) ---
+// --- мост к Python (см. ui/api.py: Api.dispatch) -----------------------------
+// Движков окна два (config.json -> ui_backend), мост у каждого свой, поэтому тут
+// один общий вид: _call(method, argsJson) -> Promise<resultJson>. Какой именно —
+// определяем по тому, что подсунуто в страницу, флаг с бэкенда не нужен.
 
-let _bridge = null;
+let _call = null;
 
 function initBridge() {
+  return window.qt && window.qt.webChannelTransport ? initQtBridge() : initWebviewBridge();
+}
+
+// PySide6: слот bridge.call(callId, ...) отвечает не возвратом, а сигналом
+// resolved(callId, ...) — по нему и резолвим промис (см. ui/backend_qt.py).
+function initQtBridge() {
   return new Promise(resolve => {
     new QWebChannel(qt.webChannelTransport, channel => {
-      _bridge = channel.objects.api;
+      const bridge = channel.objects.bridge;
+      const pending = new Map();
+      let seq = 0;
+      bridge.resolved.connect((id, resultJson) => {
+        const done = pending.get(id);
+        if (done) { pending.delete(id); done(resultJson); }
+      });
       // сигнал pushed(fn, jsonPayload) — стриминг результатов (чебур/блокчек)
-      _bridge.pushed.connect((fn, payloadJson) => {
+      bridge.pushed.connect((fn, payloadJson) => {
         const handler = window[fn];
         if (handler) handler(JSON.parse(payloadJson));
+      });
+      _call = (method, argsJson) => new Promise(done => {
+        const id = String(++seq);
+        pending.set(id, done);
+        bridge.call(id, method, argsJson);
       });
       resolve();
     });
   });
 }
 
+// pywebview: js_api уже отдаёт промис, а стриминг прилетает вызовом window.<fn>()
+// через evaluate_js — подключать тут нечего.
+function initWebviewBridge() {
+  return new Promise(resolve => {
+    const ready = () => {
+      _call = (method, argsJson) => window.pywebview.api.call(method, argsJson);
+      resolve();
+    };
+    if (window.pywebview && window.pywebview.api) ready();
+    else window.addEventListener("pywebviewready", ready, { once: true });
+  });
+}
+
 async function api(method, ...args) {
-  const resJson = await new Promise(resolve => _bridge.call(method, JSON.stringify(args), resolve));
-  const res = JSON.parse(resJson);
+  const res = JSON.parse(await _call(method, JSON.stringify(args)));
   if (!res.ok) throw new Error(res.error);
   return res.data;
 }
@@ -1448,6 +1480,7 @@ async function loadSettings() {
   try {
     const cfg = await api("config_read");
     $("#set-interface").value = cfg.interface || "ui";
+    $("#set-ui-backend").value = cfg.ui_backend || "pyside6";
     $("#set-elevate").checked = cfg.auto_elevate !== false;
     $("#config-error").textContent = "";
   } catch (e) {
@@ -1963,6 +1996,7 @@ async function init() {
   $("#list-new-btn").addEventListener("click", createList);
   $("#list-new-name").addEventListener("keydown", e => { if (e.key === "Enter") createList(); });
   $("#set-interface").addEventListener("change", e => setSetting("interface", e.target.value));
+  $("#set-ui-backend").addEventListener("change", e => setSetting("ui_backend", e.target.value));
   $("#set-elevate").addEventListener("change", e => setSetting("auto_elevate", e.target.checked));
   $("#set-autostart").addEventListener("change", e => setAutostart(e.target.checked));
   $("#src-check-btn").addEventListener("click", checkSourceUpdates);

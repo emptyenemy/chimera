@@ -9,6 +9,12 @@ REM
 REM bin/ (winws, sing-box) is not in the repo (.gitignore) - fetched/placed
 REM separately. If missing at build time we warn: exe will build fine but
 REM winws/proxy features won't work without it.
+REM
+REM ui/app.py picks the window engine by name from config.json, which Nuitka
+REM cannot see statically - hence --include-module=ui.backend_qt. pywebview is
+REM deliberately left out of the build (it pulls WebView2 through .NET/clr_loader
+REM at runtime, invisible to the packager); picking "pywebview" in a built exe
+REM falls back to PySide6.
 
 setlocal
 REM Nuitka names the standalone folder after the entry script (main.py -> main.dist)
@@ -30,6 +36,7 @@ python -m nuitka ^
     --include-data-files=modules/dns_providers.json=modules/dns_providers.json ^
     --include-data-files=upstream/tg-ws-proxy/proxy=upstream/tg-ws-proxy/proxy/=*.py ^
     --include-package=cryptography ^
+    --include-module=ui.backend_qt ^
     main.py
 
 if errorlevel 1 (

@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 
 CONFIG_PATH = Path(__file__).parent.parent / "config.json"
-DEFAULTS = {"interface": "ui", "auto_elevate": True}
+DEFAULTS = {"interface": "ui", "auto_elevate": True, "ui_backend": "pyside6"}
 
 
 def load() -> dict:

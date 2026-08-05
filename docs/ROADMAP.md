@@ -2,7 +2,7 @@
 
 ## Готово
 
-- **UI (PySide6 / QWebEngineView)** — графический интерфейс, выбор режима через `config.json`.
+- **UI (PySide6 / QWebEngineView или pywebview / WebView2)** — графический интерфейс, выбор режима и движка окна через `config.json` (`interface`, `ui_backend`). Вызовы фронта исполняются в фоновых потоках, окно не фризит на долгих операциях (опрос адаптеров, состояние прокси).
 - **Вкладка Hosts** — наборы подмен IP в системном hosts-файле:
   - тип `static` — готовый список (руками или по URL hosts-файла, напр. malw hosts);
   - тип `dns` — DNS-провайдер (XBOX / Comss / Malw): домены из списков резолвятся через его DoH/UDP, полученные IP пишутся в hosts;
@@ -71,6 +71,6 @@
 - `bin/zapret-win-bundle/` — бинарный бандл winws/winws2 + lua + WinDivert (в gitignore, тянется отдельно; держать COMPAT_VER одинаковым с сабмодулем zapret2).
 - `strategies/` — портированные стратегии (`*.txt`), их fake-блобы (`assets/`) и hostlist'ы (`hostlists/`).
 - `lists/` — списки доменов по сервисам, один файл = один сервис.
-- `ui/` — PySide6-приложение (`app.py` = QWebChannel-мост к модулям, `web/` = фронт).
-- Режим интерфейса: `config.json` → `"ui"` | `"tui"` | `"service"`.
+- `ui/` — `api.py` (все методы для фронта, без привязки к движку) + `backend_qt.py` / `backend_webview.py` (окно и мост) + `web/` (фронт). Оба моста асинхронные: вызов уходит в фоновый поток, ответ возвращается по callId.
+- Режим интерфейса: `config.json` → `"ui"` | `"tui"` | `"service"`; движок окна: `ui_backend` → `"pyside6"` | `"pywebview"` (в сборку exe входит только PySide6, см. `build.bat`).
 - Транспорты (DNS-подмена / VPN / zapret) — поверх общих списков доменов, выбираются правилами.
