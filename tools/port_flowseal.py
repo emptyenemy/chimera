@@ -32,12 +32,21 @@ fakedsplit/fakeddisorder/hostfakesplit получают fooling+repeats (у ни
 Запуск:  python tools/port_flowseal.py [path/to/zapret-discord-youtube]
 """
 import re
+import shutil
 import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 OUT = ROOT / "strategies"
 DEFAULT_SRC = ROOT / "upstream" / "zapret-discord-youtube"
+
+# Хостлисты Flowseal берём как есть — они не генерируются, но обновляются вместе
+# со стратегиями (в 1.10.0 переехал live-video.net, добавилась пачка исключений).
+# Синхроним прямо тут: иначе после обновления сабмодуля стратегии свежие, а списки
+# отстают, и десинк уходит не на те домены.
+# Не трогаем: *-user.txt (наши, пользовательские) и ipset-all.txt — у Flowseal в
+# репозитории заглушка, реальный список качается отдельно (modules/winws/filters.py).
+SYNC_LISTS = ("list-general.txt", "list-google.txt", "list-exclude.txt", "ipset-exclude.txt")
 
 # имя .bat -> (id, отображаемое имя, порядок в UI, описание)
 STRATS = {
@@ -486,11 +495,35 @@ def render(bat_path: Path, meta: tuple) -> str:
     return "\n".join(out) + "\n"
 
 
+def sync_resources(src: Path) -> None:
+    """Копирует fake-блобы (bin/*.bin) и хостлисты Flowseal рядом со стратегиями.
+
+    Блобы копируем ВСЕ, а не только те, что встречаются в .bat: часть из них —
+    кандидаты на подстановку в ACTIVE_*-слоты (см. modules/winws/filters.py,
+    fake replace), в самих стратегиях они не упоминаются.
+    """
+    for src_dir, dst_dir, names in (
+        (src / "bin", OUT / "assets", sorted(p.name for p in (src / "bin").glob("*.bin"))),
+        (src / "lists", OUT / "hostlists", SYNC_LISTS),
+    ):
+        dst_dir.mkdir(parents=True, exist_ok=True)
+        for name in names:
+            s, d = src_dir / name, dst_dir / name
+            if not s.exists():
+                print("ПРОПУСК (нет в источнике): %s" % name)
+                continue
+            if d.exists() and d.read_bytes() == s.read_bytes():
+                continue
+            shutil.copyfile(s, d)
+            print("СИНХР %-28s <- %s/" % (name, src_dir.name))
+
+
 def main():
     src = Path(sys.argv[1]) if len(sys.argv) > 1 else DEFAULT_SRC
     if not src.exists():
         sys.exit("Не найден репозиторий Flowseal: %s" % src)
     OUT.mkdir(exist_ok=True)
+    sync_resources(src)
     for fname, meta in STRATS.items():
         bat = src / fname
         if not bat.exists():

@@ -667,6 +667,9 @@ h2 { font-size: 15px; margin-bottom: 10px; }
 .filter-text { display: flex; flex-direction: column; gap: 3px; margin-right: auto; }
 .filter-text .hint { margin: 0; }
 .ipset-info { color: var(--accent); font-size: 12px; }
+.fake-slots { display: flex; gap: 10px; flex: none; flex-wrap: wrap; justify-content: flex-end; }
+.fake-slot { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--text-dim); }
+.fake-slot select { max-width: 230px; }
 .seg { display: inline-flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; flex: none; }
 .seg button { background: var(--card); color: var(--text-dim); border: none; border-left: 1px solid var(--border);
   padding: 6px 12px; cursor: pointer; font: inherit; }

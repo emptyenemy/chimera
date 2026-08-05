@@ -10,15 +10,23 @@ fallback-профили «по IP»):
   any    — пустой файл (без ограничения по IP);
   loaded — реальный список подсетей (качается из репо Flowseal).
 Переключение loaded<->none<->any с бэкапом загруженного списка в .backup.
+
+Fake replace: ACTIVE_DISCORD_UDP.bin и ACTIVE_GAME_UDP.bin — не блобы, а СЛОТЫ.
+Стратегии ссылаются только на них, а какой именно фейк лежит внутри — выбор
+пользователя (у разных провайдеров проходят разные). Выбранный кандидат просто
+копируется в файл слота, текущий определяется сравнением SHA256 — ровно так же,
+как в service.bat Flowseal (:replace_active_fakes).
 """
 
+import hashlib
 import shutil
 import urllib.request
 from pathlib import Path
 
 from modules import appconfig
 
-HOSTLISTS_DIR = Path(__file__).parent.parent.parent / "strategies" / "hostlists"
+STRATEGIES_DIR = Path(__file__).parent.parent.parent / "strategies"
+HOSTLISTS_DIR = STRATEGIES_DIR / "hostlists"
 IPSET_FILE = HOSTLISTS_DIR / "ipset-all.txt"
 IPSET_BACKUP = HOSTLISTS_DIR / "ipset-all.txt.backup"
 IPSET_PLACEHOLDER = "203.0.113.113/32"
@@ -139,6 +147,57 @@ def ipset_status() -> dict:
     return {"state": ipset_state(), "count": ipset_count(), "stored": ipset_stored()}
 
 
+# --- fake replace (ACTIVE_*-слоты) ----------------------------------------------
+
+ASSETS_DIR = STRATEGIES_DIR / "assets"
+ACTIVE_PREFIX = "ACTIVE_"
+FAKE_SLOTS = {
+    "discord": ("ACTIVE_DISCORD_UDP.bin", "Discord UDP"),
+    "game": ("ACTIVE_GAME_UDP.bin", "GameFilter UDP"),
+}
+
+
+def _sha256(path: Path) -> str | None:
+    if not path.exists():
+        return None
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def fake_candidates() -> list[str]:
+    """Блобы-кандидаты (имена без .bin) — всё в assets, кроме самих слотов."""
+    return sorted(p.stem for p in ASSETS_DIR.glob("*.bin")
+                  if not p.name.startswith(ACTIVE_PREFIX))
+
+
+def fakes_state() -> dict:
+    """{slot: имя кандидата в слоте или None} + список кандидатов.
+
+    None означает «в слоте лежит блоб, которого нет среди кандидатов» — например
+    файл подложили руками. Ровно как «(not found)» у Flowseal.
+    """
+    hashes = {p.stem: _sha256(p) for p in ASSETS_DIR.glob("*.bin")
+              if not p.name.startswith(ACTIVE_PREFIX)}
+    slots = {}
+    for slot, (fname, label) in FAKE_SLOTS.items():
+        active = _sha256(ASSETS_DIR / fname)
+        current = next((n for n, h in hashes.items() if h and h == active), None)
+        slots[slot] = {"label": label, "file": fname, "current": current,
+                       "present": active is not None}
+    return {"slots": slots, "candidates": fake_candidates()}
+
+
+def set_fake(slot: str, name: str) -> dict:
+    """Кладёт кандидата в слот. Применится при следующем запуске стратегии
+    (winws2 читает блоб один раз при старте — перезапуск делает UI)."""
+    if slot not in FAKE_SLOTS:
+        raise ValueError("Слот фейка: %s" % " / ".join(FAKE_SLOTS))
+    src = ASSETS_DIR / ("%s.bin" % name)
+    if name.startswith(ACTIVE_PREFIX) or not src.exists():
+        raise FileNotFoundError("Нет такого блоба: %s" % name)
+    shutil.copyfile(src, ASSETS_DIR / FAKE_SLOTS[slot][0])
+    return fakes_state()
+
+
 def state() -> dict:
     """Сводка для UI."""
     return {
@@ -146,4 +205,5 @@ def state() -> dict:
         "ipset": ipset_state(),
         "ipset_count": ipset_count(),
         "ipset_stored": ipset_stored(),
+        "fakes": fakes_state(),
     }

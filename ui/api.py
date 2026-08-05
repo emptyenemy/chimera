@@ -496,6 +496,14 @@ class Api:
         except Exception as e:
             return _err(e)
 
+    def fake_set(self, slot, name):
+        """Подставляет блоб в ACTIVE_*-слот (Discord UDP / GameFilter UDP)."""
+        try:
+            from modules.winws import filters
+            return _ok(filters.set_fake(slot, name))
+        except Exception as e:
+            return _err(e)
+
     # --- telegram proxy (tg-ws-proxy) -----------------------------------------
 
     def tg_state(self):

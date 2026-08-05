@@ -1424,6 +1424,37 @@ async function loadFilters() {
     b.classList.toggle("active", b.dataset.mode === f.ipset));
   $("#ipset-info").textContent = f.ipset === "loaded" ? `${f.ipset_count} подсетей`
     : (f.ipset_stored ? `${f.ipset_stored} в запасе` : "");
+  renderFakeSlots(f.fakes);
+}
+
+// ACTIVE_*-слоты: в каждом лежит копия одного из блобов, выбор — селектом
+function renderFakeSlots(fakes) {
+  const box = $("#fake-slots");
+  if (!box) return;
+  if (!fakes || !fakes.candidates?.length) { box.innerHTML = ""; return; }
+  box.innerHTML = Object.entries(fakes.slots).map(([slot, s]) => {
+    // «свой файл» — блоб в слоте не совпал ни с одним кандидатом (подложен руками)
+    const custom = s.present && !s.current
+      ? `<option value="" selected>свой файл</option>` : "";
+    const opts = fakes.candidates.map(name =>
+      `<option value="${esc(name)}"${name === s.current ? " selected" : ""}>${esc(name)}</option>`
+    ).join("");
+    return `<label class="fake-slot"><span>${esc(s.label)}</span>
+      <select data-fake-slot="${esc(slot)}">${custom}${opts}</select></label>`;
+  }).join("");
+}
+
+async function setFake(slot, name) {
+  $("#filters-error").textContent = "";
+  if (!name) return;  // выбрали псевдо-пункт «свой файл» — менять нечего
+  try {
+    await api("fake_set", slot, name);
+    await loadFilters();
+    await applyRunningChange("Фейк");
+  } catch (e) {
+    $("#filters-error").textContent = e.message;
+    await loadFilters();  // вернуть селект к факту
+  }
 }
 
 // настройка уже записана; если наша стратегия запущена — перезапустим, чтобы применить
@@ -1992,6 +2023,10 @@ async function init() {
     const b = e.target.closest("button[data-mode]"); if (b) setIpset(b.dataset.mode);
   });
   $("#ipset-update-btn").addEventListener("click", updateIpset);
+  $("#fake-slots").addEventListener("change", e => {
+    const sel = e.target.closest("select[data-fake-slot]");
+    if (sel) setFake(sel.dataset.fakeSlot, sel.value);
+  });
   $("#winws-autostart").addEventListener("change", e => setWinwsAutostart(e.target.checked));
   $("#list-new-btn").addEventListener("click", createList);
   $("#list-new-name").addEventListener("keydown", e => { if (e.key === "Enter") createList(); });

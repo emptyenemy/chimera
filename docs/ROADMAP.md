@@ -27,14 +27,15 @@
   - повтор при rate-limit (429), чтобы «лимит» вылезал реже.
 - **Вкладка Стратегии (zapret2)** — запуск `winws2` с выбранной стратегией обхода DPI:
   - стратегии — `strategies/*.txt` (1 аргумент winws2 на строку, плейсхолдеры путей, метаданные в шапке);
-  - первая портированная: **SIMPLE FAKE** из [Flowseal/zapret-discord-youtube](https://github.com/Flowseal/zapret-discord-youtube) (winws1 `--dpi-desync` → winws2 `--lua-desync`);
-  - fake-блобы и hostlist'ы Flowseal лежат в `strategies/assets` и `strategies/hostlists`;
+  - портированы все стратегии [Flowseal/zapret-discord-youtube](https://github.com/Flowseal/zapret-discord-youtube) 1.10.0 (winws1 `--dpi-desync` → winws2 `--lua-desync`), генератор — `tools/port_flowseal.py`;
+  - fake-блобы и hostlist'ы Flowseal лежат в `strategies/assets` и `strategies/hostlists`, синхронизируются тем же генератором (`sync_resources`) — кроме `*-user.txt` и `ipset-all.txt`;
+  - **fake replace**: `ACTIVE_DISCORD_UDP.bin` / `ACTIVE_GAME_UDP.bin` — слоты, в которые копируется выбранный блоб (текущий определяется по SHA256, как в `service.bat`); выбор — селектами в карточке «Фильтры»;
   - лаунчер `modules/winws`: сборка argv, старт/стоп winws2, вывод в лог, очистка при выходе;
-  - версия zapret2 (тег сабмодуля) показывается в UI; **zapret2 обновлён до v1.0.2** (бандл `0e9e3fb` + сабмодуль, COMPAT_VER 6; фикс дефолта `--lua-gc` 60 мс → 60 сек, режет лишний CPU и на winws2). Бандл-коммит `e48e760→0e9e3fb` — force-push апстрима; winws2.exe и lua байт-в-байт те же, изменения только в blockcheck/arm64.
+  - версия zapret2 (тег сабмодуля) показывается в UI; **zapret2 v1.0.4**, бандл `5833e40`. Апстрим бандла регулярно делает force-push — обновление через `git reset --hard origin/master`, не `pull`.
 
 ## В работе / дальше
 
-- **Портировать остальные стратегии Flowseal** — general, ALT-серия, FAKE TLS AUTO и пр. (по образцу SIMPLE FAKE), + проверка вживую под админом.
+- **Не перенесено из `service.bat` Flowseal** — hosts-блок `.service/hosts` (GitHub / Telegram / `finland*.discord.media`) как статический hosts-провайдер и очистка кэша Discord/PTB.
 
 - **Списки доменов как полноценная вкладка** — редактирование, включение/выключение списков для набора, и **разные транспорты на список**: один гнать через DNS-подмену, другой — через VPN/прокси, третий — через zapret. Списки = общий слой, поверх него правила маршрутизации.
 - **Service-режим (3-й вариант запуска)** — старт как служба Windows, без окна и трея. `config.json` → `"interface": "service"`.
