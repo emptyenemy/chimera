@@ -39,7 +39,7 @@
 --lua-desync=fake:blob=udp_discord:repeats=4
 --payload=stun
 --lua-desync=fake:blob=udp_discord:repeats=4
---payload=unknown
+--payload=all
 --lua-desync=fake:blob=quic_google:repeats=4
 --lua-desync=fake:blob=udp_discord:repeats=4
 --new

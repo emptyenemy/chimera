@@ -27,11 +27,11 @@
   - повтор при rate-limit (429), чтобы «лимит» вылезал реже.
 - **Вкладка Стратегии (zapret2)** — запуск `winws2` с выбранной стратегией обхода DPI:
   - стратегии — `strategies/*.txt` (1 аргумент winws2 на строку, плейсхолдеры путей, метаданные в шапке);
-  - портированы все стратегии [Flowseal/zapret-discord-youtube](https://github.com/Flowseal/zapret-discord-youtube) 1.10.0 (winws1 `--dpi-desync` → winws2 `--lua-desync`), генератор — `tools/port_flowseal.py`;
+  - портированы все стратегии [Flowseal/zapret-discord-youtube](https://github.com/Flowseal/zapret-discord-youtube) 1.10.1 (winws1 `--dpi-desync` → winws2 `--lua-desync`), генератор — `tools/port_flowseal.py`;
   - fake-блобы и hostlist'ы Flowseal лежат в `strategies/assets` и `strategies/hostlists`, синхронизируются тем же генератором (`sync_resources`) — кроме `*-user.txt` и `ipset-all.txt`;
   - **fake replace**: `ACTIVE_DISCORD_UDP.bin` / `ACTIVE_GAME_UDP.bin` — слоты, в которые копируется выбранный блоб (текущий определяется по SHA256, как в `service.bat`); выбор — селектами в карточке «Фильтры»;
   - лаунчер `modules/winws`: сборка argv, старт/стоп winws2, вывод в лог, очистка при выходе;
-  - версия zapret2 (тег сабмодуля) показывается в UI; **zapret2 v1.0.4**, бандл `5833e40`. Апстрим бандла регулярно делает force-push — обновление через `git reset --hard origin/master`, не `pull`.
+  - версия zapret2 (тег сабмодуля) показывается в UI; **zapret2 v1.0.4**, бандл `9356768`. Апстрим бандла регулярно делает force-push — обновление через `git reset --hard origin/master`, не `pull`.
 
 ## В работе / дальше
 

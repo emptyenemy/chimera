@@ -36,6 +36,7 @@ python -m nuitka ^
     --include-data-files=modules/dns_providers.json=modules/dns_providers.json ^
     --include-data-files=upstream/tg-ws-proxy/proxy=upstream/tg-ws-proxy/proxy/=*.py ^
     --include-package=cryptography ^
+    --include-package=certifi ^
     --include-module=ui.backend_qt ^
     main.py
 

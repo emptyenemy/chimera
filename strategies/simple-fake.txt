@@ -14,7 +14,6 @@
 --blob=quic_google:@{ASSETS}/quic_initial_www_google_com.bin
 --blob=tls_google:@{ASSETS}/tls_clienthello_www_google_com.bin
 --blob=tls_max:@{ASSETS}/tls_clienthello_max_ru.bin
---blob=stun_fake:@{ASSETS}/stun.bin
 --blob=udp_discord:@{ASSETS}/ACTIVE_DISCORD_UDP.bin
 --blob=udp_game:@{ASSETS}/ACTIVE_GAME_UDP.bin
 
@@ -48,7 +47,7 @@
 --filter-tcp=443
 --hostlist={LISTS}/list-google.txt
 --payload=tls_client_hello
---lua-desync=fake:blob=tls_google:tcp_ts=-1000:repeats=6:ip_id=zero
+--lua-desync=hostfakesplit:host=www.google.com:tcp_ts=-1000:ip_id=zero
 --new
 
 # --- профиль 5: Общий HTTP/TLS по hostlist ---
@@ -60,7 +59,6 @@
 --ipset-exclude={LISTS}/ipset-exclude.txt
 --ipset-exclude={LISTS}/ipset-exclude-user.txt
 --payload=tls_client_hello
---lua-desync=fake:blob=stun_fake:tcp_ts=-1000:repeats=6
 --lua-desync=fake:blob=tls_google:tcp_ts=-1000:repeats=6
 --payload=http_req
 --lua-desync=fake:blob=tls_max:tcp_ts=-1000:repeats=6
@@ -87,7 +85,6 @@
 --ipset-exclude={LISTS}/ipset-exclude.txt
 --ipset-exclude={LISTS}/ipset-exclude-user.txt
 --payload=tls_client_hello
---lua-desync=fake:blob=stun_fake:tcp_ts=-1000:repeats=6
 --lua-desync=fake:blob=tls_google:tcp_ts=-1000:repeats=6
 --payload=http_req
 --lua-desync=fake:blob=tls_max:tcp_ts=-1000:repeats=6
@@ -101,7 +98,6 @@
 --ipset-exclude={LISTS}/ipset-exclude-user.txt
 --out-range=-n4
 --payload=all
---lua-desync=fake:blob=stun_fake:tcp_ts=-1000:repeats=6
 --lua-desync=fake:blob=tls_google:tcp_ts=-1000:repeats=6
 --lua-desync=fake:blob=tls_max:tcp_ts=-1000:repeats=6
 --new
