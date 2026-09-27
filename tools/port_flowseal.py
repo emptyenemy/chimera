@@ -501,7 +501,7 @@ def render(bat_path: Path, meta: tuple) -> str:
     return "\n".join(out) + "\n"
 
 
-def sync_resources(src: Path) -> None:
+def sync_resources(src: Path, out: Path = OUT) -> None:
     """Копирует fake-блобы (bin/*.bin) и хостлисты Flowseal рядом со стратегиями.
 
     Блобы копируем ВСЕ, а не только те, что встречаются в .bat: часть из них —
@@ -509,8 +509,8 @@ def sync_resources(src: Path) -> None:
     fake replace), в самих стратегиях они не упоминаются.
     """
     for src_dir, dst_dir, names in (
-        (src / "bin", OUT / "assets", sorted(p.name for p in (src / "bin").glob("*.bin"))),
-        (src / "lists", OUT / "hostlists", SYNC_LISTS),
+        (src / "bin", out / "assets", sorted(p.name for p in (src / "bin").glob("*.bin"))),
+        (src / "lists", out / "hostlists", SYNC_LISTS),
     ):
         dst_dir.mkdir(parents=True, exist_ok=True)
         for name in names:
@@ -524,19 +524,22 @@ def sync_resources(src: Path) -> None:
             print("СИНХР %-28s <- %s/" % (name, src_dir.name))
 
 
-def main():
-    src = Path(sys.argv[1]) if len(sys.argv) > 1 else DEFAULT_SRC
+def main(src: Path | None = None, out: Path = OUT):
+    """out — выходная папка (по умолчанию strategies/); параметр только для
+    тестов (перепорт во временную папку без касания реальных strategies/)."""
+    if src is None:
+        src = Path(sys.argv[1]) if len(sys.argv) > 1 else DEFAULT_SRC
     if not src.exists():
         sys.exit("Не найден репозиторий Flowseal: %s" % src)
-    OUT.mkdir(exist_ok=True)
-    sync_resources(src)
+    out.mkdir(exist_ok=True)
+    sync_resources(src, out)
     for fname, meta in STRATS.items():
         bat = src / fname
         if not bat.exists():
             print("ПРОПУСК (нет файла): %s" % fname)
             continue
         text = render(bat, meta)
-        (OUT / ("%s.txt" % meta[0])).write_text(text, encoding="utf-8")
+        (out / ("%s.txt" % meta[0])).write_text(text, encoding="utf-8")
         print("OK %-22s <- %s" % (meta[0] + ".txt", fname))
 
 

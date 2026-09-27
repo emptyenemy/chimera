@@ -69,6 +69,14 @@ git commit -m "bump zapret2"
 python tools/port_flowseal.py
 ```
 
+## Разработка
+
+```powershell
+pip install -r requirements-dev.txt
+python -m pytest -q      # тесты — только чистая логика, без сети и без GUI
+ruff check .              # линт (правила и исключения — в pyproject.toml)
+```
+
 ## Статус
 
 Ранняя стадия, активная разработка. Реализован только UI-режим; TUI и service-режим — заглушки. Подробности — в [`docs/ROADMAP.md`](docs/ROADMAP.md).
