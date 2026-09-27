@@ -11,15 +11,15 @@
 
 ## Стек
 
-- **Python 3** + фронт на HTML/CSS/JS в `ui/web/`, бэкенд в `modules/`. Движок окна выбирается в `config.json` (`ui_backend`): [PySide6](https://doc.qt.io/qtforpython/) (`QWebEngineView`, свой Chromium, мост `QWebChannel`) или [pywebview](https://pywebview.flowrl.com/) (системный WebView2, мост `js_api`). Фронтенд один и тот же, мост определяет сам.
+- **Python 3** + фронт на HTML/CSS/JS в `ui/web/`, бэкенд в `modules/`. Движок интерфейса выбирается в `config.json` (`ui_backend`): [PySide6](https://doc.qt.io/qtforpython/) (окно с `QWebEngineView`, свой Chromium, мост `QWebChannel`), [pywebview](https://pywebview.flowrl.com/) (окно на системном WebView2, мост `js_api`) или `browser` — своего окна нет вообще, интерфейс открывается вкладкой в браузере по умолчанию (локальный HTTP-сервер на стандартной библиотеке, мост — JSON-RPC + long-poll, доступ по одноразовому токену). Фронтенд один и тот же, мост определяет сам.
 - Логика — в `modules/`, интерфейс (`ui/api.py`) — тонкий JS-мост. Внешние проекты подключены git-сабмодулями в `upstream/` и используются как есть.
 
 ```
 .
 ├── main.py            # вход: UAC-элевация, выбор режима из config.json
-├── config.json        # interface (ui|tui|service), ui_backend (pyside6|pywebview) + общие настройки
+├── config.json        # interface (ui|tui|service), ui_backend (pyside6|pywebview|browser) + общие настройки
 ├── modules/           # вся логика: winws, proxy, tgproxy, hosts, dns_jumper, domains, ...
-├── ui/                # api.py (методы для фронта) + backend_qt/backend_webview (окно) + web/ (фронт)
+├── ui/                # api.py (методы для фронта) + backend_qt/backend_webview/backend_browser + web/ (фронт)
 ├── lists/             # списки доменов по сервисам (общий слой для всех модулей)
 ├── strategies/        # стратегии winws2 (*.txt) + assets/ (fake-блобы) + hostlists/
 ├── tools/             # port_flowseal.py — генератор стратегий из .bat Flowseal

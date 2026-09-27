@@ -19,7 +19,12 @@ function toast(msg, isError = false) {
 let _call = null;
 
 function initBridge() {
-  return window.qt && window.qt.webChannelTransport ? initQtBridge() : initWebviewBridge();
+  if (window.qt && window.qt.webChannelTransport) return initQtBridge();
+  // По протоколу страницы движок не опознать: pywebview c 4.x тоже отдаёт файлы
+  // своим http-сервером, а не с file://. Поэтому браузерный режим помечает себя
+  // сам — маркером, который backend_browser.py дописывает в <head> страницы.
+  if (window.__CHIMERA_HTTP__) return initHttpBridge();
+  return initWebviewBridge();
 }
 
 // PySide6: слот bridge.call(callId, ...) отвечает не возвратом, а сигналом
@@ -60,6 +65,48 @@ function initWebviewBridge() {
     if (window.pywebview && window.pywebview.api) ready();
     else window.addEventListener("pywebviewready", ready, { once: true });
   });
+}
+
+// Браузерный режим (ui/backend_browser.py): страница пришла по http, значит моста
+// в странице нет — говорим с Python обычными запросами. Токен выдан один раз в
+// адресе, дальше ходит заголовком, чтобы не светиться в истории и Referer.
+function initHttpBridge() {
+  const token = window.__CHIMERA_TOKEN__ || new URLSearchParams(location.search).get("t") || "";
+  // токен уже у нас (и в cookie) — убираем его из адресной строки, чтобы не уехал
+  // в историю браузера и в Referer
+  if (location.search) history.replaceState(null, "", location.pathname);
+  _call = (method, argsJson) =>
+    fetch("/api", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Chimera-Token": token },
+      body: JSON.stringify({ method, args: argsJson }),
+    }).then(r => {
+      if (!r.ok) throw new Error(`мост вернул ${r.status}`);
+      return r.text();
+    });
+  pumpEvents(token);
+  return Promise.resolve();
+}
+
+// long-poll очереди push'ей: то же, что evaluate_js у pywebview — зовём window.<fn>().
+// Запрос висит до события или до таймаута сервера, поэтому это же и heartbeat:
+// пропала вкладка — сервер через полторы минуты гасит программу.
+async function pumpEvents(token) {
+  let cursor = 0;
+  for (;;) {
+    try {
+      const r = await fetch(`/events?since=${cursor}`, { headers: { "X-Chimera-Token": token } });
+      if (!r.ok) throw new Error(String(r.status));
+      const data = await r.json();
+      cursor = data.seq;
+      for (const e of data.events) {
+        const handler = window[e.fn];
+        if (handler) handler(e.payload);
+      }
+    } catch {
+      await new Promise(r => setTimeout(r, 1000));  // сервер лёг/перезапуск — пробуем снова
+    }
+  }
 }
 
 async function api(method, ...args) {

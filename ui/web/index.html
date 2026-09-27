@@ -411,12 +411,13 @@
 
         <div class="setting-row">
           <div class="setting-label">
-            <div class="setting-title">Движок окна</div>
-            <div class="setting-desc">PySide6 — свой Chromium внутри программы · pywebview — системный Edge WebView2, окно легче и стартует быстрее. Применится при следующем запуске.</div>
+            <div class="setting-title">Движок интерфейса</div>
+            <div class="setting-desc">PySide6 — своё окно со встроенным Chromium · pywebview — окно на системном Edge WebView2, легче и стартует быстрее · Браузер — окна нет вообще, интерфейс открывается вкладкой в браузере по умолчанию (не лезет поверх игры). Применится при следующем запуске.</div>
           </div>
           <select id="set-ui-backend">
-            <option value="pyside6">PySide6</option>
-            <option value="pywebview">pywebview</option>
+            <option value="pyside6">PySide6 (окно)</option>
+            <option value="pywebview">pywebview (окно)</option>
+            <option value="browser">Браузер (вкладка)</option>
           </select>
         </div>
 
