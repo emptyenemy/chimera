@@ -12,10 +12,12 @@ Hosts-вкладка — только тех, у кого unblock=true (оста
 import json
 from pathlib import Path
 
+from . import paths
 from .provider_util import parse_servers, unique_id, validate_doh, validate_host
 
 BUILTIN_PATH = Path(__file__).parent / "dns_providers.json"
-USER_PATH = Path(__file__).parent / "dns_providers.user.json"
+USER_PATH = paths.data_path("dns_providers.user.json")
+paths.migrate(Path(__file__).parent / "dns_providers.user.json", USER_PATH)  # разовый перенос со старого места
 
 
 def _load_user() -> list[dict]:

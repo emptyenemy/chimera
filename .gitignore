@@ -26,7 +26,9 @@ Thumbs.db
 .env.local
 *.local
 
-# Runtime state
+# Runtime state — единая папка data/ (modules/paths.py), CHIMERA_DATA переопределяет.
+# Старые пути ниже оставлены на случай древних копий, где миграция ещё не отработала.
+data/
 modules/hosts/state.json
 # Настройки winws/zapret2 (последняя стратегия + автозапуск)
 modules/winws/state.json

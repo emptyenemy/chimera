@@ -18,6 +18,7 @@
 .
 ├── main.py            # вход: UAC-элевация, выбор режима из config.json
 ├── config.json        # interface (ui|tui|service), ui_backend (pyside6|pywebview|browser) + общие настройки
+├── data/              # рантайм-данные модулей (state/логи/сгенерированные конфиги, не в git) — modules/paths.py
 ├── modules/           # вся логика: winws, proxy, tgproxy, hosts, dns_jumper, domains, ...
 ├── ui/                # api.py (методы для фронта) + backend_qt/backend_webview/backend_browser + web/ (фронт)
 ├── lists/             # списки доменов по сервисам (общий слой для всех модулей)

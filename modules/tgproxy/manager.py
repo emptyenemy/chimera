@@ -20,10 +20,13 @@ import time
 import urllib.request
 from pathlib import Path
 
+from .. import paths
+
 UPSTREAM = Path(__file__).parent.parent.parent / "upstream" / "tg-ws-proxy"
-Path(__file__).parent.mkdir(parents=True, exist_ok=True)  # в standalone-сборке (Nuitka) этой папки на диске нет
-STATE_PATH = Path(__file__).parent / "state.json"
-LOG_PATH = Path(__file__).parent / "tgproxy.log"
+STATE_PATH = paths.data_path("tgproxy.json")
+paths.migrate(Path(__file__).parent / "state.json", STATE_PATH)  # разовый перенос со старого места
+LOG_PATH = paths.log_path("tgproxy.log")
+paths.migrate(Path(__file__).parent / "tgproxy.log", LOG_PATH)
 # ядро tg-ws-proxy логирует в этот логгер (см. proxy/*.py: getLogger('tg-mtproto-proxy'))
 _CORE_LOGGER = "tg-mtproto-proxy"
 RELEASES_API = "https://api.github.com/repos/Flowseal/tg-ws-proxy/releases/latest"

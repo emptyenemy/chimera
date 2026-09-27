@@ -16,15 +16,18 @@ import threading
 import time
 from pathlib import Path
 
+from .. import paths
+
 ROOT = Path(__file__).parent.parent.parent
 STRATEGIES_DIR = ROOT / "strategies"
 ASSETS_DIR = STRATEGIES_DIR / "assets"
 HOSTLISTS_DIR = STRATEGIES_DIR / "hostlists"
 WINWS_DIR = ROOT / "bin" / "zapret-win-bundle" / "zapret-winws"
 WINWS_EXE = WINWS_DIR / "winws2.exe"
-Path(__file__).parent.mkdir(parents=True, exist_ok=True)  # в standalone-сборке (Nuitka) этой папки на диске нет
-LOG_PATH = Path(__file__).parent / "winws.log"
-STATE_PATH = Path(__file__).parent / "state.json"
+LOG_PATH = paths.log_path("winws.log")
+paths.migrate(Path(__file__).parent / "winws.log", LOG_PATH)
+STATE_PATH = paths.data_path("winws.json")
+paths.migrate(Path(__file__).parent / "state.json", STATE_PATH)  # разовый перенос со старого места
 # Управляются выбором списков в UI (set_lists) — перезаписываются целиком на каждое
 # изменение выбора, ручные правки между изменениями переживут, но при следующем
 # сохранении выбора в UI затрутся. Домены из списков уезжают в hostlist, а IP и

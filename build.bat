@@ -1,10 +1,11 @@
 @echo off
 REM Builds CHIMERA (PySide6/QWebEngineView) into a standalone folder via Nuitka.
 REM
-REM Standalone, not onefile: all paths in the code resolve as
-REM Path(__file__).parent... (see modules/appconfig.py, modules/winws/manager.py,
-REM etc.) which needs a stable on-disk tree next to the exe. Onefile extracts to
-REM a fresh temp dir on every run, which breaks that.
+REM Standalone, not onefile: paths in the code resolve either as
+REM Path(__file__).parent... (see modules/appconfig.py) or through modules/paths.py
+REM (APP_DIR = the exe's folder when frozen/Nuitka, data/ next to it) - both need a
+REM stable on-disk tree next to the exe. Onefile extracts to a fresh temp dir on
+REM every run, which breaks that.
 REM
 REM bin/ (winws, sing-box) is not in the repo (.gitignore) - fetched/placed
 REM separately. If missing at build time we warn: exe will build fine but
