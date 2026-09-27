@@ -76,6 +76,8 @@ STRATS = {
                             "fake + multisplit seqovl, repeats=8/11, fooling=ts."),
     "general (ALT12).bat": ("alt12", "ALT12", 41,
                             "fake + multisplit/hostfakesplit, двойной discord-фейк."),
+    "general (ALT13).bat": ("alt13", "ALT13", 42,
+                            "fake + hostfakesplit (host=mail.ru, altorder) на sochi-park-блобе, fooling=ts."),
     "general (FAKE TLS AUTO).bat": ("fake-tls-auto", "FAKE TLS AUTO", 50,
                                     "авто-фейк TLS (real+tls-mod) + multidisorder, badseq."),
     "general (FAKE TLS AUTO ALT).bat": ("fake-tls-auto-alt", "FAKE TLS AUTO ALT", 51,
@@ -101,10 +103,14 @@ STRATS = {
 BLOBS = {
     "quic_initial_www_google_com.bin": "quic_google",
     "quic_initial_dbankcloud_ru.bin": "quic_dbank",
+    # в 1.10.2 файл переименован (4pda.to -> 4pda_to); старое имя оставлено для
+    # регенерации стратегий с более ранних тегов — обратный BLOB_FILE берёт последнее
     "quic_initial_4pda.to.bin": "quic_4pda",
+    "quic_initial_4pda_to.bin": "quic_4pda",
     "tls_clienthello_www_google_com.bin": "tls_google",
     "tls_clienthello_max_ru.bin": "tls_max",
     "tls_clienthello_4pda_to.bin": "tls_4pda",
+    "tls_clienthello_sochi_park.bin": "tls_sochi",  # новый фейк 1.10.2 (ALT13)
     "stun.bin": "stun_fake",
     "stun2.bin": "stun_fake2",
     "ACTIVE_DISCORD_UDP.bin": "udp_discord",
