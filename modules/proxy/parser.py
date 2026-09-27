@@ -121,7 +121,8 @@ def _parse_ss(u, raw: str) -> dict:
             "method": method, "password": password}
 
 
-def _parse_vmess(raw: str) -> dict:
+def _parse_vmess(raw: str) -> tuple[dict, str]:
+    """-> (outbound, имя профиля из поля ps: у vmess-ссылок оно внутри JSON, а не в #фрагменте)."""
     cfg = json.loads(_b64(raw[len("vmess://"):]).decode("utf-8", "replace"))
     host, port = cfg.get("add"), cfg.get("port")
     if not host or not port:
@@ -140,7 +141,12 @@ def _parse_vmess(raw: str) -> dict:
     tr = _transport(q)
     if tr:
         ob["transport"] = tr
-    return ob
+    return ob, str(cfg.get("ps") or "").strip()
+
+
+def _hostport(host: str, port) -> str:
+    # IPv6 — в скобках, иначе порт сливается с последней группой адреса
+    return f"[{host}]:{port}" if ":" in host else f"{host}:{port}"
 
 
 _PARSERS = {"vless": _parse_vless, "trojan": _parse_trojan}
@@ -152,21 +158,23 @@ def parse_link(raw: str) -> dict:
     if not scheme:
         raise ValueError("Это не похоже на ссылку (нет scheme://)")
     u = urlsplit(raw)
+    name = ""
     if scheme in _PARSERS:
         ob = _PARSERS[scheme](u)
     elif scheme == "ss":
         ob = _parse_ss(u, raw)
     elif scheme == "vmess":
-        ob = _parse_vmess(raw)
+        ob, name = _parse_vmess(raw)
     else:
         raise ValueError(f"Протокол {scheme}:// пока не поддержан (есть vless/trojan/ss/vmess)")
-    label = unquote(u.fragment) if u.fragment else f"{ob['server']}:{ob['server_port']}"
+    server = _hostport(ob["server"], ob["server_port"])
+    label = unquote(u.fragment) if u.fragment else (name or server)
     sec = "reality" if ob.get("tls", {}).get("reality") else (
         "tls" if ob.get("tls", {}).get("enabled") else "none")
     return {
         "outbound": ob,
         "label": label,
         "protocol": ob["type"],
-        "server": f"{ob['server']}:{ob['server_port']}",
+        "server": server,
         "security": sec,
     }

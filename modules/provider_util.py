@@ -16,7 +16,7 @@ def parse_servers(raw) -> list[str]:
         try:
             ipaddress.ip_address(it)
         except ValueError:
-            raise ValueError(f"«{it}» — не похоже на IP-адрес")
+            raise ValueError(f"«{it}» — не похоже на IP-адрес") from None
         out.append(it)
     return out
 
