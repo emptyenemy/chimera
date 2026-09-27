@@ -12,3 +12,5 @@ auth.x.ai
 console.x.ai
 docs.x.ai
 status.x.ai
+auth.grokusercontent.com
+imagine-public.x.ai

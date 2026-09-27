@@ -2,8 +2,44 @@
 spotify.com
 open.spotify.com
 api.spotify.com
+api-partner.spotify.com
 accounts.spotify.com
 apresolve.spotify.com
+clienttoken.spotify.com
+login5.spotify.com
 spclient.wg.spotify.com
+exp.wg.spotify.com
+
+# Обложки треков/альбомов/исполнителей. i.scdn.co режется по SNI (на честных IP
+# Akamai handshake отваливается, хотя соседние имена на тех же IP открываются),
+# поэтому без обхода картинки не грузятся. Артисты, миксы и подборки живут уже
+# на *.spotifycdn.com — этот домен в списке отсутствовал совсем.
 scdn.co
 i.scdn.co
+i2o.scdn.co
+t.scdn.co
+misc.scdn.co
+mosaic.scdn.co
+encore.scdn.co
+merch-img.scdn.co
+daily-mix.scdn.co
+dailymix-images.scdn.co
+newjams-images.scdn.co
+lineup-images.scdn.co
+thisis-images.scdn.co
+charts-images.scdn.co
+seeded-session-images.scdn.co
+spotifycdn.com
+image-cdn-ak.spotifycdn.com
+image-cdn-fa.spotifycdn.com
+pickasso.spotifycdn.com
+seed-mix-image.spotifycdn.com
+blend-playlist-covers.spotifycdn.com
+wrapped-images.spotifycdn.com
+open.spotifycdn.com
+
+# Аудиопоток
+audio-ak.spotifycdn.com
+audio4-ak.spotifycdn.com
+audio-fa.scdn.co
+audio4-fa.scdn.co
