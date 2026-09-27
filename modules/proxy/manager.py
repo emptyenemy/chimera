@@ -5,12 +5,14 @@
 но route-правила гонят через прокси ТОЛЬКО наши домены. Нужны права админа.
 
 sing-box.exe тянется одним пиннутым релизом в bin/sing-box/ (см. SINGBOX_*).
-Настройки (ссылка, выбранные списки, autostart) — в state.json рядом с модулем.
+Настройки (ссылка, выбранные списки, autostart) — в data/proxy.json.
 """
 
 import ctypes
+import hashlib
 import io
 import json
+import os
 import subprocess
 import threading
 import time
@@ -19,17 +21,22 @@ import winreg
 import zipfile
 from pathlib import Path
 
-from modules import domains
+from modules import domains, paths
 from . import parser
 
 ROOT = Path(__file__).parent.parent.parent
 SINGBOX_DIR = ROOT / "bin" / "sing-box"
 SINGBOX_EXE = SINGBOX_DIR / "sing-box.exe"
-Path(__file__).parent.mkdir(parents=True, exist_ok=True)  # в standalone-сборке (Nuitka) этой папки на диске нет
-CONFIG_PATH = Path(__file__).parent / "singbox-config.json"
-STATE_PATH = Path(__file__).parent / "state.json"
-LOG_PATH = Path(__file__).parent / "proxy.log"
-PAC_PATH = Path(__file__).parent / "proxy.pac"
+SINGBOX_EXE_NEW = SINGBOX_DIR / "sing-box.exe.new"  # сюда качаем, пока не проверили хеш
+SINGBOX_EXE_OLD = SINGBOX_DIR / "sing-box.exe.old"  # сюда уезжает старый exe, если он занят
+CONFIG_PATH = paths.data_path("singbox-config.json")
+paths.migrate(Path(__file__).parent / "singbox-config.json", CONFIG_PATH)
+STATE_PATH = paths.data_path("proxy.json")
+paths.migrate(Path(__file__).parent / "state.json", STATE_PATH)  # разовый перенос со старого места
+LOG_PATH = paths.log_path("proxy.log")
+paths.migrate(Path(__file__).parent / "proxy.log", LOG_PATH)
+PAC_PATH = paths.data_path("proxy.pac")
+paths.migrate(Path(__file__).parent / "proxy.pac", PAC_PATH)
 
 # ветка реестра WinINet: туда пишем AutoConfigURL, чтобы браузеры подхватили PAC
 _INET_SETTINGS = r"Software\Microsoft\Windows\CurrentVersion\Internet Settings"
@@ -41,11 +48,26 @@ SINGBOX_URL = (
     f"https://github.com/SagerNet/sing-box/releases/download/v{SINGBOX_VERSION}/"
     f"sing-box-{SINGBOX_VERSION}-windows-amd64.zip"
 )
+# sha256 zip-архива релиза (сверен с полем digest ассета в GitHub API и повторным
+# скачиванием). Меняется вместе с SINGBOX_VERSION при обновлении версии.
+SINGBOX_SHA256 = "c2d8bfff918755808781dfdeeb8581b6c91eb3a243d9a7b55483cfc0c0684d32"
 
 # mode: "pac" — SOCKS+PAC (только выбранные домены, без админа) ИЛИ "tun" — системно.
 DEFAULTS = {"link": "", "lists": [], "autostart": False, "mode": "pac", "socks_port": 2080}
 
 _CREATE_NO_WINDOW = 0x08000000
+
+
+def _cleanup_old_exe() -> None:
+    """Подчищает sing-box.exe.old, оставшийся от предыдущего обновления, — если он
+    ещё занят процессом, который на нём доработал, тихо оставляем как есть и
+    пробуем при следующем старте/скачивании."""
+    try:
+        SINGBOX_EXE_OLD.unlink()
+    except FileNotFoundError:
+        pass
+    except OSError:
+        pass  # занят — приберём в другой раз
 
 
 class ProxyManager:
@@ -58,6 +80,7 @@ class ProxyManager:
         self.config = self._load()
         self._core_version_cache: str | None = None  # версия бинаря меняется только при download_core
         self._core_version_cached = False
+        _cleanup_old_exe()  # подчистить sing-box.exe.old, если он остался с прошлого обновления
 
     # --- конфиг (state.json) -------------------------------------------------
 
@@ -139,19 +162,57 @@ class ProxyManager:
         return ver
 
     def download_core(self) -> dict:
-        """Качает пиннутый релиз sing-box и кладёт sing-box.exe в bin/sing-box/."""
+        """Качает пиннутый релиз sing-box и подменяет им sing-box.exe в bin/sing-box/.
+
+        Пишем сначала во временный sing-box.exe.new — если прокси запущен, сам
+        sing-box.exe занят и прямая перезапись падает PermissionError. Windows,
+        в отличие от перезаписи, разрешает ПЕРЕИМЕНОВАТЬ запущенный exe — на этот
+        случай старый файл уезжает в sing-box.exe.old (работающий процесс
+        доработает на нём), а новый становится sing-box.exe. Новая версия
+        подхватится только после перезапуска прокси — сигналим об этом полем
+        restart_required (и человекочитаемым message) в ответе.
+        """
         SINGBOX_DIR.mkdir(parents=True, exist_ok=True)
+        _cleanup_old_exe()
         req = urllib.request.Request(SINGBOX_URL, headers={"User-Agent": "chimera"})
         with urllib.request.urlopen(req, timeout=60) as resp:
             blob = resp.read()
+        digest = hashlib.sha256(blob).hexdigest()
+        if digest != SINGBOX_SHA256:
+            raise RuntimeError(
+                "Скачанный архив sing-box не прошёл проверку контрольной суммы "
+                "(SHA256 не совпадает с ожидаемым для версии "
+                f"{SINGBOX_VERSION}) — файл повреждён или подменён, установка отменена."
+            )
         with zipfile.ZipFile(io.BytesIO(blob)) as z:
             name = next((n for n in z.namelist() if n.endswith("sing-box.exe")), None)
             if not name:
                 raise RuntimeError("В архиве нет sing-box.exe")
-            with z.open(name) as src, open(SINGBOX_EXE, "wb") as dst:
+            with z.open(name) as src, open(SINGBOX_EXE_NEW, "wb") as dst:
                 dst.write(src.read())
+
+        restart_required = False
+        try:
+            os.replace(SINGBOX_EXE_NEW, SINGBOX_EXE)
+        except PermissionError:
+            # целевой exe занят запущенным прокси — перезаписать нельзя, но
+            # переименовать можно: старый уходит в сторону, новый встаёт на его место
+            try:
+                os.replace(SINGBOX_EXE, SINGBOX_EXE_OLD)
+                os.replace(SINGBOX_EXE_NEW, SINGBOX_EXE)
+            except OSError as e:
+                raise RuntimeError(f"Не удалось подменить sing-box.exe: {e}") from e
+            restart_required = True
+
         self._core_version_cached = False  # скачали новый бинарь — пересчитать версию
-        return {"present": True, "version": self.core_version()}
+        result = {"present": True, "version": self.core_version()}
+        if restart_required:
+            result["restart_required"] = True
+            result["message"] = (
+                "sing-box обновлён, но прокси сейчас запущен — новая версия "
+                "начнёт работать после перезапуска прокси."
+            )
+        return result
 
     # --- генерация конфига sing-box -----------------------------------------
 
