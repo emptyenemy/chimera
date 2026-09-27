@@ -86,9 +86,27 @@ class Api:
             return _err(e)
 
     def upstream_check_updates(self):
-        """Сверить версии источников с GitHub (медленно — ходит в сеть)."""
+        """Сверить версии источников с GitHub (медленно — ходит в сеть).
+
+        Каждый готовый источник сразу уезжает в UI через srcChecked — ждать
+        самый медленный ответ (а это бывают секунды) ради остальных незачем.
+        """
         try:
-            return _ok(upstream.check_updates())
+            return _ok(upstream.check_updates(lambda r: self._push("srcChecked", r)))
+        except Exception as e:
+            return _err(e)
+
+    def upstream_check_one(self, name):
+        """Сверить один источник — кнопка в его строке, без ожидания остальных."""
+        try:
+            return _ok(upstream.check_one(name))
+        except Exception as e:
+            return _err(e)
+
+    def upstream_update(self, name):
+        """Подтянуть свежую версию источника (git fetch + checkout/reset)."""
+        try:
+            return _ok(upstream.update_one(name))
         except Exception as e:
             return _err(e)
 

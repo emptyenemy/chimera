@@ -10,14 +10,25 @@
 
 `versions()` — локально и мгновенно (без сети). `check_updates()` — сверяет с
 GitHub (`git ls-remote`, без токена) параллельно; для сервиса дёргает /status.
+`check_one()`/`update_one()` — то же самое по одному источнику: сверка всех разом
+занимает секунды, а из UI обычно надо дёрнуть только одну строку.
+
+Обновлять умеем лишь то, что лежит в git рядом с нами (сабмодули и бандл): тег —
+`fetch` + `checkout` последнего стабильного, бандл — `reset --hard` (апстрим там
+делает force-push, `pull` ломается). Пиннутые бинари/шрифты обновлением не
+считаются: версия зашита в коде, и менять её должен человек вместе с проверкой
+совместимости (схема конфига sing-box ездит от версии к версии).
 """
 
+import importlib.util
+import io
 import json
 import platform
 import re
 import subprocess
 import urllib.request
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from contextlib import redirect_stdout
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -27,6 +38,12 @@ _CREATE_NO_WINDOW = 0x08000000
 # Официальный API релизов python.org — сверка версии интерпретатора.
 # Сам помечает пре-релизы флагом pre_release, так что 3.15-preview отсекается семантически.
 _PYTHON_RELEASES_API = "https://www.python.org/api/v2/downloads/release/"
+# Запасной источник: www.python.org в РФ режется по SNI (домен у Fastly, соседние
+# имена на тех же IP открываются, а с этим TLS-handshake просто виснет), и строка
+# Python вечно висела в «не удалось проверить». endoflife.date отдаёт последнюю
+# версию каждой ветки и с теми же блокировками доступен.
+_PYTHON_EOL_API = "https://endoflife.date/api/python.json"
+_HTTP_TIMEOUT = 8
 
 try:
     from modules.proxy.manager import SINGBOX_VERSION
@@ -122,24 +139,44 @@ def _remote_head(repo: str) -> str | None:
     return r.stdout.split()[0].strip()
 
 
-def _latest_python_stable() -> str | None:
-    """Последняя СТАБИЛЬНАЯ версия Python с python.org (без a/b/rc). None — нет связи.
-
-    Опубликованные релизы фильтруем по флагу pre_release самого API — пре-релизы
-    (3.15.0a1, 3.15.0rc1) не содержат дефиса, регэкспом бы не отсеклись."""
-    req = urllib.request.Request(_PYTHON_RELEASES_API, headers={"User-Agent": "chimera"})
+def _fetch_json(url: str, timeout: int = _HTTP_TIMEOUT):
+    req = urllib.request.Request(url, headers={"User-Agent": "chimera"})
     try:
-        with urllib.request.urlopen(req, timeout=15) as resp:
-            data = json.loads(resp.read().decode("utf-8"))
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            return json.loads(resp.read().decode("utf-8"))
     except (OSError, ValueError):
         return None
+
+
+def _latest_python_stable() -> str | None:
+    """Последняя СТАБИЛЬНАЯ версия Python (без a/b/rc). None — оба источника молчат.
+
+    Сначала python.org: опубликованные релизы фильтруем по флагу pre_release самого
+    API — пре-релизы (3.15.0a1, 3.15.0rc1) не содержат дефиса, регэкспом бы не
+    отсеклись. Если домен недоступен (блокировка по SNI), берём endoflife.date,
+    где у каждой ветки есть latest — максимум по ним и есть свежий стабильный.
+    """
+    data = _fetch_json(_PYTHON_RELEASES_API)
+    if data:
+        best = None
+        for rel in data:
+            if not rel.get("is_published") or rel.get("pre_release"):
+                continue
+            m = re.search(r"\d+\.\d+\.\d+", rel.get("name") or "")
+            if m and (best is None or _key(m.group()) > _key(best)):
+                best = m.group()
+        if best:
+            return best
+
+    data = _fetch_json(_PYTHON_EOL_API)
+    if not data:
+        return None
     best = None
-    for rel in data:
-        if not rel.get("is_published") or rel.get("pre_release"):
-            continue
-        m = re.search(r"\d+\.\d+\.\d+", rel.get("name") or "")
-        if m and (best is None or _key(m.group()) > _key(best)):
-            best = m.group()
+    for cycle in data:
+        v = cycle.get("latest")
+        if isinstance(v, str) and re.fullmatch(r"\d+\.\d+\.\d+", v):
+            if best is None or _key(v) > _key(best):
+                best = v
     return best
 
 
@@ -161,17 +198,28 @@ def _current(src: dict) -> str:
     return "—"
 
 
+def _updatable(src: dict) -> bool:
+    """Можно ли обновить источник прямо из программы.
+
+    Только git-источники и только когда их рабочая копия реально лежит рядом:
+    в собранном exe сабмодулей нет, а пины/Python/сервис обновляются не нами.
+    """
+    if src["kind"] not in ("tag", "commit"):
+        return False
+    return (ROOT / src["path"] / ".git").exists()
+
+
 def versions() -> list[dict]:
     """Только локальные версии (без сети) — для мгновенного рендера."""
     return [{"name": s["name"], "kind": s["kind"], "version": _current(s),
-             "repo": s["repo"]} for s in _SOURCES]
+             "repo": s["repo"], "updatable": _updatable(s)} for s in _SOURCES]
 
 
 # --- проверка обновлений (сеть) ---------------------------------------------
 
 def _check_one(src: dict) -> dict:
     name, kind, repo = src["name"], src["kind"], src["repo"]
-    base = {"name": name, "kind": kind, "repo": repo}
+    base = {"name": name, "kind": kind, "repo": repo, "updatable": _updatable(src)}
 
     if kind in ("tag", "pin"):
         cur = _current(src)
@@ -216,7 +264,114 @@ def _check_one(src: dict) -> dict:
     return {**base, "current": "—", "latest": None, "update": False, "error": "неизвестный тип"}
 
 
-def check_updates() -> list[dict]:
-    """Сверяет все источники с их апстримами параллельно."""
+def check_updates(on_result=None) -> list[dict]:
+    """Сверяет все источники с их апстримами параллельно.
+
+    on_result(res) зовётся по мере готовности КАЖДОГО источника (из рабочих
+    потоков): сверка упирается в сеть, и самый медленный ответ не должен держать
+    те, что уже готовы. Возврат — полный список в порядке _SOURCES.
+    """
+    results = []
     with ThreadPoolExecutor(max_workers=len(_SOURCES)) as ex:
-        return list(ex.map(_check_one, _SOURCES))
+        for fut in as_completed([ex.submit(_check_one, s) for s in _SOURCES]):
+            res = fut.result()
+            results.append(res)
+            if on_result:
+                try:
+                    on_result(res)
+                except Exception:
+                    pass  # доставка в UI не должна ронять саму проверку
+    order = {s["name"]: i for i, s in enumerate(_SOURCES)}
+    return sorted(results, key=lambda r: order.get(r["name"], 0))
+
+
+def _source(name: str) -> dict:
+    for s in _SOURCES:
+        if s["name"] == name:
+            return s
+    raise ValueError(f"Неизвестный источник: {name!r}")
+
+
+def check_one(name: str) -> dict:
+    """Сверка одного источника — из UI дёргается кнопкой в его строке."""
+    return _check_one(_source(name))
+
+
+# --- обновление (git) -------------------------------------------------------
+
+def _regen_strategies() -> str:
+    """Перепорт стратегий Flowseal после обновления сабмодуля.
+
+    Генератор — скрипт, а не пакет (tools/ без __init__.py), поэтому грузим его
+    по пути. Обновлённый сабмодуль без перепорта — это свежие хостлисты при
+    старых стратегиях, то есть молча разъехавшаяся пара.
+    """
+    script = ROOT / "tools" / "port_flowseal.py"
+    if not script.exists():
+        return "генератор стратегий недоступен — стратегии не перегенерированы"
+    spec = importlib.util.spec_from_file_location("port_flowseal", script)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    buf = io.StringIO()
+    with redirect_stdout(buf):  # генератор пишет отчёт в stdout, окну он не нужен
+        mod.main()
+    changed = [ln for ln in buf.getvalue().splitlines() if ln.startswith(("СИНХР", "ПРОПУСК"))]
+    return "стратегии перегенерированы" + (f" ({len(changed)} ресурсов обновлено)" if changed else "")
+
+
+def _winws_running() -> bool:
+    try:
+        from modules.winws.manager import _system_pids
+        return bool(_system_pids())
+    except Exception:
+        return False
+
+
+def _fail(r, what: str) -> None:
+    if r is None:
+        raise RuntimeError(f"{what}: не удалось запустить git")
+    if r.returncode != 0:
+        msg = (r.stderr or r.stdout or "").strip().splitlines()
+        raise RuntimeError(f"{what}: {msg[-1] if msg else 'ошибка git'}")
+
+
+def update_one(name: str) -> dict:
+    """Обновляет один источник до свежей версии апстрима.
+
+    Тег: fetch + checkout последнего стабильного (сабмодуль остаётся в detached
+    HEAD — как его и держит git submodule). Коммит: reset --hard на ветку origin,
+    потому что bin/zapret-win-bundle регулярно переписывает историю force-push'ем.
+    Указатель сабмодуля в основном репозитории не коммитим — это дело человека.
+    """
+    src = _source(name)
+    if not _updatable(src):
+        raise RuntimeError(f"{name}: обновляется не из программы "
+                           "(нет рабочей копии git рядом либо версия пиннута в коде)")
+    path = ROOT / src["path"]
+    before = _current(src)
+
+    if src["kind"] == "tag":
+        _fail(_git(["fetch", "--tags", "--force", "--prune", "origin"], cwd=path, timeout=300),
+              "fetch")
+        latest = _latest_tag(src["repo"])
+        if latest is None:
+            raise RuntimeError("не удалось получить список тегов (нет сети?)")
+        if _key(before) >= _key(latest) and before != "—":
+            return {**_check_one(src), "changed": False, "note": "уже актуально"}
+        _fail(_git(["checkout", "--force", latest], cwd=path, timeout=120), "checkout")
+    else:  # commit
+        # бандл — это живые winws2.exe и WinDivert: пока стратегия работает, файлы
+        # заняты, и reset свалится на середине, оставив половину бандла старой
+        if src["path"].endswith("zapret-win-bundle") and _winws_running():
+            raise RuntimeError("сначала останови стратегию — winws2 держит файлы бандла")
+        _fail(_git(["fetch", "--force", "origin"], cwd=path, timeout=600), "fetch")
+        r = _git(["symbolic-ref", "--short", "refs/remotes/origin/HEAD"], cwd=path, timeout=15)
+        branch = (r.stdout.strip() if r and r.returncode == 0 else "") or "origin/master"
+        _fail(_git(["reset", "--hard", branch], cwd=path, timeout=120), "reset")
+
+    res = _check_one(src)
+    after = res.get("current") or _current(src)
+    note = f"{before} → {after}"
+    if src["path"].endswith("zapret-discord-youtube"):
+        note += "; " + _regen_strategies()
+    return {**res, "changed": before != after, "note": note}

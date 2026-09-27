@@ -448,9 +448,14 @@
       <div class="card">
         <div class="src-head">
           <h2>Источники и обновления</h2>
-          <button class="btn" id="src-check-btn">Проверить обновления</button>
+          <div class="src-head-actions">
+            <button class="btn" id="src-check-btn">Проверить обновления</button>
+            <button class="btn primary" id="src-update-btn">Обновить всё</button>
+          </div>
         </div>
-        <p class="hint">Версии внешних компонентов, из которых собран проект.</p>
+        <p class="hint">Версии внешних компонентов, из которых собран проект. «Проверить» в строке
+          сверяет только этот источник, «Обновить» — подтягивает свежую версию (git). Пиннутые в коде
+          версии (sing-box, шрифты) и Python обновляются вручную.</p>
         <div id="src-list" class="src-list">Загружаю…</div>
         <div class="form-error" id="src-error"></div>
       </div>

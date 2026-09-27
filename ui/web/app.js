@@ -1610,43 +1610,156 @@ async function loadSources() {
   } catch (e) { $("#src-error").textContent = e.message; }
 }
 
+// что сейчас делается с источником: имя -> "check" | "update".
+// Строка рисуется из общего состояния, поэтому «занятость» держим рядом с ним,
+// а не на самой кнопке: любая перерисовка кнопку бы обнулила.
+const srcBusy = new Map();
+
 function renderSources() {
   // одни и те же данные рисуем во все контейнеры .src-list (Настройки + Дашборд)
   const html = !sourcesState.length
     ? `<div class="empty">Источников нет.</div>`
     : sourcesState.map(s => {
+        const busy = srcBusy.get(s.name);
         let right;
-        if (s.error) right = `<span class="src-warn">${esc(s.error)}</span>`;
+        if (busy) right = `<span class="src-badge info">${busy === "update" ? "Обновляю…" : "Проверяю…"}</span>`;
+        else if (s.error) right = `<span class="src-warn">${esc(s.error)}</span>`;
         else if (s.note) right = `<span class="src-badge info">${esc(s.note)}</span>`;  // онлайн-сервис: дата реестра
-        else if (s.latest == null) right = `<span class="src-cur">${esc(s.version || s.current || "—")}</span>`;
+        else if (s.latest === undefined) right = `<span class="src-cur">не проверено</span>`;  // только локальная версия
+        else if (s.latest === null) right = `<span class="src-cur">${esc(s.version || s.current || "—")}</span>`;
         else if (s.update) right = `<span class="src-badge update">обновление: ${esc(s.latest)}</span>`;
         else right = `<span class="src-badge ok">актуально</span>`;
         const cur = s.version || s.current || "—";
-        return `<div class="src-row">
+        // кнопка «Обновить» показывается только там, где обновление реально есть
+        // кому применить: git-источники рядом с нами. Для пиннутых (sing-box,
+        // шрифты), Python и онлайн-сервиса она неактивна с пояснением — иначе
+        // непонятно, почему у одной строки кнопка есть, а у соседней нет.
+        // слот держится всегда — иначе кнопки «Проверить» у соседних строк
+        // разъезжаются по горизонтали в зависимости от того, есть обновление или нет
+        const upd = !s.update || busy
+          ? `<span class="src-slot"></span>`
+          : (s.updatable
+              ? `<button class="btn primary btn-sm" data-act="update">Обновить</button>`
+              : `<button class="btn btn-sm" data-act="update" disabled
+                   title="Версия пиннута в коде — обновляется правкой исходников">Обновить</button>`);
+        return `<div class="src-row" data-name="${esc(s.name)}">
           <div class="src-info">
             <a href="${esc(s.repo)}" target="_blank" class="src-name">${esc(s.name)}</a>
             <span class="src-ver">${esc(cur)}</span>
           </div>
-          ${right}
+          <div class="src-actions">
+            ${right}
+            <button class="btn btn-sm" data-act="check" title="Проверить только этот источник"${busy ? " disabled" : ""}>Проверить</button>
+            ${upd}
+          </div>
         </div>`;
       }).join("");
   document.querySelectorAll(".src-list").forEach(box => box.innerHTML = html);
 }
+
+// подменить один источник в общем состоянии (ответ пришёл по одной строке)
+function mergeSource(s) {
+  const i = sourcesState.findIndex(x => x.name === s.name);
+  if (i >= 0) sourcesState[i] = s; else sourcesState.push(s);
+}
+
+async function onSourceAction(e) {
+  const btn = e.target.closest(".src-row [data-act]");
+  if (!btn || btn.disabled) return;
+  const name = btn.closest(".src-row").dataset.name;
+  if (btn.dataset.act === "check") await checkOneSource(name);
+  else await updateSource(name);
+}
+
+async function checkOneSource(name) {
+  if (srcBusy.has(name)) return;
+  srcBusy.set(name, "check");
+  renderSources();
+  $("#src-error").textContent = "";
+  try {
+    const s = await api("upstream_check_one", name);
+    mergeSource(s);
+    toast(s.error ? `${name}: ${s.error}`
+      : s.update ? `${name}: есть обновление — ${s.latest}.`
+      : `${name}: актуально.`, !!s.error);
+  } catch (e) { $("#src-error").textContent = e.message; toast(e.message, true); }
+  finally { srcBusy.delete(name); renderSources(); renderDashFoot(); }
+}
+
+async function updateSource(name, quiet) {
+  if (srcBusy.has(name)) return false;
+  srcBusy.set(name, "update");
+  renderSources();
+  $("#src-error").textContent = "";
+  let ok = false;
+  try {
+    const s = await api("upstream_update", name);
+    mergeSource(s);
+    ok = true;
+    if (!quiet) toast(`${name}: ${s.note || "обновлено"}.`);
+  } catch (e) {
+    $("#src-error").textContent = `${name}: ${e.message}`;
+    if (!quiet) toast(e.message, true);
+  } finally { srcBusy.delete(name); renderSources(); renderDashFoot(); }
+  return ok;
+}
+
+// результат по одному источнику прилетает из Python по мере готовности
+// (см. ui/api.py: upstream_check_updates) — строка перерисовывается сразу,
+// не дожидаясь самой медленной сверки
+window.srcChecked = function (s) {
+  if (srcBusy.get(s.name) === "check") srcBusy.delete(s.name);
+  mergeSource(s);
+  renderSources();
+  renderDashFoot();
+};
 
 async function checkSourceUpdates(btn) {
   btn = btn && btn.tagName ? btn : $("#src-check-btn");
   const label = btn.textContent;
   btn.disabled = true; btn.textContent = "Проверяю…";
   $("#src-error").textContent = "";
+  // все строки сразу в «Проверяю…», дальше каждая гаснет своим srcChecked
+  sourcesState.forEach(s => { if (!srcBusy.has(s.name)) srcBusy.set(s.name, "check"); });
+  renderSources();
   try {
     sourcesState = await api("upstream_check_updates");
     sourcesChecked = true;
-    renderSources();
-    renderDashFoot();
     const n = sourcesState.filter(s => s.update).length;
     toast(n ? `Есть обновления: ${n}.` : "Всё актуально.");
   } catch (e) { $("#src-error").textContent = e.message; }
+  finally {
+    sourcesState.forEach(s => { if (srcBusy.get(s.name) === "check") srcBusy.delete(s.name); });
+    renderSources();
+    renderDashFoot();
+  }
   btn.disabled = false; btn.textContent = label;
+}
+
+// «Обновить всё»: без свежей сверки обновлять нечего — сперва проверяем, потом
+// тянем по очереди (параллельный git по одному и тому же репозиторию мешает сам себе).
+async function updateAllSources() {
+  const btn = $("#src-update-btn");
+  btn.disabled = true;
+  const label = btn.textContent;
+  try {
+    if (!sourcesChecked) {
+      btn.textContent = "Проверяю…";
+      sourcesState = await api("upstream_check_updates");
+      sourcesChecked = true;
+      renderSources();
+    }
+    const names = sourcesState.filter(s => s.update && s.updatable).map(s => s.name);
+    if (!names.length) return toast("Обновлять нечего — всё актуально.");
+    btn.textContent = "Обновляю…";
+    let done = 0;
+    for (const name of names) if (await updateSource(name, true)) done++;
+    toast(done === names.length
+      ? `Обновлено источников: ${done}.`
+      : `Обновлено ${done} из ${names.length}, остальное — в ошибке ниже.`,
+      done !== names.length);
+  } catch (e) { $("#src-error").textContent = e.message; }
+  finally { btn.disabled = false; btn.textContent = label; }
 }
 
 // --- dashboard (главная) ----------------------------------------------------
@@ -2082,6 +2195,8 @@ async function init() {
   $("#set-elevate").addEventListener("change", e => setSetting("auto_elevate", e.target.checked));
   $("#set-autostart").addEventListener("change", e => setAutostart(e.target.checked));
   $("#src-check-btn").addEventListener("click", checkSourceUpdates);
+  $("#src-update-btn").addEventListener("click", updateAllSources);
+  $("#src-list").addEventListener("click", onSourceAction);
 
   $("#tg-toggle-btn").addEventListener("click", tgToggle);
   $("#tg-open-btn").addEventListener("click", tgOpenLink);
