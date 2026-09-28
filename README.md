@@ -1,10 +1,37 @@
 <p align="center">
-  <img src="assets/logo/social-preview.png" alt="Chimera — обход блокировок в одном окне" width="720">
+  <img src="assets/logo/social-preview.png" alt="Chimera — обход блокировок в одном окне" width="100%">
 </p>
 
-# CHIMERA
+<p align="center">
+  <a href="https://github.com/emptyenemy/chimera/releases/latest"><img alt="Релиз" src="https://img.shields.io/github/v/release/emptyenemy/chimera?style=flat-square&labelColor=0a0a0a&color=525252"></a>
+  <a href="LICENSE"><img alt="Лицензия" src="https://img.shields.io/github/license/emptyenemy/chimera?style=flat-square&labelColor=0a0a0a&color=525252"></a>
+  <img alt="Платформа" src="https://img.shields.io/badge/platform-Windows%2010%20%7C%2011-525252?style=flat-square&labelColor=0a0a0a">
+  <a href="https://github.com/emptyenemy/chimera/actions/workflows/ci.yml"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/emptyenemy/chimera/ci.yml?branch=main&style=flat-square&labelColor=0a0a0a&label=CI"></a>
+</p>
 
-Графическая обёртка (Windows) над инструментами обхода DPI-блокировок в России (ТСПУ Роскомнадзора). Один интерфейс собирает несколько независимых способов разблокировки поверх общего слоя списков доменов:
+<p align="center">
+  <a href="https://github.com/emptyenemy/chimera/releases/latest"><b>Скачать</b></a>
+  &nbsp;·&nbsp;
+  <a href="https://emptyenemy.github.io/chimera/">Сайт</a>
+  &nbsp;·&nbsp;
+  <a href="docs/ROADMAP.md">Планы</a>
+  &nbsp;·&nbsp;
+  <a href="https://github.com/emptyenemy/chimera/issues/new">Сообщить о проблеме</a>
+</p>
+
+---
+
+**Chimera** — одно окно вместо набора скриптов для обхода блокировок в России (ТСПУ Роскомнадзора). Стратегии, прокси, Telegram, hosts и DNS собраны в одном приложении для Windows, а общий список сайтов работает сразу во всех способах. Исходный код открыт, лицензия MIT.
+
+## Быстрый старт
+
+1. Скачайте `Chimera-<версия>-win64.zip` со страницы [Releases](https://github.com/emptyenemy/chimera/releases/latest).
+2. Распакуйте архив и запустите `Chimera.exe`.
+3. Включите нужный способ обхода. Python и git не нужны, обновляется программа сама, по кнопке.
+
+## Возможности
+
+Способы независимы друг от друга и работают поверх общего слоя списков доменов:
 
 - **Стратегии (zapret2 / winws2)** — обход DPI через [bol-van/zapret2](https://github.com/bol-van/zapret2), стратегии портированы из [Flowseal/zapret-discord-youtube](https://github.com/Flowseal/zapret-discord-youtube);
 - **Прокси (sing-box)** — выборочный VLESS/Trojan/SS/VMess только для доменов из списков (режим PAC без админа или TUN);
