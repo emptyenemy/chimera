@@ -51,6 +51,16 @@ def main() -> int:
     config = load_config()
     mode = config.get("interface", "ui")
 
+    # Окно уже открыто (или свёрнуто в трей) — показываем его, вторую копию не
+    # поднимаем. До UAC: иначе повторный запуск сначала спросил бы права, а потом
+    # всё равно вышел. Старт с Windows (--tray) при живой копии просто молча выходит.
+    if mode == "ui":
+        from modules import instance
+        if instance.is_running():
+            if "--tray" not in sys.argv:
+                instance.signal_existing()
+            return 0
+
     # UI/TUI работают с hosts и DNS — без прав админа толку нет, повышаемся сразу.
     # service — фон от SYSTEM (см. modules/service.py), там UAC неуместен и невозможен.
     if mode in ("ui", "tui") and config.get("auto_elevate", True) and not is_admin():
