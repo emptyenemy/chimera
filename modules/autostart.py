@@ -15,17 +15,20 @@
 """
 
 import os
+import re
 import subprocess
 import sys
 import tempfile
 from pathlib import Path
-from xml.sax.saxutils import escape
+from xml.sax.saxutils import escape, unescape
 
 from modules import paths
 
 ROOT = Path(__file__).parent.parent
 MAIN_PY = ROOT / "main.py"
 TASK_NAME = "CHIMERA"
+# С Windows программа стартует сразу в трей, без окна (см. ui/backend_qt.py).
+TRAY_ARG = "--tray"
 
 _NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 
@@ -45,14 +48,14 @@ def _launch_target() -> tuple[str, str]:
     """(команда, аргументы) для запуска приложения.
 
     Собранный .exe запускаем напрямую; из исходников — через pythonw.exe
-    (без консольного окна), передавая путь к main.py.
+    (без консольного окна), передавая путь к main.py. В обоих случаях с --tray.
     """
     if paths.IS_FROZEN:
-        return sys.executable, ""
+        return sys.executable, TRAY_ARG
     exe = Path(sys.executable)
     pyw = exe.with_name("pythonw.exe")  # оконный интерпретатор — без чёрной консоли
     command = str(pyw if pyw.exists() else exe)
-    return command, f'"{MAIN_PY}"'
+    return command, f'"{MAIN_PY}" {TRAY_ARG}'
 
 
 def _task_xml() -> str:
@@ -139,6 +142,52 @@ def disable() -> None:
     )
     if r.returncode != 0 and is_enabled():
         raise RuntimeError((r.stderr or r.stdout or "schtasks /Delete не удался").strip())
+
+
+def _decode(raw: bytes) -> str:
+    # schtasks пишет XML в кодировке консоли, хотя в заголовке значится UTF-16;
+    # на случай настоящего UTF-16 (с BOM) — тоже разбираем
+    if raw[:2] in (b"\xff\xfe", b"\xfe\xff"):
+        return raw.decode("utf-16", errors="replace")
+    try:
+        return raw.decode("utf-8")
+    except UnicodeDecodeError:
+        return raw.decode("oem" if sys.platform == "win32" else "latin-1", errors="replace")
+
+
+def _registered_target() -> tuple[str, str] | None:
+    """(команда, аргументы) из действия существующей задачи; None — задачи нет."""
+    r = subprocess.run(
+        ["schtasks", "/Query", "/TN", TASK_NAME, "/XML"],
+        capture_output=True, creationflags=_NO_WINDOW,
+    )
+    if r.returncode != 0:
+        return None
+    xml = _decode(r.stdout or b"")
+    command = re.search(r"<Command>(.*?)</Command>", xml, re.S)
+    arguments = re.search(r"<Arguments>(.*?)</Arguments>", xml, re.S)
+    quotes = {"&quot;": '"', "&apos;": "'"}  # планировщик может отдать кавычки сущностями
+    return (unescape(command.group(1), quotes).strip() if command else "",
+            unescape(arguments.group(1), quotes).strip() if arguments else "")
+
+
+def refresh() -> bool:
+    """Пересоздаёт задачу, если она запускает не то, что нужно сейчас.
+
+    Задачи из прошлых версий стартовали без --tray (сразу с окном), а после
+    переезда программы в другую папку указывают на старый путь. Зовётся на
+    старте окна; нужны права администратора. True — задача пересоздана.
+    """
+    if not is_supported():
+        return False
+    current = _registered_target()
+    if current is None:
+        return False
+    command, arguments = _launch_target()
+    if current == (command, arguments):
+        return False
+    enable()
+    return True
 
 
 def set_enabled(value: bool) -> bool:

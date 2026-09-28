@@ -50,6 +50,7 @@ class Api:
         # владелец процессов, UI не поднимает свои автозапуски поверх неё.
         if not service.is_running():
             threading.Thread(target=self._autostart_all, daemon=True).start()
+        threading.Thread(target=self._refresh_autostart_task, daemon=True).start()
         # Состояние модулей фронт больше не опрашивает сам — его пушит хаб (см. ui/hub.py).
         # lazy — только пока вкладку кто-то смотрит: dns_state это секунды PowerShell,
         # а живая статистика TG нужна лишь на её вкладке.
@@ -68,6 +69,17 @@ class Api:
         # общая с service-режимом логика (modules/service.py) — ошибки одного
         # модуля не мешают остальным и уедут в UI через *_state, как и раньше.
         service.autostart_modules(self.tg, self.winws, self.proxy)
+
+    @staticmethod
+    def _refresh_autostart_task() -> None:
+        # задача автозапуска из прошлой версии (без --tray или со старым путём к
+        # программе) — пересоздать; без админа schtasks /Create не пройдёт, молча пропускаем
+        if not is_admin():
+            return
+        try:
+            autostart.refresh()
+        except Exception:
+            pass
 
     def shutdown(self) -> None:
         """Гасит наши процессы при закрытии окна. Зовётся бэкендом явно: на atexit
