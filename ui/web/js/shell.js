@@ -22,7 +22,7 @@ const Status = {
     const n = Status.count();
     const app = Store.get("app") || {};
     const ver = $("#sb-ver");
-    if (ver) ver.textContent = app.version ? `v${app.version}` : "";
+    if (ver) ver.textContent = fmtVersion(app.version);
 
     for (const [page, key] of Object.entries(dots)) {
       const el = document.querySelector(`[data-nav-dot="${page}"]`);

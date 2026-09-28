@@ -17,6 +17,12 @@ function esc(s) {
   return String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 }
 
+// Версия программы для вывода: 0.2.0 → v0.2.0, а «dev» (запуск из исходников) — как есть.
+function fmtVersion(v) {
+  if (!v) return "";
+  return /^\d/.test(v) ? `v${v}` : v;
+}
+
 // Иконка lucide из спрайта (vendor/lucide/icons.js) — строкой, для шаблонов.
 function ic(name, cls = "") {
   return `<svg class="icon${cls ? " " + cls : ""}" aria-hidden="true"><use href="#i-${name}"/></svg>`;

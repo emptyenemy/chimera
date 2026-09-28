@@ -328,7 +328,7 @@
 
   function appVersionHtml() {
     const v = Store.get("app")?.version;
-    return `<div class="set-appver">${v ? `Chimera v${esc(v)}` : ""}</div>`;
+    return `<div class="set-appver">${v ? `Chimera ${esc(fmtVersion(v))}` : ""}</div>`;
   }
 
   function render() {

@@ -15,12 +15,12 @@ from modules.dns_jumper import DnsJumper
 from modules.hosts import HostsManager
 from modules.proxy import ProxyManager
 from modules.tgproxy import TgProxy
+from modules.version import VERSION
 from modules.winws import WinwsManager
 from modules.hosts.manager import is_admin
 from ui.hub import StateHub
 
 WEB_DIR = Path(__file__).parent / "web"
-VERSION = "1.0.0"
 
 
 def _ok(data=None):
