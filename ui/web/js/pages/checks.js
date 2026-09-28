@@ -77,7 +77,6 @@
   const CHECKERS = {
     rkn: {
       id: "rkn", title: "Реестр РКН", icon: "shield-check",
-      desc: "Официальная блокировка — домен числится в реестре РКН или в заблокированной подсети (cheburcheck.ru).",
       apiOne: "chebur_check_one", apiStart: "chebur_check_start",
       isHit: r => r.blocked === true,
       isProblem: r => r.status !== "free",
@@ -91,7 +90,6 @@
     },
     reach: {
       id: "reach", title: "Доступность", icon: "wifi",
-      desc: "Достучимся ли мы до домена прямо сейчас — с текущими winws/DNS/hosts/прокси, как в браузере.",
       apiOne: "block_check_one", apiStart: "block_check_start",
       isHit: r => r.status === "ok",
       isProblem: r => r.status !== "ok",
@@ -155,26 +153,18 @@
       </div>`;
   }
 
+  // о сервисе реестра говорим только когда он недоступен — версия и размер базы пользователю не нужны
   function statusBannerHtml() {
-    if (cheburStatusError) {
-      return `<div class="alert warning">${ic("triangle-alert")}<div class="alert-title">cheburcheck недоступен</div><div class="alert-desc">${esc(cheburStatusError)} — проверка по реестру сейчас офлайн.</div></div>`;
-    }
-    if (!cheburStatus) return skeletonHtml(1, 44);
-    const upd = cheburStatus.last_update ? new Date(cheburStatus.last_update).toLocaleString("ru-RU") : "?";
-    const cnt = cheburStatus.domain_count != null ? fmtNum(cheburStatus.domain_count) : "?";
-    const v4 = cheburStatus.v4_count ? `, ${fmtNum(Math.round(cheburStatus.v4_count / 1e6))} млн IPv4` : "";
-    return `<div class="alert">${ic("info")}<div class="alert-title">cheburcheck v${esc(cheburStatus.version || "?")}</div><div class="alert-desc">Реестр РКН: ${cnt} доменов${v4}, обновлён ${esc(upd)}</div></div>`;
+    if (!cheburStatusError) return "";
+    return `<div class="alert warning">${ic("triangle-alert")}<div class="alert-title">Сервис реестра недоступен</div><div class="alert-desc">${esc(cheburStatusError)}</div></div>`;
   }
 
+  // заголовок карточки повторял бы вкладку над ней — только содержимое
   function sectionHtml(id) {
-    const cfg = CHECKERS[id], st = state[id];
+    const st = state[id];
     return `
       ${id === "rkn" ? statusBannerHtml() : ""}
-      <div class="card">
-        <div class="card-header">
-          <div class="card-title">${ic(cfg.icon)}${cfg.title}</div>
-          <div class="card-description">${esc(cfg.desc)}</div>
-        </div>
+      <div class="card compact">
         <div class="card-content stack-sm">
           ${toolbarHtml(id, st)}
           ${st.error ? errorAlert(st.error) : ""}
