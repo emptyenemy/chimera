@@ -11,7 +11,7 @@ ICONS="activity arrow-down-to-line arrow-right arrow-up-right ban check chevron-
 chevron-up chevrons-up-down circle-alert circle-check circle-dot circle-help circle-x clipboard-copy clock
 copy cpu download ellipsis external-link eye eye-off file-text filter folder-open gamepad-2 gauge
 git-branch globe hard-drive info key-round layout-dashboard link list list-checks loader-circle lock
-network package panel-left-close panel-left-open pause pencil play plus power radar refresh-cw rotate-ccw save scan-search search
+network package panel-left-close panel-left-open pause pencil play plus power qr-code radar refresh-cw rotate-ccw save scan-search search
 send server settings shield shield-check shield-off sliders-horizontal sparkles square terminal
 trash-2 triangle-alert unlock upload wifi wifi-off x zap"
 
@@ -25,3 +25,11 @@ done
 
 python build-icons.py
 echo "OK: lucide@$LUCIDE"
+
+# QR-код для ссылки Telegram-прокси (страница «Telegram»). Один файл, MIT; текст
+# лицензии лежит рядом (vendor/qrcode/LICENSE) — в пакете отдельного файла нет.
+QRCODE=2.0.4
+mkdir -p qrcode
+curl -fsSL -o qrcode/qrcode.js \
+  "https://cdn.jsdelivr.net/npm/qrcode-generator@$QRCODE/dist/qrcode.js"
+echo "OK: qrcode-generator@$QRCODE"
