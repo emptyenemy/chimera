@@ -194,6 +194,7 @@
         <div class="card-content tg-actions">
           <button class="btn outline sm" data-act="open-link"${st.link ? "" : " disabled"}>${ic("external-link")}Подключить в Telegram</button>
           <button class="btn ghost sm" data-act="copy-link"${st.link ? "" : " disabled"}>${ic("copy")}Скопировать ссылку</button>
+          <button class="btn ghost sm" data-act="show-qr"${st.link ? "" : " disabled"}>${ic("qr-code")}QR для телефона</button>
         </div>
         ${st.error ? `<div class="card-content"><div class="alert destructive">${ic("circle-alert")}<div class="alert-desc">${esc(st.error)}</div></div></div>` : ""}
       </div>`;
@@ -343,6 +344,92 @@
       ${advancedHtml(Store.get("tg"))}`);
   }
 
+  // --- QR для телефона ---------------------------------------------------------
+  // Библиотека (vendor/qrcode) подгружается по клику: на странице она нужна редко.
+  // Телефон подключается по адресу компьютера в сети, а по умолчанию прокси слушает
+  // только 127.0.0.1 — тогда вместо QR предлагаем открыть его для сети.
+
+  let qrLibLoading = null;
+  function loadQrLib() {
+    if (window.qrcode) return Promise.resolve(window.qrcode);
+    if (!qrLibLoading) {
+      qrLibLoading = new Promise((ok, fail) => {
+        const s = document.createElement("script");
+        s.src = "vendor/qrcode/qrcode.js";
+        s.onload = () => (window.qrcode ? ok(window.qrcode) : fail(new Error("Библиотека QR не загрузилась")));
+        s.onerror = () => { qrLibLoading = null; fail(new Error("Не удалось загрузить библиотеку QR")); };
+        document.head.appendChild(s);
+      });
+    }
+    return qrLibLoading;
+  }
+
+  const isLoopbackHost = h => ["", "127.0.0.1", "localhost", "::1"].includes(String(h ?? "").trim().toLowerCase());
+
+  // Белый фон и чёрные модули в любой теме: на тёмном фоне камера код не считает
+  function qrSvg(text) {
+    const qr = window.qrcode(0, "M");
+    qr.addData(text);
+    qr.make();
+    const n = qr.getModuleCount(), quiet = 4, size = n + quiet * 2;
+    let d = "";
+    for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) if (qr.isDark(r, c)) d += `M${c + quiet} ${r + quiet}h1v1h-1z`;
+    return `<svg class="tg-qr-svg" viewBox="0 0 ${size} ${size}" role="img" aria-label="QR-код ссылки Telegram-прокси" shape-rendering="crispEdges">
+      <rect width="${size}" height="${size}" fill="#fff"/><path d="${d}" fill="#000"/></svg>`;
+  }
+
+  function qrBodyHtml(st) {
+    if (!st?.link) return `<p class="muted">Ссылка ещё не готова.</p>`;
+    if (isLoopbackHost(st.host)) {
+      return `
+        <div class="tg-qr-note">
+          <p>Сейчас прокси слушает только этот компьютер (${esc(st.host)}), поэтому телефон к нему не подключится.</p>
+          <p class="muted">Откройте прокси для устройств в вашей сети Wi-Fi: он перезапустится сам. Подключиться сможет любой, кто знает секрет из ссылки, а Windows может спросить разрешение в брандмауэре.</p>
+          <button class="btn" data-qr-lan="open">Открыть для устройств в сети</button>
+        </div>`;
+    }
+    return `
+      <div class="tg-qr">
+        <div class="tg-qr-code">${qrSvg(st.link)}</div>
+        <p class="muted">Наведите камеру телефона на QR-код и откройте ссылку в Telegram. Телефон должен быть в той же сети Wi-Fi, что и этот компьютер.</p>
+        ${st.running ? "" : `<div class="alert warning">${ic("triangle-alert")}<div class="alert-desc">Прокси остановлен. Запустите его, иначе телефон не подключится.</div></div>`}
+        <code class="tg-qr-link mono">${esc(st.link)}</code>
+        <p class="muted">QR содержит секрет прокси: не показывайте его посторонним.</p>
+        <button class="btn ghost sm" data-qr-lan="close">Вернуть: только этот компьютер</button>
+      </div>`;
+  }
+
+  async function openQrDialog() {
+    if (!Store.get("tg")?.link) return;
+    try { await loadQrLib(); }
+    catch (err) { toast.error("QR недоступен", err.message); return; }
+
+    let off = () => {};
+    openDialog({
+      title: "Подключить телефон",
+      description: "Telegram-прокси на этом компьютере",
+      body: `<div class="tg-qr-host" data-qr-body></div>`,
+      onClose: () => off(),
+      onMount: h => {
+        const host = h.el.querySelector("[data-qr-body]");
+        const paint = () => { host.innerHTML = qrBodyHtml(Store.get("tg")); if (window.icons) window.icons(host); };
+        paint();
+        off = Store.on("tg", paint);
+        h.el.addEventListener("click", ev => {
+          const btn = ev.target.closest("[data-qr-lan]");
+          if (!btn || btn.disabled) return;
+          const st = Store.get("tg");
+          const toHost = btn.dataset.qrLan === "open" ? "0.0.0.0" : "127.0.0.1";
+          // без оптимистичной правки: ссылку с адресом компьютера в сети считает
+          // бэкенд, а до его ответа QR показывал бы старую (127.0.0.1)
+          withBusy(btn, () => optimistic("tg", null,
+            () => api("tg_set_config", toHost, Number(st.port), st.secret, !!st.autostart),
+            { errorTitle: "Не удалось изменить доступ" }).catch(() => {}));
+        });
+      },
+    });
+  }
+
   // --- события ----------------------------------------------------------------
 
   function onClick(e) {
@@ -361,6 +448,9 @@
       if (st?.link) copyText(st.link);
       return;
     }
+
+    const showQr = e.target.closest('[data-act="show-qr"]');
+    if (showQr && !showQr.disabled) return openQrDialog();
 
     if (e.target.closest('[data-act="toggle-secret"]')) { secretVisible = !secretVisible; render(); return; }
     if (e.target.closest('[data-act="regen-secret"]')) return regenSecret();

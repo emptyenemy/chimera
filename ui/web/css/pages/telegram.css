@@ -27,3 +27,10 @@
 .tg-dc-row { display: flex; align-items: center; gap: 8px; }
 .tg-dc-num { width: 72px; flex: none; }
 .tg-dc-ip { flex: 1; min-width: 0; }
+
+/* QR для телефона: белая плашка в любой теме, иначе камера не считает код на тёмном фоне */
+.tg-qr, .tg-qr-note { display: flex; flex-direction: column; gap: 12px; }
+.tg-qr { align-items: center; text-align: center; }
+.tg-qr-code { width: min(280px, 100%); background: #fff; padding: 8px; border-radius: 12px; }
+.tg-qr-svg { display: block; width: 100%; height: auto; }
+.tg-qr-link { max-width: 100%; overflow-wrap: anywhere; font-size: 12px; color: var(--muted-foreground); user-select: all; }
