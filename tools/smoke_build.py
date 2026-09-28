@@ -56,17 +56,41 @@ def _wait_cdp(port: int, proc: subprocess.Popen, timeout: float = 60) -> None:
     raise RuntimeError("страница программы не поднялась за минуту")
 
 
-def _cli_check(app: Path, env: dict) -> dict:
-    """Командная строка собранного exe: `Chimera.exe service status` — тот путь main.py,
-    которым ставится и управляется фоновая служба."""
+def _cli_step(app: Path, env: dict, name: str, args: list[str], check=None) -> dict:
+    """Один вызов командной строки собранного exe. Вывод читаем через трубу: так проверяется,
+    что режим консоли attach отдаёт текст, когда терминала нет, а stdout перенаправлен."""
+    label = f"командная строка: {name}"
     try:
-        r = subprocess.run([str(app / "Chimera.exe"), "service", "status"], cwd=app, env=env,
+        r = subprocess.run([str(app / "Chimera.exe"), *args], cwd=app, env=env,
                            capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=60)
-        ok = r.returncode == 0
-        return {"name": "командная строка: service status", "ok": ok,
-                "detail": (r.stdout or r.stderr).strip().splitlines()[0] if (r.stdout or r.stderr).strip() else f"код {r.returncode}"}
     except (OSError, subprocess.SubprocessError) as e:
-        return {"name": "командная строка: service status", "ok": False, "detail": str(e)}
+        return {"name": label, "ok": False, "detail": str(e)}
+    out = (r.stdout or r.stderr).strip()
+    ok = r.returncode == 0 and bool(out) and (check is None or check(out))
+    return {"name": label, "ok": ok, "detail": out.splitlines()[0][:120] if out else f"код {r.returncode}, вывода нет"}
+
+
+def _json_ok(text: str) -> bool:
+    try:
+        return json.loads(text).get("ok") is True
+    except ValueError:
+        return False
+
+
+def _cli_checks_while_running(app: Path, env: dict) -> list[dict]:
+    """Пока окно работает: команды идут в него по каналу управления — сквозная проверка."""
+    return [
+        _cli_step(app, env, "--version", ["--version"], lambda t: "Chimera" in t),
+        _cli_step(app, env, "agent-info --json", ["agent-info", "--json"], _json_ok),
+        _cli_step(app, env, "status --json (через канал)", ["status", "--json"], _json_ok),
+        _cli_step(app, env, "winws state --json (через канал)", ["winws", "state", "--json"], _json_ok),
+        _cli_step(app, env, "lists show --json", ["lists", "show", "--json"], _json_ok),
+    ]
+
+
+def _cli_check(app: Path, env: dict) -> dict:
+    """`Chimera.exe service status` — тот путь main.py, которым ставится и управляется фоновая служба."""
+    return _cli_step(app, env, "service status", ["service", "status"])
 
 
 def run(build: Path, full: bool = False) -> int:
@@ -77,19 +101,21 @@ def run(build: Path, full: bool = False) -> int:
     app, data = tmp / "Chimera", tmp / "data"
     shutil.copytree(build, app, ignore=shutil.ignore_patterns("data", "config.json"))
     # единственное отличие от чистой установки: без UAC — иначе запрос прав на экране
+    # (у exe манифеста администратора нет, но окно повышается само; auto_elevate=false это отключает)
     (app / "config.json").write_text(json.dumps({"auto_elevate": False}), encoding="utf-8")
 
     port = _free_port()
     env = dict(os.environ)
     env.update({
-        "__COMPAT_LAYER": "RunAsInvoker",           # манифест просит админа — запускаем как есть
         "QT_QPA_PLATFORM": "offscreen",             # никакого окна на экране
         "QTWEBENGINE_REMOTE_DEBUGGING": str(port),
         "CHIMERA_DATA": str(data),
         "CHIMERA_INSTANCE_EVENT": rf"Local\Chimera_Smoke_{os.getpid()}",
     })
     log = open(tmp / "engine.log", "wb")
-    proc = subprocess.Popen([str(app / "Chimera.exe")], cwd=app, env=env, stdout=log, stderr=subprocess.STDOUT)
+    # --window: exe без аргументов из консоли печатает справку, а окно нужно именно оно
+    proc = subprocess.Popen([str(app / "Chimera.exe"), "--window"], cwd=app, env=env, stdout=log,
+                            stderr=subprocess.STDOUT)
     try:
         _wait_cdp(port, proc)
         r = subprocess.run(["node", str(CDP), str(port), str(CHECKS), *(["full"] if full else [])],
@@ -98,6 +124,7 @@ def run(build: Path, full: bool = False) -> int:
             print(r.stdout, r.stderr)
             return 1
         result = json.loads(r.stdout.strip().splitlines()[-1])
+        result["steps"] += _cli_checks_while_running(app, env)
     finally:
         subprocess.run(["taskkill", "/PID", str(proc.pid), "/T", "/F"], capture_output=True)
         log.close()

@@ -32,8 +32,13 @@ REM see tools/set_version.py); Windows wants four numbers: 0.3.0-beta.1 -> 0.3.0
 REM
 REM ui/app.py picks the UI engine by name from config.json, which Nuitka cannot
 REM see statically - hence --include-module for both shipped engines: backend_qt
-REM (window) and backend_browser (a tab in the user's browser, stdlib only; note
-REM the console is disabled here, so its startup URL is only opened, not printed).
+REM (window) and backend_browser (a tab in the user's browser, stdlib only).
+REM
+REM The exe is also the `chimera` command line (modules/cli). --windows-console-mode=attach
+REM makes it print into the console of the terminal it was started from and open no console
+REM window of its own when started by double click. There is deliberately no admin
+REM manifest for the exe: commands must not ask for rights on every call. The window
+REM still elevates itself through UAC on start (main.py relaunch_as_admin).
 REM pywebview is deliberately left out of the build (it pulls WebView2 through
 REM .NET/clr_loader at runtime, invisible to the packager); picking "pywebview"
 REM in a built exe falls back to the browser engine.
@@ -60,8 +65,7 @@ echo Version: %FILEVER%
 python -m nuitka ^
     --standalone ^
     --enable-plugin=pyside6 ^
-    --windows-console-mode=disable ^
-    --windows-uac-admin ^
+    --windows-console-mode=attach ^
     --windows-icon-from-ico=assets/logo/chimera.ico ^
     --assume-yes-for-downloads ^
     --output-filename=Chimera.exe ^
@@ -138,6 +142,11 @@ if exist bin\zapret-win-bundle\zapret-winws\winws2.exe (
 ) else (
     echo [!] bin\zapret-win-bundle\zapret-winws not found - strategies will not work in this build.
 )
+
+REM Agent files ship next to the exe (before the manifest, so self-update carries them):
+REM an agent started in the program folder finds the pointer file and the skill.
+if exist skills xcopy /E /I /Y /Q skills "%OUT_DIR%\skills" >nul
+if exist AGENTS.md copy /Y AGENTS.md "%OUT_DIR%\" >nul
 
 python tools\fetch_bins.py --versions "%OUT_DIR%\versions.json" >nul
 if errorlevel 1 (
