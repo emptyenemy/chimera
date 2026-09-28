@@ -11,7 +11,7 @@ ICONS="activity arrow-down-to-line arrow-right arrow-up-right ban check chevron-
 chevron-up chevrons-up-down circle-alert circle-check circle-dot circle-help circle-x clipboard-copy clock
 copy cpu download ellipsis external-link eye eye-off file-text filter folder-open gamepad-2 gauge
 git-branch globe hard-drive info key-round layout-dashboard link list list-checks loader-circle lock
-network package pause pencil play plus power radar refresh-cw rotate-ccw save scan-search search
+network package panel-left-close panel-left-open pause pencil play plus power radar refresh-cw rotate-ccw save scan-search search
 send server settings shield shield-check shield-off sliders-horizontal sparkles square terminal
 trash-2 triangle-alert unlock upload wifi wifi-off x zap"
 
