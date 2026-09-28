@@ -4,4 +4,5 @@ aistudio.google.com
 generativelanguage.googleapis.com
 alkalimakersuite-pa.clients6.google.com
 notebooklm.google.com
-labs.google
+labs.google.com
+flow.google.com
