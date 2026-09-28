@@ -17,8 +17,14 @@ import sys
 from pathlib import Path
 
 
+# Собранный .exe: PyInstaller ставит sys.frozen, Nuitka — нет (у неё свой признак
+# __compiled__ в глобалах каждого скомпилированного модуля). Проверять только
+# sys.frozen нельзя: в сборке Nuitka код решил бы, что запущен из исходников.
+IS_FROZEN = bool(getattr(sys, "frozen", False) or "__compiled__" in globals())
+
+
 def _app_dir() -> Path:
-    if getattr(sys, "frozen", False) or "__compiled__" in globals():  # собранный .exe (PyInstaller/Nuitka)
+    if IS_FROZEN:
         return Path(sys.executable).resolve().parent
     return Path(__file__).resolve().parent.parent
 

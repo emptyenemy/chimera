@@ -145,7 +145,7 @@ def _remove_pid() -> None:
 def _launch_target() -> tuple[str, str]:
     """(команда, аргументы) для действия задачи — тот же процесс, что и
     `python main.py service run`, но с фиксированными аргументами."""
-    if getattr(sys, "frozen", False):
+    if paths.IS_FROZEN:
         return sys.executable, "service run"
     exe = Path(sys.executable)
     pyw = exe.with_name("pythonw.exe")  # без консольного окна

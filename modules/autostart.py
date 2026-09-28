@@ -21,6 +21,8 @@ import tempfile
 from pathlib import Path
 from xml.sax.saxutils import escape
 
+from modules import paths
+
 ROOT = Path(__file__).parent.parent
 MAIN_PY = ROOT / "main.py"
 TASK_NAME = "CHIMERA"
@@ -45,7 +47,7 @@ def _launch_target() -> tuple[str, str]:
     Собранный .exe запускаем напрямую; из исходников — через pythonw.exe
     (без консольного окна), передавая путь к main.py.
     """
-    if getattr(sys, "frozen", False):
+    if paths.IS_FROZEN:
         return sys.executable, ""
     exe = Path(sys.executable)
     pyw = exe.with_name("pythonw.exe")  # оконный интерпретатор — без чёрной консоли
