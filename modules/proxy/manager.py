@@ -1,11 +1,17 @@
-"""Выборочный прокси на sing-box.
+"""Прокси на sing-box: системный (PAC), выборочный TUN и полный TUN.
 
-Домены из выбранных списков (modules/domains) заворачиваются в VLESS-аутбаунд,
-весь остальной трафик идёт напрямую. Транспорт — TUN (ловит все приложения),
-но route-правила гонят через прокси ТОЛЬКО наши домены. Нужны права админа.
+Режимы (config["mode"]):
+  pac   — системный прокси: PAC-файл в настройках WinINet шлёт в локальный SOCKS
+          только домены/IP из выбранных списков (modules/domains). Его читают
+          браузеры и программы, берущие системные настройки прокси. Без админа.
+  split — выборочный TUN: трафик всей системы идёт через виртуальный адаптер, но
+          в прокси уходят только выбранные приложения (по имени процесса) и
+          выбранные списки, остальное — напрямую. Ловит и программы, которые
+          системный прокси игнорируют (Store-приложения, Discord). Нужен админ.
+  tun   — полный TUN: весь трафик через прокси, кроме локальной сети. Нужен админ.
 
 sing-box.exe тянется одним пиннутым релизом в bin/sing-box/ (см. SINGBOX_*).
-Настройки (ссылка, выбранные списки, autostart) — в data/proxy.json.
+Настройки (ссылка, списки, приложения, режим, autostart) — в data/proxy.json.
 """
 
 import ctypes
@@ -52,8 +58,17 @@ SINGBOX_URL = (
 # скачиванием). Меняется вместе с SINGBOX_VERSION при обновлении версии.
 SINGBOX_SHA256 = "c2d8bfff918755808781dfdeeb8581b6c91eb3a243d9a7b55483cfc0c0684d32"
 
-# mode: "pac" — SOCKS+PAC (только выбранные домены, без админа) ИЛИ "tun" — системно.
-DEFAULTS = {"link": "", "lists": [], "autostart": False, "mode": "pac", "socks_port": 2080}
+# mode: "pac" | "split" | "tun" — см. докстринг модуля; apps — имена процессов для split.
+DEFAULTS = {"link": "", "lists": [], "apps": [], "autostart": False, "mode": "pac", "socks_port": 2080}
+MODES = ("pac", "split", "tun")
+
+# Общий TUN-адаптер выборочного и полного режимов.
+_TUN_INBOUND = {
+    "type": "tun", "tag": "tun-in",
+    "address": ["172.18.0.1/30"],
+    "auto_route": True, "strict_route": True,
+    "stack": "system", "mtu": 9000,
+}
 
 _CREATE_NO_WINDOW = 0x08000000
 
@@ -122,9 +137,28 @@ class ProxyManager:
         self._save()
         return self.state()
 
+    def set_apps(self, names) -> dict:
+        """Приложения для выборочного TUN — голые имена образов (как в диспетчере
+        задач: Discord.exe). sing-box сравнивает process_name с именем файла, так что
+        пути и имена без .exe сюда не пускаем; повторы — без учёта регистра."""
+        apps, seen = [], set()
+        for raw in names or []:
+            name = str(raw).strip()
+            if (not name.lower().endswith(".exe") or len(name) <= 4
+                    or any(c in name for c in '\\/:*?"<>|')):
+                continue
+            if name.lower() not in seen:
+                seen.add(name.lower())
+                apps.append(name)
+        self.config["apps"] = apps
+        self._save()
+        if self.running and self.config.get("mode") == "split":
+            self.restart()
+        return self.state()
+
     def set_mode(self, mode: str) -> dict:
-        if mode not in ("pac", "tun"):
-            raise ValueError("Режим — 'pac' или 'tun'")
+        if mode not in MODES:
+            raise ValueError("Режим — 'pac', 'split' или 'tun'")
         self.config["mode"] = mode
         self._save()
         if self.running:
@@ -231,7 +265,13 @@ class ProxyManager:
 
     @property
     def _pac_mode(self) -> bool:
-        return self.config.get("mode", "pac") != "tun"
+        # незнакомое значение (руками поправленный proxy.json) — как PAC: он без админа
+        return self.config.get("mode", "pac") not in ("split", "tun")
+
+    @property
+    def needs_admin(self) -> bool:
+        """TUN (выборочный и полный) поднимает сетевой адаптер — без админа не выйдет."""
+        return not self._pac_mode
 
     def build_config(self) -> dict:
         if not self.config["link"]:
@@ -269,6 +309,8 @@ class ProxyManager:
                 "final": "direct",  # не-наши домены (если влезут) — мимо
                 "default_domain_resolver": {"server": "dns-direct"},
             }
+        elif self.config.get("mode") == "split":
+            dns, inbound, route = self._split_tun_config(dns_servers)
         else:
             # TUN: полный VPN — ВЕСЬ трафик и DNS идут через прокси (списки
             # игнорируются), напрямую остаётся только локальная сеть (LAN/localhost),
@@ -278,12 +320,7 @@ class ProxyManager:
                 "final": "dns-proxy",  # весь DNS через прокси — без утечек
                 "strategy": "prefer_ipv4",
             }
-            inbound = {
-                "type": "tun", "tag": "tun-in",
-                "address": ["172.18.0.1/30"],
-                "auto_route": True, "strict_route": True,
-                "stack": "system", "mtu": 9000,
-            }
+            inbound = dict(_TUN_INBOUND)
             route = {
                 "rules": [
                     {"action": "sniff"},
@@ -302,6 +339,58 @@ class ProxyManager:
             "outbounds": [proxy_ob, {"type": "direct", "tag": "direct"}],
             "route": route,
         }
+
+    def _split_tun_config(self, dns_servers: list[dict]) -> tuple[dict, dict, dict]:
+        """Выборочный TUN: адаптер ловит весь трафик системы, но в прокси уходят
+        только выбранные приложения и списки, остальное (игры и т.п.) — напрямую.
+
+        Приложения узнаются по имени процесса (route.find_process + process_name).
+        Домены — по SNI (sniff), а соединения без SNI (свой протокол у чата WhatsApp,
+        голый TCP) — через dns.reverse_mapping: ядро помнит, какой IP какому домену
+        выдало, поэтому DNS гоним через себя (hijack-dns). Запись, закэшированная
+        Windows до старта ядра, мимо него — такие соединения узнаются по домену
+        только после истечения TTL.
+
+        DNS-запросы в Windows шлёт системная служба, а не само приложение, поэтому
+        process_name в DNS-правилах ловит лишь тех, кто резолвит сам (async DNS у
+        Chrome); остальной DNS приложений — напрямую, что не мешает: их соединения
+        всё равно уходят в прокси по имени процесса."""
+        dom, nets = self._split()
+        apps = list(self.config.get("apps") or [])
+
+        dns_rules = []
+        if apps:
+            dns_rules.append({"process_name": apps, "server": "dns-proxy"})
+        if dom:
+            dns_rules.append({"domain_suffix": dom, "server": "dns-proxy"})
+        dns = {
+            "servers": dns_servers,
+            "rules": dns_rules,
+            "final": "dns-direct",
+            "strategy": "prefer_ipv4",
+            "reverse_mapping": True,
+        }
+
+        rules = [
+            {"action": "sniff"},
+            {"protocol": "dns", "action": "hijack-dns"},
+            # локалка раньше правил по приложениям: браузер ходит и на роутер
+            {"ip_is_private": True, "outbound": "direct"},
+        ]
+        if apps:
+            rules.append({"process_name": apps, "outbound": "proxy"})
+        if dom:
+            rules.append({"domain_suffix": dom, "outbound": "proxy"})
+        if nets:
+            rules.append({"ip_cidr": nets, "outbound": "proxy"})
+        route = {
+            "rules": rules,
+            "final": "direct",
+            "find_process": True,
+            "auto_detect_interface": True,
+            "default_domain_resolver": {"server": "dns-direct"},
+        }
+        return dns, dict(_TUN_INBOUND), route
 
     # --- PAC-файл и системный прокси (только режим pac) ----------------------
 
@@ -520,6 +609,7 @@ class ProxyManager:
             "link": self.config["link"],
             "parsed": parsed,
             "lists": self.config["lists"],
+            "apps": list(self.config.get("apps") or []),
             "domains": len(_dom),
             "ips": len(_nets),
             "all_lists": [i["name"] for i in domains.list_info()],
@@ -527,6 +617,6 @@ class ProxyManager:
             "autostart": self.config["autostart"],
             "mode": self.config.get("mode", "pac"),
             "socks_port": int(self.config["socks_port"]),
-            "needs_admin": not self._pac_mode,  # админ нужен только TUN
+            "needs_admin": self.needs_admin,
             "error": self._error or err,
         }

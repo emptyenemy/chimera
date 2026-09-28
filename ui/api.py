@@ -476,7 +476,7 @@ class Api:
         Иначе None — обычная прямая проверка.
         """
         cfg = self.proxy.config
-        if cfg.get("mode", "pac") == "tun" or not cfg.get("lists"):
+        if self.proxy.needs_admin or not cfg.get("lists"):  # TUN — проверка и так пойдёт через него
             return None
         try:
             if not self.proxy.state().get("running"):
@@ -722,10 +722,10 @@ class Api:
 
     def proxy_start(self):
         try:
-            # админ нужен только для TUN; режим PAC (SOCKS) работает без прав
-            if self.proxy.config.get("mode", "pac") == "tun" and not is_admin():
+            # админ нужен только для TUN (выборочного и полного); PAC работает без прав
+            if self.proxy.needs_admin and not is_admin():
                 raise PermissionError(
-                    "Режим TUN требует прав администратора. Переключи на «Прокси (PAC)» "
+                    "Режим TUN требует прав администратора. Переключи на «Системный прокси (PAC)» "
                     "или запусти программу от админа."
                 )
             return _ok(self.proxy.start())

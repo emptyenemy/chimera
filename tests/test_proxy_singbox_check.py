@@ -19,7 +19,7 @@ pytestmark = pytest.mark.skipif(not SINGBOX_EXE.exists(), reason="sing-box.exe Ð
 VLESS_LINK = "vless://uuid-1@1.2.3.4:443?security=none&type=tcp#test"
 
 
-@pytest.mark.parametrize("mode", ["pac", "tun"])
+@pytest.mark.parametrize("mode", ["pac", "split", "tun"])
 def test_generated_config_passes_singbox_check(tmp_path, monkeypatch, mode):
     from modules.proxy import manager as proxy_manager
 
@@ -30,6 +30,7 @@ def test_generated_config_passes_singbox_check(tmp_path, monkeypatch, mode):
     pm = ProxyManager()
     pm.config["link"] = VLESS_LINK
     pm.config["lists"] = ["somelist"]
+    pm.config["apps"] = ["Discord.exe", "chrome.exe"]
     pm.config["mode"] = mode
 
     cfg = pm.build_config()
