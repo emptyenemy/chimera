@@ -31,6 +31,13 @@
 
 ## Установка и запуск
 
+Готовая сборка — со страницы [Releases](https://github.com/emptyenemy/chimera/releases): скачать
+`Chimera-<версия>-win64.zip`, распаковать, запустить `Chimera.exe`. Python и git не нужны, дальше
+программа обновляется сама — по кнопке в «Настройки → Обновление Chimera». Как выпускаются
+релизы — [docs/RELEASES.md](docs/RELEASES.md).
+
+Из исходников:
+
 ```powershell
 git clone --recurse-submodules <repo-url>
 # если клонировали без сабмодулей:
@@ -44,8 +51,10 @@ python main.py
 
 ### Бинарные зависимости (не в репозитории)
 
-- `bin/zapret-win-bundle/` — `winws2.exe` + lua + WinDivert ([bol-van/zapret-win-bundle](https://github.com/bol-van/zapret-win-bundle)). Версию (`COMPAT_VER`) держать в соответствии с сабмодулем `upstream/zapret2`.
-- `bin/sing-box/sing-box.exe` — качается кнопкой из UI (вкладка «Прокси»); версия пиннута в `modules/proxy/manager.py`.
+Оба ставятся одной командой `python tools/fetch_bins.py` (пиннутые версии, sing-box — со сверкой SHA256).
+
+- `bin/zapret-win-bundle/zapret-winws/` — `winws2.exe` + lua + WinDivert ([bol-van/zapret-win-bundle](https://github.com/bol-van/zapret-win-bundle)); коммит бандла пиннут в `tools/fetch_bins.py`, держать в соответствии с сабмодулем `upstream/zapret2`.
+- `bin/sing-box/sing-box.exe` — ещё качается кнопкой из UI (вкладка «Прокси»); версия пиннута в `modules/proxy/manager.py`.
 
 ## Обновление внешних источников
 
