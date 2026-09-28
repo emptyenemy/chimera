@@ -9,7 +9,7 @@ import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
-from modules import appconfig, autostart, blockcheck, cheburcheck, domains, upstream
+from modules import appconfig, autostart, blockcheck, cheburcheck, domains, service, upstream
 from modules import discord as discord_cache
 from modules.dns_jumper import DnsJumper
 from modules.hosts import HostsManager
@@ -45,29 +45,26 @@ class Api:
         # маршруты, TUN), и делать это до show() окна значит показывать пустой
         # экран всё это время. Дашборд подхватит их своим опросом, ошибки
         # приедут в UI через *_state, как и раньше.
-        threading.Thread(target=self._autostart_all, daemon=True).start()
+        # Если фоновая служба (modules/service.py) уже запущена — она единственный
+        # владелец процессов, UI не поднимает свои автозапуски поверх неё.
+        if not service.is_running():
+            threading.Thread(target=self._autostart_all, daemon=True).start()
 
     def _autostart_all(self) -> None:
-        if self.tg.config.get("autostart"):
-            try:
-                self.tg.start()
-            except Exception:
-                pass  # ошибка уедет в UI через tg_state
-        if self.winws.config.get("autostart") and is_admin():
-            try:
-                self.winws.autostart()  # поднять последнюю стратегию
-            except Exception:
-                pass  # ошибка уедет в UI через winws_state
-        if self.proxy.config.get("autostart"):
-            try:
-                self.proxy.start()
-            except Exception:
-                pass  # ошибка уедет в UI через proxy_state (часто — нет прав на TUN)
+        # общая с service-режимом логика (modules/service.py) — ошибки одного
+        # модуля не мешают остальным и уедут в UI через *_state, как и раньше.
+        service.autostart_modules(self.tg, self.winws, self.proxy)
 
     def shutdown(self) -> None:
         """Гасит наши процессы при закрытии окна. Зовётся бэкендом явно: на atexit
         полагаться нельзя — интерпретатор не всегда доходит до его хендлеров, и
-        winws2 (вместе с WinDivert) оставался висеть до перезагрузки."""
+        winws2 (вместе с WinDivert) оставался висеть до перезагрузки.
+
+        Если рядом работает фоновая служба — она единственный владелец процессов
+        (иначе закрытие окна погасило бы то, что служба должна держать поднятым);
+        UI просто перестаёт опрашивать состояние и выходит."""
+        if service.is_running():
+            return
         self.hosts.stop_background()
         try:
             self.winws.stop()
@@ -79,7 +76,7 @@ class Api:
             pass
 
     def app_info(self):
-        return _ok({"admin": is_admin(), "version": VERSION})
+        return _ok({"admin": is_admin(), "version": VERSION, "service_running": service.is_running()})
 
     def upstream_versions(self):
         """Локальные версии источников (быстро, без сети)."""

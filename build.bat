@@ -18,6 +18,11 @@ REM the console is disabled here, so its startup URL is only opened, not printed
 REM pywebview is deliberately left out of the build (it pulls WebView2 through
 REM .NET/clr_loader at runtime, invisible to the packager); picking "pywebview"
 REM in a built exe falls back to the browser engine.
+REM
+REM Same story for main.py's own mode dispatch: "interface" (ui/tui/service) is a
+REM string from config.json, invisible to static analysis - tui.app and
+REM modules.service need --include-module too, or a built exe would fail on
+REM `main.exe service run` / "interface": "tui" with a plain ImportError.
 
 setlocal
 REM Nuitka names the standalone folder after the entry script (main.py -> main.dist)
@@ -42,6 +47,8 @@ python -m nuitka ^
     --include-package=certifi ^
     --include-module=ui.backend_qt ^
     --include-module=ui.backend_browser ^
+    --include-module=modules.service ^
+    --include-package=tui ^
     main.py
 
 if errorlevel 1 (
