@@ -488,7 +488,6 @@
         <div class="page-head">
           <div>
             <h1 class="page-title">Настройки</h1>
-            <p class="page-desc">Интерфейс, права запуска и версии компонентов</p>
           </div>
         </div>
         <div class="stack" data-slot="body"></div>`;

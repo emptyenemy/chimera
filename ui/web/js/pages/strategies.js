@@ -382,7 +382,6 @@
         <div class="page-head">
           <div>
             <h1 class="page-title">Стратегии</h1>
-            <p class="page-desc">Запуск zapret2 (winws2) с выбранной стратегией обхода DPI — стратегии портированы из Flowseal/zapret-discord-youtube.</p>
           </div>
         </div>
         <div class="stack">

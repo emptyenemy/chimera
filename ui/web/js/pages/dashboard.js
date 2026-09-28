@@ -188,7 +188,6 @@
         <div class="page-head">
           <div>
             <h1 class="page-title">Обзор</h1>
-            <p class="page-desc">Состояние всех способов обхода блокировок</p>
           </div>
         </div>
         <div class="stack" data-slot="body"></div>`;

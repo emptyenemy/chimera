@@ -304,7 +304,6 @@
         <div class="page-head">
           <div>
             <h1 class="page-title">Проверки</h1>
-            <p class="page-desc">Блокировка по реестру РКН и реальная доступность с этой машины</p>
           </div>
         </div>
         <div class="stack" data-slot="body"></div>`;

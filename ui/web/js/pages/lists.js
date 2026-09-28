@@ -315,7 +315,6 @@
         <div class="page-head">
           <div>
             <h1 class="page-title">Списки</h1>
-            <p class="page-desc">Домены и IP по сервисам — общий источник для прокси, hosts и запрета DPI</p>
           </div>
         </div>
         <div data-slot="body"></div>`;

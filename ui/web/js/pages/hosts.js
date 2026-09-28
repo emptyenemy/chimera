@@ -465,7 +465,6 @@
         <div class="page-head">
           <div>
             <h1 class="page-title">Hosts</h1>
-            <p class="page-desc">Быстрая разблокировка сервисов подменой IP в системном hosts-файле.</p>
           </div>
         </div>
         <div class="stack" data-slot="body"></div>`;

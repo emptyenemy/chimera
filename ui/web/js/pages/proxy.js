@@ -355,7 +355,6 @@
         <div class="page-head">
           <div>
             <h1 class="page-title">Прокси</h1>
-            <p class="page-desc">Поднимает sing-box по ссылке сервера (vless / trojan / ss / vmess) — по спискам доменов, по выбранным приложениям или на весь трафик.</p>
           </div>
         </div>
         <div class="stack">

@@ -441,7 +441,6 @@
         <div class="page-head">
           <div>
             <h1 class="page-title">Telegram-прокси</h1>
-            <p class="page-desc">Локальный MTProto-прокси: Telegram Desktop подключается к нему напрямую, а он заворачивает трафик в WebSocket до дата-центров Telegram.</p>
           </div>
         </div>
         <div class="stack" data-slot="body"></div>`;

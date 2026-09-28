@@ -347,7 +347,6 @@
         <div class="page-head">
           <div>
             <h1 class="page-title">DNS</h1>
-            <p class="page-desc">Смена системного DNS в один клик — как DNS Jumper.</p>
           </div>
         </div>
         <div class="stack" data-slot="body"></div>`;
