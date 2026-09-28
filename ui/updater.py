@@ -86,18 +86,22 @@ class Updater:
         if not (self._state["installable"] and self._asset):
             raise RuntimeError("Нечего ставить — сначала проверь обновления")
         asset = dict(self._asset)
+        restart_service = service.is_running()
         try:
             self._set(stage="downloading", progress=0.0, error=None)
             zip_path = selfupdate.download(
                 asset, UPDATE_DIR / "download",
                 progress=lambda done, total: self._set(progress=(done / total) if total else 0.0))
             staged = selfupdate.stage(zip_path, UPDATE_DIR / "staged")
+            # копия текущей версии для отката — тоже до выхода: не вышло, работаем дальше как были
+            script = selfupdate.write_script(
+                paths.APP_DIR, staged, os.getpid(), restart_service=restart_service, relaunch=True,
+                script=UPDATE_DIR / "apply.cmd", log=selfupdate.LOG_PATH, rollback=UPDATE_DIR / "rollback")
         except Exception as e:
             self._set(stage="error", error=str(e))
             raise
 
         self._set(stage="installing", progress=1.0)
-        restart_service = service.is_running()
         if restart_service:
             # служба держит тот же exe — пока она жива, файлы не заменить
             service.send_stop()
@@ -105,9 +109,6 @@ class Updater:
             while service.is_running() and time.time() < deadline:
                 time.sleep(0.3)
         shutdown()
-        script = selfupdate.write_script(
-            paths.APP_DIR, staged, os.getpid(), restart_service=restart_service, relaunch=True,
-            script=UPDATE_DIR / "apply.cmd", log=selfupdate.LOG_PATH, rollback=UPDATE_DIR / "rollback")
         selfupdate.launch(script)
         request_quit()
         return self.snapshot()

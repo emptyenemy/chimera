@@ -54,6 +54,16 @@ def test_bundle_commit_is_full_hash():
     assert len(fetch_bins.BUNDLE_COMMIT) == 40
 
 
+def test_manifest_flag_lists_build_files(tmp_path):
+    # build.bat зовёт это последним шагом — самообновление по этому списку отличает свои файлы от чужих
+    (tmp_path / "bin").mkdir()
+    (tmp_path / "Chimera.exe").write_bytes(b"exe")
+    (tmp_path / "bin" / "x.dll").write_bytes(b"dll")
+    assert fetch_bins.main(["--manifest", str(tmp_path)]) == 0
+    lines = (tmp_path / "manifest.txt").read_text(encoding="utf-8").split()
+    assert lines == ["Chimera.exe", "bin/x.dll"]
+
+
 def test_write_versions_pins_bundle_commit(tmp_path, monkeypatch):
     # версии тегов берутся из рабочей копии; бандл — пиннутый коммит, а не то, что лежит в bin/
     monkeypatch.setattr(fetch_bins.upstream, "_current", lambda src: f"cur-{src['kind']}")

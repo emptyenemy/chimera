@@ -6,12 +6,19 @@
                   Chimera-<версия>-win64.zip и его SHA256 из поля digest;
   2. download() — архив в data/update/ по частям, со сверкой SHA256;
   3. stage()    — распаковка во временную папку;
-  4. write_script() + launch() — apply.cmd запускается отдельным процессом, а
-                  программа выходит: работающий exe и загруженные DLL не
-                  перезаписать, пока процесс жив. Скрипт дожидается выхода,
-                  копирует текущую версию в rollback/, кладёт новую поверх
-                  (robocopy /MIR), при ошибке возвращает старую и запускает
-                  программу снова.
+  4. write_script() — копирует текущую версию в rollback/ (пока программа ещё
+                  жива: не вышло — обновление отменяется, ничего не тронуто) и
+                  пишет apply.cmd;
+  5. launch()   — apply.cmd запускается отдельным процессом, а программа
+                  выходит: работающий exe и загруженные DLL не перезаписать,
+                  пока процесс жив. Скрипт дожидается выхода, кладёт новую
+                  версию поверх, удаляет файлы, которых в ней больше нет, при
+                  ошибке возвращает старую и запускает программу снова.
+
+Своими программа считает только файлы из manifest.txt — списка, который
+сборка кладёт рядом с exe. Всё прочее в папке (распаковали на рабочий стол,
+положили рядом свои файлы) обновление не видит и не трогает; поэтому и нет
+robocopy /MIR: он удалил бы в папке всё, чего нет в новой версии.
 
 Ставится только по кнопке и только в собранной программе: из исходников
 обновляются через git. Без токена: пока репозиторий приватный, GitHub
@@ -35,16 +42,17 @@ REPO = "emptyenemy/chimera"
 RELEASES_API = f"https://api.github.com/repos/{REPO}/releases?per_page=30"
 ASSET_RE = re.compile(r"^Chimera-.+-win64\.zip$")
 EXE_NAME = "Chimera.exe"
+MANIFEST = "manifest.txt"  # список файлов релиза, пишет build.bat (tools/fetch_bins.py --manifest)
 SERVICE_TASK = "CHIMERA-Service"  # modules/service.py: TASK_NAME
 
 UPDATE_DIR = paths.DATA_DIR / "update"
 LOG_PATH = paths.LOG_DIR / "update.log"
 
-# Что обновление не трогает. data/ — целиком (состояние модулей, логи, сама
-# папка update/); файлы — пользовательские настройки и выбор списков. Задаются
-# полными путями: по одному имени robocopy исключил бы и тёзок в чужих папках
-# (config.json бывает и внутри пакетов).
-KEEP_DIRS = ("data",)
+# Файлы пользователя, которые обновление не перезаписывает и не удаляет, даже если
+# релиз принесёт файл с тем же путём. data/ (состояние модулей, логи, сама папка
+# update/) защищать отдельно не нужно: в manifest.txt релиза её нет, а чужого
+# обновление не трогает. Пути — от корня программы: по одному имени задели бы и
+# тёзок в чужих папках (config.json бывает и внутри пакетов).
 KEEP_FILES = (
     "config.json",
     "strategies/hostlists/list-general-user.txt",
@@ -116,8 +124,10 @@ def check(channel: str = "stable", current: str = VERSION, fetch=_fetch_json) ->
     latest = rel["tag_name"].removeprefix("v")
     update = is_newer(latest, current)
     return {**base, "latest": latest, "update": update,
-            # ставим только в сборке и только то, что есть с чем сверить
-            "installable": update and paths.IS_FROZEN and bool(asset["sha256"] and asset["url"]),
+            # ставим только в сборке, только поверх известного списка своих файлов
+            # и только то, что есть с чем сверить
+            "installable": (update and paths.IS_FROZEN and (paths.APP_DIR / MANIFEST).exists()
+                            and bool(asset["sha256"] and asset["url"])),
             "notes": rel.get("body") or "", "url": rel.get("html_url"), "asset": asset}
 
 
@@ -170,14 +180,69 @@ def _q(p) -> str:
     return f'"{p}"'
 
 
+def _files(root: Path) -> list[str]:
+    """Файлы под root — относительными путями через «/», без самого манифеста."""
+    return sorted(p.relative_to(root).as_posix() for p in root.rglob("*") if p.is_file() and p.name != MANIFEST)
+
+
+def write_manifest(root: Path) -> list[str]:
+    """Пишет root/manifest.txt — список файлов релиза (зовётся при сборке)."""
+    files = _files(root)
+    (root / MANIFEST).write_text("\n".join(files) + "\n", encoding="utf-8", newline="\n")
+    return files
+
+
+def read_manifest(root: Path) -> set[str] | None:
+    try:
+        text = (root / MANIFEST).read_text(encoding="utf-8")
+    except OSError:
+        return None
+    return {line.strip() for line in text.splitlines() if line.strip()}
+
+
+def _backup(app_dir: Path, files: set[str], rollback: Path) -> None:
+    """Копия текущей версии для отката — только своих файлов, пока программа жива."""
+    if rollback.exists():
+        shutil.rmtree(rollback)
+    try:
+        for rel in sorted(files | {MANIFEST}):
+            src = app_dir / rel
+            if src.is_file():
+                dst = rollback / rel
+                dst.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(src, dst)
+    except OSError as e:
+        raise RuntimeError(f"не удалось сохранить текущую версию для отката — обновление отменено: {e}") from e
+
+
+def _win(root: str, rel: str) -> str:
+    return str(Path(root) / rel.replace("/", "\\"))
+
+
 def write_script(app_dir: Path, staged: Path, pid: int, restart_service: bool, relaunch: bool,
                  script: Path, log: Path, rollback: Path) -> Path:
-    """Пишет apply.cmd: дождаться выхода pid, сохранить текущую версию, положить новую, при ошибке — вернуть."""
+    """Сохраняет текущую версию в rollback и пишет apply.cmd: дождаться выхода pid,
+    положить новую версию, убрать файлы, которых в ней нет, при ошибке — вернуть старую.
+
+    RuntimeError — ставить нельзя (нет manifest.txt, копия для отката не
+    получилась); программа при этом ещё работает и ничего не тронуто.
+    """
+    old = read_manifest(app_dir)
+    if old is None:
+        raise RuntimeError(f"в папке программы нет {MANIFEST} — не отличить её файлы от чужих, "
+                           "обновление поверх не ставится; скачай архив релиза вручную")
+    keep = set(KEEP_FILES) | {MANIFEST}
+    new = set(_files(staged))
+    stale = sorted(old - new - keep)           # были в прошлой версии, в новой нет
+    added = sorted(new - old - keep)           # появятся с новой — при откате их убрать
+    _backup(app_dir, old, rollback)
+
     app, st, rb, lg = (str(Path(p)) for p in (app_dir, staged, rollback, log))
-    xd = " ".join(_q(Path(app) / d) for d in KEEP_DIRS)
-    xf = " ".join(_q(Path(app) / f.replace("/", "\\")) for f in KEEP_FILES)
-    # /R:2 /W:1 — занятый файл не ждать по умолчанию «миллион раз по 30 с»; /NP /NJH /NJS — лог короче
-    rc = "/R:2 /W:1 /NP /NJH /NJS"
+    # настройки пользователя не перезаписывать, даже если релиз вдруг принёс файл с тем же путём
+    xf = " ".join(_q(_win(st, f)) for f in KEEP_FILES)
+    # /E без /MIR — копировать, ничего не удаляя; /R:2 /W:1 — занятый файл не ждать
+    # по умолчанию «миллион раз по 30 с»; /NP /NJH /NJS — лог короче
+    rc = "/E /R:2 /W:1 /NP /NJH /NJS"
     lines = [
         "@echo off",
         "chcp 65001 >nul",  # пути с кириллицей — дальше файл читается как UTF-8
@@ -195,23 +260,18 @@ def write_script(app_dir: Path, staged: Path, pid: int, restart_service: bool, r
         "ping -n 2 127.0.0.1 >nul",
         "goto wait",
         ":gone",
-        'echo [%date% %time%] программа закрыта, сохраняю текущую версию>>"%LOG%"',
-        f'robocopy {_q(app)} {_q(rb)} /MIR /XD {xd} {rc} >>"%LOG%"',
-        "if errorlevel 8 goto nosave",
-        'echo [%date% %time%] ставлю новую версию>>"%LOG%"',
-        f'robocopy {_q(st)} {_q(app)} /MIR /XD {xd} /XF {xf} {rc} >>"%LOG%"',
+        'echo [%date% %time%] программа закрыта, ставлю новую версию>>"%LOG%"',
+        f'robocopy {_q(st)} {_q(app)} /XF {xf} {rc} >>"%LOG%"',
         "if errorlevel 8 goto rollback",
+        *(f'del /F /Q {_q(_win(app, rel))} >nul 2>&1' for rel in stale),
         'echo [%date% %time%] готово>>"%LOG%"',
         f'rmdir /S /Q {_q(Path(st).parent)} >nul 2>&1',
         "set RESULT=0",
         "goto after",
-        ":nosave",
-        'echo [%date% %time%] не удалось сохранить текущую версию — обновление отменено>>"%LOG%"',
-        "set RESULT=1",
-        "goto after",
         ":rollback",
         'echo [%date% %time%] ошибка копирования — откат на прежнюю версию>>"%LOG%"',
-        f'robocopy {_q(rb)} {_q(app)} /MIR /XD {xd} /XF {xf} {rc} >>"%LOG%"',
+        f'robocopy {_q(rb)} {_q(app)} {rc} >>"%LOG%"',
+        *(f'del /F /Q {_q(_win(app, rel))} >nul 2>&1' for rel in added),
         "set RESULT=2",
         ":after",
     ]

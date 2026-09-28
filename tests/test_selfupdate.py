@@ -63,8 +63,17 @@ def _fetch(releases):
     return lambda url: releases
 
 
-def test_check_finds_update(monkeypatch):
+@pytest.fixture
+def frozen_app(tmp_path, monkeypatch):
+    """Собранная программа с manifest.txt — как её распаковали из релиза."""
+    (tmp_path / "Chimera.exe").write_text("exe", encoding="utf-8")
+    selfupdate.write_manifest(tmp_path)
     monkeypatch.setattr(selfupdate.paths, "IS_FROZEN", True)
+    monkeypatch.setattr(selfupdate.paths, "APP_DIR", tmp_path)
+    return tmp_path
+
+
+def test_check_finds_update(frozen_app):
     res = selfupdate.check("stable", current="0.1.0", fetch=_fetch([_release("v0.2.0")]))
     assert res["update"] is True and res["installable"] is True and res["error"] is None
     assert res["latest"] == "0.2.0"
@@ -72,8 +81,14 @@ def test_check_finds_update(monkeypatch):
     assert res["notes"] == "изменения v0.2.0"
 
 
-def test_check_up_to_date(monkeypatch):
-    monkeypatch.setattr(selfupdate.paths, "IS_FROZEN", True)
+def test_check_without_manifest_is_not_installable(frozen_app):
+    # сборка без списка своих файлов — ставить поверх нельзя (см. write_script)
+    (frozen_app / selfupdate.MANIFEST).unlink()
+    res = selfupdate.check("stable", current="0.1.0", fetch=_fetch([_release("v0.2.0")]))
+    assert res["update"] is True and res["installable"] is False
+
+
+def test_check_up_to_date(frozen_app):
     res = selfupdate.check("stable", current="0.2.0", fetch=_fetch([_release("v0.2.0")]))
     assert res["update"] is False and res["installable"] is False and res["error"] is None
 
@@ -85,9 +100,8 @@ def test_check_from_sources_is_not_installable(monkeypatch):
     assert res["installable"] is False  # из исходников — только через git
 
 
-def test_check_without_digest_is_not_installable(monkeypatch):
+def test_check_without_digest_is_not_installable(frozen_app):
     # без контрольной суммы ставить нельзя: не с чем сверить скачанное
-    monkeypatch.setattr(selfupdate.paths, "IS_FROZEN", True)
     rel = _release("v0.2.0", assets=[_asset("0.2.0", digest=False)])
     res = selfupdate.check("stable", current="0.1.0", fetch=_fetch([rel]))
     assert res["update"] is True and res["installable"] is False
@@ -192,8 +206,12 @@ def _finished_pid():
 def layout(tmp_path):
     # пробел и кириллица в пути — как у «C:\Program Files\Чимера»
     app = tmp_path / "Программа Chimera"
+    # файлы релиза — то, что пришло из архива (их и перечисляет manifest.txt сборки)
     _write(app / "Chimera.exe", "old exe")
     _write(app / "old_only.txt", "удалить при обновлении")
+    _write(app / "strategies" / "hostlists" / "list-general.txt", "старый общий список")
+    selfupdate.write_manifest(app)
+    # а это появилось уже у пользователя — в манифесте его нет
     _write(app / "data" / "state.json", "state")
     _write(app / "config.json", "мой конфиг")
     _write(app / "strategies" / "hostlists" / "list-general-user.txt", "мои домены")
@@ -203,6 +221,7 @@ def layout(tmp_path):
     _write(staged / "new.txt", "новое")
     _write(staged / "strategies" / "hostlists" / "list-general.txt", "общий список")
     _write(staged / "lib" / "config.json", "файл пакета, тёзка config.json")  # не путать с настройками
+    selfupdate.write_manifest(staged)
     return app, staged, tmp_path / "update"
 
 
@@ -232,6 +251,19 @@ def test_apply_script_updates_and_keeps_user_files(layout):
     assert "готово" in log
 
 
+@windows_only
+def test_apply_script_keeps_unrelated_files_next_to_program(layout):
+    # программу распаковали не в свою папку, а, скажем, на рабочий стол — чужие файлы
+    # рядом не принадлежат Chimera и обновление не должно их трогать
+    app, staged, upd = layout
+    _write(app / "мои документы.txt", "не удалять")
+    _write(app / "Фото" / "отпуск.jpg", "jpg")
+    r, log = _run_script(app, staged, upd)
+    assert r.returncode == 0, log
+    assert (app / "мои документы.txt").read_text(encoding="utf-8") == "не удалять"
+    assert (app / "Фото" / "отпуск.jpg").exists()
+
+
 def _lock(path, share):
     """Открывает файл с заданным режимом общего доступа: 0 — никому, 1 — только чтение."""
     k32 = ctypes.WinDLL("kernel32", use_last_error=True)
@@ -255,23 +287,56 @@ def test_apply_script_rolls_back_when_copy_fails(layout):
     assert r.returncode != 0
     assert "откат" in log
     assert (app / "Chimera.exe").read_text(encoding="utf-8") == "old exe"
-    assert (app / "old_only.txt").exists()      # вернулось из rollback
+    assert (app / "old_only.txt").exists()
+    assert (app / "strategies" / "hostlists" / "list-general.txt").read_text(encoding="utf-8") == "старый общий список"
     assert not (app / "new.txt").exists()       # частично скопированное новое убрано
+    assert not (app / "lib" / "config.json").exists()
     assert (app / "config.json").read_text(encoding="utf-8") == "мой конфиг"
     assert (app / "data" / "state.json").exists()
 
 
 @windows_only
-def test_apply_script_cancels_when_current_version_cannot_be_saved(layout):
+def test_rollback_keeps_unrelated_files_next_to_program(layout):
     app, staged, upd = layout
-    # файл не читается вовсе — без копии для отката новую версию не ставим
-    unlock = _lock(app / "Chimera.exe", share=0)
+    _write(app / "мои документы.txt", "не удалять")
+    unlock = _lock(app / "Chimera.exe", share=1)
     try:
         r, log = _run_script(app, staged, upd)
     finally:
         unlock()
-    assert r.returncode != 0
-    assert "обновление отменено" in log
+    assert "откат" in log
+    assert (app / "мои документы.txt").read_text(encoding="utf-8") == "не удалять"
+
+
+@windows_only
+def test_nothing_changes_when_current_version_cannot_be_saved(layout):
+    app, staged, upd = layout
+    # файл не читается вовсе — без копии для отката новую версию не ставим, и это
+    # выясняется ещё до выхода программы: она продолжает работать как была
+    unlock = _lock(app / "Chimera.exe", share=0)
+    try:
+        with pytest.raises(RuntimeError, match="сохранить текущую версию"):
+            _run_script(app, staged, upd)
+    finally:
+        unlock()
+    assert not (upd / "apply.cmd").exists()
     assert (app / "Chimera.exe").read_text(encoding="utf-8") == "old exe"
-    assert (app / "old_only.txt").exists()
     assert not (app / "new.txt").exists()
+
+
+def test_write_script_refuses_install_without_manifest(tmp_path):
+    # без списка файлов релиза не отличить свои файлы от чужих — не трогаем ничего
+    app, staged = tmp_path / "app", tmp_path / "staged"
+    _write(app / "Chimera.exe", "old")
+    _write(staged / "Chimera.exe", "new")
+    with pytest.raises(RuntimeError, match="manifest"):
+        selfupdate.write_script(app, staged, 1, restart_service=False, relaunch=False,
+                                script=tmp_path / "a.cmd", log=tmp_path / "u.log", rollback=tmp_path / "rb")
+
+
+def test_write_manifest_lists_all_files_relative(tmp_path):
+    _write(tmp_path / "Chimera.exe", "x")
+    _write(tmp_path / "bin" / "sing-box" / "sing-box.exe", "y")
+    files = selfupdate.write_manifest(tmp_path)
+    assert files == ["Chimera.exe", "bin/sing-box/sing-box.exe"]
+    assert selfupdate.read_manifest(tmp_path) == set(files)

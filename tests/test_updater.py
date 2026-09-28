@@ -72,9 +72,24 @@ def test_install_order_and_quit(cfg, monkeypatch, tmp_path):
     u = upd.Updater()
     u.check()
     u.install(shutdown=lambda: calls.append("shutdown"), request_quit=lambda: calls.append("quit"))
-    # сначала всё, что может упасть (скачать, распаковать), и только потом гасим модули и уходим
-    assert calls == ["download", "stage", "shutdown", ("script", False, True), "launch", "quit"]
+    # сначала всё, что может упасть (скачать, распаковать, сохранить копию для отката),
+    # и только потом гасим модули и уходим
+    assert calls == ["download", "stage", ("script", False, True), "shutdown", "launch", "quit"]
     assert u.snapshot()["progress"] == 1.0
+
+
+def test_install_backup_error_keeps_program_running(cfg, monkeypatch, tmp_path):
+    calls = _frozen_with_update(monkeypatch, tmp_path)
+
+    def broken(*a, **kw):
+        raise RuntimeError("не удалось сохранить текущую версию для отката")
+    monkeypatch.setattr(upd.selfupdate, "write_script", broken)
+    u = upd.Updater()
+    u.check()
+    with pytest.raises(RuntimeError, match="отката"):
+        u.install(shutdown=lambda: calls.append("shutdown"), request_quit=lambda: calls.append("quit"))
+    assert "shutdown" not in calls and "quit" not in calls
+    assert u.snapshot()["stage"] == "error"
 
 
 def test_install_stops_service_and_restarts_it_after(cfg, monkeypatch, tmp_path):

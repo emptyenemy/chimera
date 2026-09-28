@@ -3,6 +3,8 @@
     python tools/fetch_bins.py                 скачать то, чего нет в bin/
     python tools/fetch_bins.py --force         перекачать всё
     python tools/fetch_bins.py --versions F    записать версии git-источников в F (versions.json)
+    python tools/fetch_bins.py --manifest D    записать D/manifest.txt — список файлов сборки
+                                               (по нему самообновление отличает свои файлы от чужих)
 
 Обе версии пиннуты, чтобы сборка была воспроизводимой:
   • sing-box — SINGBOX_VERSION/SINGBOX_SHA256 из modules/proxy/manager.py (та же
@@ -30,7 +32,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from modules import upstream  # noqa: E402
+from modules import selfupdate, upstream  # noqa: E402
 from modules.proxy.manager import SINGBOX_SHA256, SINGBOX_URL  # noqa: E402
 
 BIN = ROOT / "bin"
@@ -112,10 +114,14 @@ def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--force", action="store_true", help="перекачать, даже если уже есть")
     ap.add_argument("--versions", type=Path, help="записать versions.json и выйти")
+    ap.add_argument("--manifest", type=Path, help="записать manifest.txt в папку сборки и выйти")
     args = ap.parse_args(argv)
     if args.versions:
         for name, ver in write_versions(args.versions).items():
             print(f"{name}: {ver}")
+        return 0
+    if args.manifest:
+        print(f"manifest.txt: {len(selfupdate.write_manifest(args.manifest))} файлов")
         return 0
     fetch_singbox(args.force)
     fetch_bundle(args.force)

@@ -1,6 +1,6 @@
 @echo off
 REM Builds Chimera (PySide6/QWebEngineView) into a standalone folder via Nuitka:
-REM build\Chimera\Chimera.exe plus the binaries it needs and versions.json.
+REM build\Chimera\Chimera.exe plus the binaries it needs, versions.json and manifest.txt.
 REM
 REM   build.bat              full build (Nuitka + post steps)
 REM   build.bat --post-only  post steps only, on an existing build\main.dist
@@ -105,6 +105,14 @@ if exist bin\zapret-win-bundle\zapret-winws\winws2.exe (
 python tools\fetch_bins.py --versions "%OUT_DIR%\versions.json" >nul
 if errorlevel 1 (
     echo [!] Could not write %OUT_DIR%\versions.json.
+    exit /b 1
+)
+
+REM Last: the list of every file in the build. Self-update touches only files
+REM from this list, so anything else next to the exe is never deleted.
+python tools\fetch_bins.py --manifest "%OUT_DIR%" >nul
+if errorlevel 1 (
+    echo [!] Could not write %OUT_DIR%\manifest.txt.
     exit /b 1
 )
 
