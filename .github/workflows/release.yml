@@ -86,6 +86,11 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          flags=(--generate-notes --title "Chimera $GITHUB_REF_NAME")
+          zip="Chimera-${{ steps.ver.outputs.version }}-win64.zip"
+          # хеш архива — в описание релиза: по нему можно сверить скачанный zip;
+          # своё описание встаёт перед автоматическим списком изменений
+          sha=$(sha256sum "$zip" | cut -d' ' -f1)
+          echo "SHA256 $zip: $sha"
+          flags=(--generate-notes --title "Chimera $GITHUB_REF_NAME" --notes "SHA256 архива $zip: $sha")
           if [[ "$GITHUB_REF_NAME" == *-* ]]; then flags+=(--prerelease); fi
-          gh release create "$GITHUB_REF_NAME" "Chimera-${{ steps.ver.outputs.version }}-win64.zip" "${flags[@]}"
+          gh release create "$GITHUB_REF_NAME" "$zip" "${flags[@]}"
