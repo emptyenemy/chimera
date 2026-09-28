@@ -15,4 +15,15 @@
 [data-key="app-update"] .item-desc .btn.link { font-size: inherit; vertical-align: baseline; }
 .set-app-progress { margin-top: 8px; }
 
+/* Диагностика */
+.doc-list { display: flex; flex-direction: column; gap: 12px; padding-top: 4px; }
+.doc-row { display: flex; align-items: flex-start; gap: 10px; }
+.doc-ico { flex: none; margin-top: 1px; }
+.doc-ico.ok { color: var(--success); }
+.doc-ico.warn { color: var(--warning); }
+.doc-ico.fail { color: var(--destructive); }
+.doc-title { font-weight: 500; }
+.doc-msg, .doc-hint { font-size: 12.5px; color: var(--muted-foreground); }
+.doc-hint { color: var(--foreground); margin-top: 2px; }
+
 .set-appver { padding-top: 4px; text-align: center; color: var(--muted-foreground); font-size: 12.5px; }

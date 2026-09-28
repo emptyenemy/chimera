@@ -408,11 +408,67 @@
   }
 
 
+  // Диагностика: проверки «почему обход может не работать» и отчёт для issue
+  let doctor = null;   // результат последнего запуска: { checks, summary }
+
+  const DOCTOR_ICONS = { ok: "circle-check", warn: "triangle-alert", fail: "circle-x" };
+
+  function doctorCardHtml() {
+    const s = doctor?.summary;
+    const rows = (doctor?.checks || []).map(c => `
+      <div class="doc-row" data-key="doc-${esc(c.id)}">
+        <span class="doc-ico ${esc(c.status)}">${ic(DOCTOR_ICONS[c.status] || "circle-help")}</span>
+        <div class="grow">
+          <div class="doc-title">${esc(c.title)}</div>
+          <div class="doc-msg">${esc(c.message)}</div>
+          ${c.status !== "ok" && c.hint ? `<div class="doc-hint">${esc(c.hint)}</div>` : ""}
+        </div>
+      </div>`).join("");
+    return `
+      <div class="card compact">
+        <div class="card-header"><div class="card-title">${ic("activity")}Диагностика</div></div>
+        <div class="card-content stack">
+          <div class="switch-row">
+            <div class="set-row-label"><b>Проверить, почему обход может не работать</b><span>${
+              s ? `Проверок: ${s.ok + s.warn + s.fail}, замечаний: ${s.warn}, проблем: ${s.fail}. Ничего не меняется.`
+                : "Права, драйвер, порты, чужие процессы, прокси в системе. Ничего не меняется."}</span></div>
+            <div class="row gap-2">
+              <button class="btn outline sm" data-act="doctor-copy"${doctor ? "" : " disabled"}>${ic("clipboard-copy")}Скопировать отчёт</button>
+              <button class="btn outline sm" data-act="doctor-run">${ic("activity")}Проверить</button>
+            </div>
+          </div>
+          ${rows ? `<div class="doc-list">${rows}</div>` : ""}
+        </div>
+      </div>`;
+  }
+
+  async function runDoctor(btn) {
+    await withBusy(btn, async () => {
+      try {
+        doctor = await api("doctor_run");
+      } catch (e) {
+        toast.error("Диагностика не удалась", e.message);
+      }
+      render();
+    });
+  }
+
+  async function copyDoctorReport(btn) {
+    await withBusy(btn, async () => {
+      try {
+        copyText(await api("doctor_report"));
+      } catch (e) {
+        toast.error("Не удалось собрать отчёт", e.message);
+      }
+    });
+  }
+
   function render() {
     morph(root.querySelector("[data-slot=body]"), `
       ${generalCardHtml()}
       ${appUpdateCardHtml()}
       ${sourcesCardHtml()}
+      ${doctorCardHtml()}
       ${maintenanceCardHtml()}`);
   }
 
@@ -441,6 +497,11 @@
 
     const dc = e.target.closest('[data-act="discord-cache"]');
     if (dc) return clearDiscordCache(dc);
+
+    const dr = e.target.closest('[data-act="doctor-run"]');
+    if (dr) return runDoctor(dr);
+    const dcp = e.target.closest('[data-act="doctor-copy"]');
+    if (dcp && !dcp.disabled) return copyDoctorReport(dcp);
 
     if (e.target.closest('[data-act="app-check"]')) return checkApp();
     if (e.target.closest('[data-act="app-install"]')) return installApp();

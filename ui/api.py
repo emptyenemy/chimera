@@ -10,7 +10,7 @@ import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
-from modules import appconfig, applog, autostart, blockcheck, cheburcheck, control, domains, paths, service, upstream, winproc
+from modules import appconfig, applog, autostart, blockcheck, cheburcheck, control, doctor, domains, paths, service, upstream, winproc
 from modules import discord as discord_cache
 from modules.dns_jumper import DnsJumper
 from modules.hosts import HostsManager
@@ -180,6 +180,24 @@ class Api:
                      "не удалось: " + "; ".join(f"{r['step']} ({r['error']})" for r in failed)))
         return _ok({"steps": report, "failed": len(failed)})
 
+    # --- диагностика -----------------------------------------------------------
+
+    def doctor_run(self):
+        """Проверки «почему обход может не работать» (modules/doctor.py). Только чтение."""
+        try:
+            return _ok(doctor.evaluate(doctor.gather(self)))
+        except Exception as e:
+            return _err(e)
+
+    def doctor_report(self, markdown=True):
+        """Отчёт для issue: Markdown (по умолчанию) или те же данные, что у doctor_run.
+        Ссылки прокси и секреты Telegram-прокси в отчёт не попадают."""
+        try:
+            res = doctor.evaluate(doctor.gather(self))
+            return _ok(doctor.to_markdown(res) if markdown else res)
+        except Exception as e:
+            return _err(e)
+
     def app_info(self):
         # frozen — собранная программа: в ней нет pywebview и git, фронт прячет то, что там не работает
         return _ok({"admin": is_admin(), "version": VERSION, "service_running": service.is_running(),
@@ -310,7 +328,7 @@ class Api:
                               "enabled", "install", "uninstall", "apply", "reset", "panic"})
 
     # сверка с апстримом — только сеть, хотя в имени и есть «update»
-    _READ_NAMES = frozenset({"tg_check_update", "upstream_check_updates"})
+    _READ_NAMES = frozenset({"tg_check_update", "upstream_check_updates", "doctor_run", "doctor_report"})
 
     @classmethod
     def is_read(cls, method: str) -> bool:

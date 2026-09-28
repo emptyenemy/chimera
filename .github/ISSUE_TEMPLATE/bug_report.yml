@@ -1,0 +1,40 @@
+name: Ошибка
+description: Что-то не работает или работает не так, как ожидалось
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Спасибо, что сообщаете. Чтобы разобраться быстрее, приложите отчёт диагностики:
+        **Настройки → Диагностика → Проверить → Скопировать отчёт**. Ссылки прокси и секреты в нём скрыты.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: Что случилось
+      description: Что вы делали и что пошло не так. Какой сервис не открывается (Discord, YouTube и т. п.).
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Что ожидали
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Как повторить
+      description: Какая стратегия или режим были включены, что нажимали.
+  - type: textarea
+    id: doctor
+    attributes:
+      label: Отчёт диагностики
+      description: Вставьте сюда то, что скопировала кнопка «Скопировать отчёт» в Настройки → Диагностика.
+      render: markdown
+    validations:
+      required: true
+  - type: input
+    id: provider
+    attributes:
+      label: Провайдер и город
+      description: Помогает понять, работает ли стратегия у других на той же сети. Необязательно.
