@@ -11,21 +11,6 @@
 
   const modeOf = st => st?.mode || "pac";
   const targets = st => (st?.domains || 0) + (st?.ips || 0);
-  const scopeText = st => {
-    const parts = [];
-    if (st?.domains) parts.push(`${fmtNum(st.domains)} ${plural(st.domains, "домен", "домена", "доменов")}`);
-    if (st?.ips) parts.push(`${fmtNum(st.ips)} IP`);
-    return parts.join(" · ") || "списки не выбраны";
-  };
-  const appsText = st => {
-    const n = (st?.apps || []).length;
-    return `${n} ${plural(n, "приложение", "приложения", "приложений")}`;
-  };
-  // что пойдёт через прокси в выборочном режиме — для подписей статуса
-  const splitScope = st => [
-    (st?.apps || []).length ? appsText(st) : "",
-    targets(st) ? scopeText(st) : "",
-  ].filter(Boolean).join(" · ") || "ничего не выбрано";
 
   function render() {
     const st = Store.get("proxy");
@@ -67,54 +52,35 @@
     const working = busy.has("toggle");
     const downloading = busy.has("download");
 
-    let desc;
-    if (st.external) desc = "sing-box уже работает — запущен раньше, вне этой сессии.";
-    else if (on && full) desc = "Прокси работает · весь трафик идёт через VLESS (TUN).";
-    else if (on && split) desc = `Прокси работает · ${splitScope(st)} идут через VLESS, остальное напрямую (TUN).`;
-    else if (on) desc = `Прокси работает · ${scopeText(st)} идут через VLESS, остальное напрямую.`;
-    else if (!core.present) desc = "sing-box не установлен — скачай ядро.";
-    else if (!st.link) desc = "Вставь ссылку сервера ниже.";
-    else if (!st.parsed) desc = "Ссылка не разобрана — проверь формат.";
-    else if (!hasScope) desc = split ? "Выбери хотя бы одно приложение или список для прокси." : "Отметь хотя бы один список для прокси.";
-    else desc = "Готово к запуску.";
-
+    // почему не запустить — первое, что мешает; показывается прямо в строке статуса
     let reason = "";
-    if (!ready && !on) {
-      if (!core.present) reason = "Сначала скачай ядро sing-box";
+    if (!on) {
+      if (!core.present) reason = "Нужно скачать ядро sing-box";
       else if (!st.link) reason = "Вставь ссылку сервера";
-      else if (!st.parsed) reason = "Ссылка не разобрана";
+      else if (!st.parsed) reason = "Ссылка не разобрана — проверь формат";
       else if (!hasScope) reason = split ? "Выбери приложение или список" : "Отметь хотя бы один список";
+      else if (st.needs_admin && !admin) reason = "Этот режим требует прав администратора";
     }
+
+    const title = st.external ? "Работает (запущен вне Chimera)"
+      : on ? `Работает · ${esc(st.parsed?.server || "")}`
+      : reason ? `<span class="px-reason">${esc(reason)}</span>` : "Остановлено";
 
     return `
       <div class="card compact px-status${on ? " is-on" : ""}">
-        <div class="card-content px-status-top">
-          <div class="grow">
-            <span class="badge ${on ? "success" : "outline muted"}"><span class="dot ${on ? "on" : ""}"></span>${on ? "Работает" : "Остановлено"}</span>
-            <p class="px-status-desc">${esc(desc)}</p>
-            ${st.error ? `<div class="alert destructive px-alert">${ic("circle-alert")}<div class="alert-desc">${esc(st.error)}</div></div>` : ""}
-          </div>
-          <div class="px-status-actions">
-            ${!core.present ? `<button type="button" class="btn outline${downloading ? " busy" : ""}" data-download ${downloading ? "disabled" : ""}>
-              ${downloading ? ic("loader-circle") : ic("download")}${downloading ? "Скачиваю…" : "Скачать sing-box"}</button>` : ""}
-            <button type="button" class="btn${on ? " destructive" : ""}${working ? " busy" : ""}" data-toggle-proxy
-              ${(!ready && !on) || working ? "disabled" : ""} ${reason ? `data-tip="${esc(reason)}"` : ""}>
-              ${working ? ic("loader-circle") : ""}${on ? "Остановить" : "Запустить"}
-            </button>
-          </div>
+        <div class="card-content px-status-row">
+          <span class="dot ${on ? "on" : ""}"></span>
+          <div class="grow px-status-title">${title}</div>
+          <label class="px-autostart"><span class="muted">Автозапуск</span>${switchHtml(!!st.autostart, "data-autostart")}</label>
+          ${!core.present ? `<button type="button" class="btn sm outline${downloading ? " busy" : ""}" data-download ${downloading ? "disabled" : ""}>
+            ${downloading ? ic("loader-circle") : ic("download")}${downloading ? "Скачиваю…" : "Скачать ядро"}</button>` : ""}
+          <button type="button" class="btn sm${on ? " destructive" : ""}${working ? " busy" : ""}" data-toggle-proxy
+            ${(!ready && !on) || (reason && !on) || working ? "disabled" : ""}>
+            ${working ? ic("loader-circle") : ""}${on ? "Остановить" : "Запустить"}
+          </button>
         </div>
-        <div class="card-content px-status-foot">
-          <div class="switch-row px-autostart">
-            <span class="muted">Автозапуск</span>
-            ${switchHtml(!!st.autostart, "data-autostart")}
-          </div>
-          <span class="muted mono">${core.present ? `sing-box ${esc(core.version || "?")}` : "sing-box не установлен"}</span>
-        </div>
-      </div>
-      ${st.needs_admin && !admin ? `<div class="alert warning">${ic("triangle-alert")}
-        <div class="alert-title">Режим TUN требует администратора</div>
-        <div class="alert-desc">Переключись на «Системный прокси (PAC)» или перезапусти Chimera от имени администратора.</div>
-      </div>` : ""}`;
+        ${st.error ? `<div class="card-content"><div class="alert destructive">${ic("circle-alert")}<div class="alert-desc">${esc(st.error)}</div></div></div>` : ""}
+      </div>`;
   }
 
   async function toggleProxy() {
@@ -152,13 +118,14 @@
 
   // --- режим: системный прокси / выборочный TUN / полный TUN -------------------
 
+  // одна строка на режим: чем отличается от соседних — и всё
   const MODES = [
-    { id: "pac", icon: "filter", label: "Системный прокси (PAC)",
-      hint: "Через прокси — только выбранные списки, остальное напрямую. Системный прокси читают браузеры и программы, которые берут системные настройки прокси; остальные его не замечают. Без админа." },
-    { id: "split", icon: "git-branch", label: "Выборочно (TUN)",
-      hint: "Трафик всей системы идёт через адаптер TUN, но в прокси уходят только выбранные приложения и списки, остальное (игры и т.п.) — напрямую. Ловит и программы, которые системный прокси игнорируют. Нужен админ." },
-    { id: "tun", icon: "network", label: "Весь трафик (TUN)",
-      hint: "Весь трафик всех приложений — через VPN, напрямую только локальная сеть. Списки и приложения не используются. Нужен админ." },
+    { id: "pac", icon: "filter", label: "Системный прокси",
+      hint: "Отмеченные сайты — для браузеров и программ, которые понимают системный прокси." },
+    { id: "split", icon: "git-branch", label: "Выборочно",
+      hint: "Выбранные приложения и сайты — для всех программ. Игры и остальное идут напрямую." },
+    { id: "tun", icon: "network", label: "Весь трафик",
+      hint: "Всё через прокси, как VPN. Напрямую — только локальная сеть." },
   ];
 
   function modeHtml(st) {
@@ -238,13 +205,12 @@
             <button type="button" class="px-app-x" data-app-remove="${esc(a)}" aria-label="Убрать ${esc(a)}" data-tip="Убрать">${ic("x")}</button>
           </span>`).join("")}
         </div>`
-      : `<p class="hint" data-key="apps">Приложения не выбраны — через прокси пойдут только отмеченные списки.</p>`;
+      : "";
     return `
       <div class="stack-sm">
         ${list}
         <div class="cluster" data-key="apps-actions">${addBtn}</div>
-        <p class="hint" data-key="apps-webview">Программы на WebView2 (новый WhatsApp, Teams и т.п.) ходят в сеть через общий
-          msedgewebview2.exe, а не через свой процесс, — для них надёжнее отметить список доменов ниже.</p>
+        <p class="hint" data-key="apps-webview">WhatsApp, Teams и другие программы на WebView2 ловятся по списку сайтов, а не по процессу.</p>
       </div>`;
   }
 
@@ -331,10 +297,7 @@
             <input type="checkbox" class="checkbox" value="${esc(n)}" ${sel.has(n) ? "checked" : ""}>
             <span>${esc(n)}</span>
           </label>`).join("")}
-      </div>
-      <p class="hint px-lists-scope">${modeOf(st) === "split"
-        ? `${scopeText(st)} пойдут через VLESS вместе с выбранными приложениями, остальное — мимо прокси.`
-        : `${scopeText(st)} пойдут через VLESS, остальное — мимо прокси.`}</p>`;
+      </div>`;
   }
 
   function onListsToggle() {
@@ -365,11 +328,8 @@
             <div class="card-content" data-slot="mode"></div>
           </div>
 
-          <div class="card">
-            <div class="card-header">
-              <div class="card-title">${ic("link")}Сервер</div>
-              <p class="card-description">Ссылка-подписка: vless://, trojan://, ss:// или vmess://.</p>
-            </div>
+          <div class="card compact">
+            <div class="card-header"><div class="card-title">${ic("link")}Сервер</div></div>
             <div class="card-content stack-sm">
               <textarea class="textarea mono px-link" data-link spellcheck="false"
                 placeholder="vless://uuid@host:443?security=reality&amp;sni=...#Мой сервер"></textarea>
@@ -378,25 +338,16 @@
           </div>
 
           <div class="card compact" data-slot="apps-card" hidden>
-            <div class="card-header">
-              <div class="card-title">${ic("cpu")}Приложения через прокси</div>
-              <p class="card-description">Весь трафик выбранных программ пойдёт через VLESS — по имени процесса, без списков доменов.</p>
-            </div>
+            <div class="card-header"><div class="card-title">${ic("cpu")}Приложения</div></div>
             <div class="card-content" data-slot="apps"></div>
           </div>
 
           <div class="card compact" data-slot="lists-card">
-            <div class="card-header">
-              <div class="card-title">${ic("network")}Какие списки гнать через прокси</div>
-              <p class="card-description">Домены из отмеченных списков пойдут через VLESS, остальное — мимо прокси.</p>
-            </div>
+            <div class="card-header"><div class="card-title">${ic("list")}Списки сайтов</div></div>
             <div class="card-content" data-slot="lists"></div>
           </div>
 
-          <div class="card compact">
-            <div class="card-header"><div class="card-title">${ic("terminal")}Логи sing-box</div></div>
-            <div class="card-content"><pre class="log" data-log></pre></div>
-          </div>
+          ${foldHtml("terminal", "Логи", '<pre class="log" data-log></pre>')}
         </div>`;
 
       el.addEventListener("click", e => {
