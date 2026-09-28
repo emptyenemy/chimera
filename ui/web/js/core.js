@@ -642,6 +642,30 @@ function badgeHtml(text, variant = "secondary", icon = "") {
   return `<span class="badge ${variant}">${icon ? ic(icon) : ""}${esc(text)}</span>`;
 }
 
+// Сворачиваемая карточка (логи, редкие настройки) — закрыта по умолчанию. Тело
+// рендерится сразу, а открытость живёт в DOM: разметку foldHtml кладут в mount()
+// один раз, morph() внутрь тела её не сбрасывает.
+function foldHtml(icon, title, body, { open = false, key = "" } = {}) {
+  return `
+    <div class="card fold${open ? " open" : ""}"${key ? ` data-key="${esc(key)}"` : ""}>
+      <button type="button" class="card-header" data-fold aria-expanded="${open}">
+        <div class="card-title">${ic(icon)}${esc(title)}</div>
+        <div class="card-action">${ic("chevron-down", "fold-chevron")}</div>
+      </button>
+      <div class="card-content fold-body"${open ? "" : " hidden"}>${body}</div>
+    </div>`;
+}
+
+document.addEventListener("click", e => {
+  const head = e.target.closest("[data-fold]");
+  if (!head) return;
+  const card = head.closest(".card.fold");
+  const open = !card.classList.contains("open");
+  card.classList.toggle("open", open);
+  head.setAttribute("aria-expanded", String(open));
+  card.querySelector(":scope > .fold-body").hidden = !open;
+});
+
 function emptyHtml({ icon = "info", title = "", desc = "", action = "" } = {}) {
   return `<div class="empty">${icon ? `<div class="empty-media">${ic(icon)}</div>` : ""}
     ${title ? `<div class="empty-title">${esc(title)}</div>` : ""}

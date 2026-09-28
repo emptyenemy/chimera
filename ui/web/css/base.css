@@ -219,9 +219,22 @@ input, textarea, .selectable, .log, code, .mono { user-select: text; }
 .card-title .icon { font-size: 16px; color: var(--muted-foreground); }
 .card-description { grid-column: 1; font-size: 14px; line-height: 20px; color: var(--muted-foreground); }
 .card-action { grid-column: 2; grid-row: 1 / span 2; align-self: start; justify-self: end; display: flex; align-items: center; gap: 8px; }
+/* заголовок без описания — одна строка: название и действие (поиск, кнопка) по центру */
+.card-header:not(:has(.card-description)) { align-items: center; }
 .card-content { padding: 0 24px; min-width: 0; }
 .card-footer { display: flex; align-items: center; gap: 8px; padding: 0 24px; }
 .card-footer.bordered { border-top: 1px solid var(--border); padding-top: 16px; margin-top: -8px; }
+
+/* Сворачиваемая карточка — логи и редкие настройки: закрыта, пока не понадобится.
+   Разметка: .card.fold > button.card-header[data-fold] + .fold-body (см. core.js). */
+.card.fold { gap: 0; padding: 16px 0; }
+.card.fold.open { gap: 16px; }
+.card.fold > .card-header { width: 100%; margin: 0; background: none; border: 0; font: inherit; color: inherit; text-align: left; cursor: pointer; align-items: center; }
+.card.fold > .card-header .card-title { color: var(--muted-foreground); transition: color .15s ease; }
+.card.fold > .card-header:hover .card-title, .card.fold.open > .card-header .card-title { color: var(--foreground); }
+.fold-chevron { color: var(--muted-foreground); transition: transform .15s ease; }
+.card.fold.open .fold-chevron { transform: rotate(180deg); }
+.fold-body[hidden] { display: none; }
 
 /* ── Button (shadcn v4) ───────────────────────────────────────────────────── */
 .btn {

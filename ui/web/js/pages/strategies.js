@@ -41,47 +41,30 @@
     const tone = st.running ? "on" : lingers ? "warn" : "off";
     const stratName = st.strategies?.find(s => s.id === (st.current || selected))?.name;
 
-    let desc;
-    if (st.external) desc = "zapret2 уже работает — запущен раньше, вне этой сессии. Стратегия неизвестна.";
-    else if (st.running) desc = `zapret2 работает · стратегия «${esc(stratName || st.current || "?")}». Трафик идёт через winws2.`;
-    else if (lingers) desc = "winws2 остановлен, но драйвер WinDivert ещё активен.";
-    else desc = "zapret2 остановлен. Выбери стратегию из списка и нажми «Запустить».";
+    // одна строка: что сейчас происходит; подробности — только когда они что-то меняют
+    const title = st.external ? "Работает (запущен вне Chimera)"
+      : st.running ? `Работает · ${esc(stratName || st.current || "?")}`
+      : lingers ? "Остановлено · драйвер ещё загружен" : "Остановлено";
 
-    const wd = st.windivert;
-    const wdTxt = wd === "RUNNING" ? "WinDivert активен" : wd === "STOPPED" ? "WinDivert остановлен" : "WinDivert не загружен";
-    const verTxt = [st.version ? `zapret2 ${esc(st.version)}` : "", wdTxt].filter(Boolean).join(" · ");
-
-    const label = lingers ? "Выгрузить WinDivert" : st.running ? "Остановить" : "Запустить";
-    const disabled = !on && !selected;
+    const label = lingers ? "Выгрузить драйвер" : st.running ? "Остановить" : "Запустить";
+    const noAdmin = !on && !admin;
+    const disabled = (!on && !selected) || noAdmin;
     const working = busy.has("toggle");
+    const tip = noAdmin ? "Нужны права администратора" : !on && !selected ? "Сначала выбери стратегию" : "";
 
     return `
       <div class="card compact strat-status${tone === "on" ? " is-on" : ""}">
-        <div class="card-content strat-status-top">
-          <div class="grow">
-            <span class="badge ${tone === "on" ? "success" : tone === "warn" ? "warning" : "outline muted"}">
-              <span class="dot ${tone === "on" ? "on" : tone === "warn" ? "warn" : ""}"></span>${on ? "Работает" : "Остановлено"}
-            </span>
-            <p class="strat-status-desc">${esc(desc)}</p>
-            ${st.error ? `<div class="alert destructive strat-alert">${ic("circle-alert")}<div class="alert-desc">${esc(st.error)}</div></div>` : ""}
-          </div>
-          <button type="button" class="btn${on ? " destructive" : ""}${working ? " busy" : ""}" data-toggle-winws
-            ${disabled || working ? "disabled" : ""} ${disabled && !working ? `data-tip="Сначала выбери стратегию"` : ""}>
+        <div class="card-content strat-status-row">
+          <span class="dot ${tone === "on" ? "on" : tone === "warn" ? "warn" : ""}"></span>
+          <div class="grow strat-status-title">${title}</div>
+          <label class="strat-autostart"><span class="muted">Автозапуск</span>${switchHtml(!!st.autostart, "data-autostart")}</label>
+          <button type="button" class="btn sm${on ? " destructive" : ""}${working ? " busy" : ""}" data-toggle-winws
+            ${disabled || working ? "disabled" : ""} ${tip && !working ? `data-tip="${tip}"` : ""}>
             ${working ? ic("loader-circle") : ""}${esc(label)}
           </button>
         </div>
-        <div class="card-content strat-status-foot">
-          <div class="switch-row strat-autostart">
-            <span class="muted">Автозапуск</span>
-            ${switchHtml(!!st.autostart, "data-autostart")}
-          </div>
-          <span class="muted mono">${esc(verTxt)}</span>
-        </div>
-      </div>
-      ${!admin ? `<div class="alert warning">${ic("triangle-alert")}
-        <div class="alert-title">Нет прав администратора</div>
-        <div class="alert-desc">Запуск zapret2 требует администратора — перезапусти Chimera от имени администратора.</div>
-      </div>` : ""}`;
+        ${st.error ? `<div class="card-content"><div class="alert destructive">${ic("circle-alert")}<div class="alert-desc">${esc(st.error)}</div></div></div>` : ""}
+      </div>`;
   }
 
   async function toggleWinws() {
@@ -136,21 +119,19 @@
     const q = search.trim().toLowerCase();
     const list = q ? st.strategies.filter(s => s.name.toLowerCase().includes(q) || (s.desc || "").toLowerCase().includes(q)) : st.strategies;
     if (!list.length) return emptyHtml({ icon: "search", title: "Ничего не найдено", desc: `По запросу «${search}» стратегий нет.` });
-    return `<div class="item-list strat-rows" data-key="rows">${list.map(s => rowHtml(s, st)).join("")}</div>`;
+    return `<div class="strat-grid" data-key="rows">${list.map(s => rowHtml(s, st)).join("")}</div>`;
   }
 
+  // Плитка стратегии: только имя; что внутри (fake/split/…) — во всплывающей подсказке,
+  // пользователю это нужно разве что для сравнения, а не каждый раз перед глазами
   function rowHtml(s, st) {
     const isRun = s.id === st.current;
     const isSel = s.id === selected;
     return `
-      <div class="item interactive strat-row" data-key="s-${esc(s.id)}" data-id="${esc(s.id)}"
-        ${isSel ? 'aria-selected="true"' : ""} ${s.source ? `data-tip="${esc(s.source)}"` : ""}>
-        <div class="item-media">${ic(isRun ? "shield-check" : "shield")}</div>
-        <div class="item-body">
-          <div class="item-title">${esc(s.name)}${isRun ? badgeHtml("работает", "success") : ""}</div>
-          ${s.desc ? `<div class="item-desc">${esc(s.desc)}</div>` : ""}
-        </div>
-      </div>`;
+      <button type="button" class="strat-row${isRun ? " is-run" : ""}" data-key="s-${esc(s.id)}" data-id="${esc(s.id)}"
+        ${isSel ? 'aria-selected="true"' : ""} ${s.desc ? `data-tip="${esc(s.desc)}"` : ""}>
+        ${isRun ? '<span class="dot on"></span>' : ""}<span class="strat-name">${esc(s.name)}</span>
+      </button>`;
   }
 
   // --- списки для маршрутизации через winws ----------------------------------
@@ -171,11 +152,7 @@
             <input type="checkbox" class="checkbox" value="${esc(n)}" ${sel.has(n) ? "checked" : ""}>
             <span>${esc(n)}</span>
           </label>`).join("")}
-      </div>
-      <p class="hint strat-lists-scope">
-        ${fmtNum(st.list_domains || 0)} ${plural(st.list_domains || 0, "домен", "домена", "доменов")} ·
-        ${fmtNum(st.list_ips || 0)} IP через winws (плюс то, что уже покрывает сама стратегия).
-      </p>`;
+      </div>`;
   }
 
   function onListsToggle() {
@@ -205,17 +182,6 @@
     }).join("")}</div>`;
   }
 
-  // текст под заголовком «Game-фильтр» — какие порты реально применятся в текущем режиме
-  function gameCaption(mode, ranges) {
-    const tcp = ranges?.tcp || GAME_RANGE_DEFAULT, udp = ranges?.udp || GAME_RANGE_DEFAULT;
-    if (mode === "off") return "Десинк для игр на высоких портах выключен.";
-    const base = mode === "tcp" ? `Десинк для игр по TCP на портах ${esc(tcp)}.`
-      : mode === "udp" ? `Десинк для игр по UDP на портах ${esc(udp)}.`
-      : tcp === udp ? `Десинк для игр на портах ${esc(tcp)} (TCP и UDP).`
-      : `Десинк для игр: TCP ${esc(tcp)}, UDP ${esc(udp)}.`;
-    return `${base} Применится после перезапуска стратегии.`;
-  }
-
   function gameRangeFieldHtml(which, value, enabled) {
     const err = gameRangeErr[which];
     const label = which === "tcp" ? "TCP-порты" : "UDP-порты";
@@ -240,10 +206,7 @@
     return `
       <div class="strat-filter-row" data-key="game">
         <div class="between">
-          <div>
-            <div class="label">Game-фильтр</div>
-            <p class="hint">${gameCaption(f.game, ranges)}</p>
-          </div>
+          <div class="label">Игры</div>
           ${segHtml([["off", "Выкл"], ["all", "TCP+UDP"], ["tcp", "TCP"], ["udp", "UDP"]], f.game, "game")}
         </div>
         ${f.game !== "off" ? `
@@ -255,10 +218,7 @@
       </div>
       <div class="separator"></div>
       <div class="between strat-filter-row" data-key="ipset">
-        <div>
-          <div class="label">IPSet-фильтр${ipsetNote ? ` <span class="muted">· ${ipsetNote}</span>` : ""}</div>
-          <p class="hint">Список подсетей для fallback-профилей «по IP» — нужен и для game-фильтра.</p>
-        </div>
+        <div class="label">Фильтр по IP${ipsetNote ? ` <span class="muted">· ${ipsetNote}</span>` : ""}</div>
         <div class="cluster">
           ${segHtml([["none", "Нет"], ["any", "Любой IP"], ["loaded", "Список"]], f.ipset, "ipset")}
           <button type="button" class="btn outline sm${updating ? " busy" : ""}" data-ipset-update ${updating ? "disabled" : ""}>
@@ -268,8 +228,6 @@
       </div>
       <div class="separator"></div>
       <div class="strat-filter-row" data-key="fakes">
-        <div class="label">Фейки UDP</div>
-        <p class="hint">Какой блоб подставлять в ACTIVE-слоты стратегий — у разных провайдеров проходят разные. Применится после перезапуска стратегии.</p>
         ${fakeSlotsHtml(f)}
       </div>`;
   }
@@ -389,35 +347,24 @@
 
           <div class="card">
             <div class="card-header">
-              <div class="card-title">${ic("list-checks")}Стратегии</div>
-              <p class="card-description">Клик по стратегии выбирает её; если zapret2 уже работает — сразу переключает.</p>
+              <div class="card-title">${ic("list-checks")}Стратегия</div>
               <div class="card-action">
                 <div class="input-group strat-search">
                   ${ic("search")}
-                  <input class="input sm" type="search" placeholder="Поиск по имени…" data-search value="">
+                  <input class="input sm" type="search" placeholder="Поиск" data-search value="">
                 </div>
               </div>
             </div>
             <div class="card-content" data-slot="rows"></div>
           </div>
 
-          <div class="card compact">
-            <div class="card-header">
-              <div class="card-title">${ic("network")}Какие домены гнать через запрет</div>
-              <p class="card-description">Домены из отмеченных списков пишутся в хостлист winws — десинк применяется к ним, плюс к тому, что уже покрывает сама стратегия.</p>
-            </div>
+          <div class="card">
+            <div class="card-header"><div class="card-title">${ic("list")}Списки сайтов</div></div>
             <div class="card-content" data-slot="lists"></div>
           </div>
 
-          <div class="card">
-            <div class="card-header"><div class="card-title">${ic("sliders-horizontal")}Фильтры</div></div>
-            <div class="card-content stack" data-slot="filters"></div>
-          </div>
-
-          <div class="card compact">
-            <div class="card-header"><div class="card-title">${ic("terminal")}Логи winws2</div></div>
-            <div class="card-content"><pre class="log" data-log></pre></div>
-          </div>
+          ${foldHtml("sliders-horizontal", "Дополнительно", '<div class="stack" data-slot="filters"></div>')}
+          ${foldHtml("terminal", "Логи", '<pre class="log" data-log></pre>')}
         </div>`;
 
       el.addEventListener("click", e => {
