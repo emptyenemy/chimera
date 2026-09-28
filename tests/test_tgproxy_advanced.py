@@ -208,13 +208,22 @@ def test_apply_config_defaults_produce_upstream_default_dc_redirects(tg):
 
 # --- state(): ссылка tg:// с учётом fake_tls_domain ------------------------------
 
+# ссылку строит ядро из сабмодуля (get_link_host) — в клоне без сабмодулей state()
+# отдаёт link=None, и проверять тут нечего
+_needs_core = pytest.mark.skipif(
+    not (tgproxy_manager.UPSTREAM / "proxy").is_dir(),
+    reason="нет сабмодуля upstream/tg-ws-proxy",
+)
 
+
+@_needs_core
 def test_state_link_is_dd_secret_without_fake_tls(tg):
     tg.config["secret"] = "a" * 32
     st = tg.state()
     assert st["link"] == f"tg://proxy?server=127.0.0.1&port=1443&secret=dd{'a' * 32}"
 
 
+@_needs_core
 def test_state_link_is_ee_secret_with_fake_tls_domain(tg):
     tg.config["secret"] = "b" * 32
     tg.set_advanced({"fake_tls_domain": "example.com"})
