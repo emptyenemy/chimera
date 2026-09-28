@@ -1,314 +1,288 @@
 "use strict";
-/* Проверки: заблокирован ли домен официально (cheburcheck — реестр РКН) и
-   достучимся ли мы до него прямо сейчас с этой машины (blockcheck). Один и тот же
-   вид на обе проверки — вкладки с доменом/списком, прогрессом и таблицей результатов.
-   Результаты списка стримятся пушами: новые строки domорфятся по data-key=домен,
+/* Проверка сайтов: одно поле — один ответ по каждому сайту. Внутри две проверки
+   идут параллельно — есть ли сайт в реестре РКН (cheburcheck) и открывается ли он
+   прямо сейчас с этой машины с учётом обхода (blockcheck), — а в таблице они
+   сведены в итог человеческими словами: «Открывается», «Работает через обход»,
+   «Заблокирован» и т.п. Списки стримятся пушами: строки морфятся по data-key=сайт,
    без перерисовки всей таблицы — списки бывают в сотни доменов. */
 
 (() => {
   let root, body;
-  let tab = "rkn";  // "rkn" | "reach"
+  let listNames = null;          // lists_all для выпадашки — переживает уход со страницы
+  let registryDown = null;       // текст ошибки сервиса реестра, если он недоступен
+  let input = "";                // что введено в поле
+  let onlyProblems = false;
 
-  let listNames = null;         // кэш lists_all для выпадашек — переживает уход со страницы
-  let cheburStatus = null;      // статус реестра РКН (cheburcheck)
-  let cheburStatusError = null;
+  // сайт -> { rkn, reach } — результаты двух проверок; порядок вставки = порядок строк
+  let results = new Map();
+  let run = null;                // { total, rknDone, reachDone, list } — идёт проверка
 
-  const CHEBUR_LABELS = { blocked: "БЛОК", free: "свободен", rate: "лимит", error: "ошибка" };
-  const BLOCK_LABELS = { ok: "ok", challenge: "CLOUDFLARE", denied: "ОТКАЗ", blocked: "БЛОК", dns: "нет DNS", error: "ошибка" };
+  const PARALLEL = 4;            // для введённых вручную: реестр публичный, не долбим его
 
-  function freshState() {
-    return { domain: "", list: "", running: false, expected: 0, done: 0, hits: 0, results: [], onlyProblem: false, error: "" };
-  }
-  const state = { rkn: freshState(), reach: freshState() };
+  // --- разбор ввода: ссылки, несколько сайтов через пробел/запятую ---------------
 
-  // --- строки таблиц по доменам ------------------------------------------------
-
-  function cheburDate(s) { return s ? String(s).slice(0, 10) : ""; }
-
-  function cheburMeta(r) {
-    if (r.status === "rate") return "не проверен — лимит запросов";
-    if (r.status === "error") return "не проверен — сетевая ошибка";
-    const bits = [];
-    if (r.status === "blocked") {
-      if (r.rkn_domain) bits.push("реестр РКН");
-      if (r.subnets?.length) bits.push(`подсети: ${r.subnets.join(", ")}`);
-      if (r.cdn?.length) bits.push(`CDN: ${r.cdn.join(", ")}`);
-      if (!bits.length) bits.push("заблокирован");
-    } else {
-      bits.push("в реестрах не найден");
+  function parseTargets(text) {
+    const seen = new Set();
+    for (let raw of String(text).split(/[\s,;]+/)) {
+      raw = raw.trim().replace(/^[a-z]+:\/\//i, "").split(/[/?#]/)[0].replace(/:\d+$/, "").replace(/^www\./i, "")
+        .toLowerCase();
+      if (/^[a-z0-9.-]+\.[a-z0-9-]{2,}$/i.test(raw)) seen.add(raw);
     }
-    if (r.geo?.org) bits.push(r.geo.asn ? `${r.geo.org} (${r.geo.asn})` : r.geo.org);
-    else if (r.geo?.asn) bits.push(r.geo.asn);
-    if (r.rank) bits.push(`популярность #${r.rank}`);
-    if (r.last_ok) bits.push(`посл. доступ ${cheburDate(r.last_ok)}`);
-    if (r.ptr?.length) bits.push(`PTR: ${r.ptr.join(", ")}`);
-    return bits.join(" · ");
+    return [...seen];
   }
 
-  function cheburRowHtml(r) {
-    const variant = r.blocked ? "danger" : r.status === "free" ? "success" : "warning";
-    const label = CHEBUR_LABELS[r.status] || r.status;
-    const chips = [];
-    if (r.type) chips.push(r.type);
-    if (r.geo?.country) chips.push(r.geo.country);
-    const meta = cheburMeta(r);
-    const tip = r.ips?.length ? ` data-tip="IP: ${esc(r.ips.join(", "))}"` : "";
-    return `
-      <tr data-key="${esc(r.target)}"${tip}>
-        <td class="shrink">${badgeHtml(label, variant)}</td>
-        <td class="mono">${esc(r.target)}${chips.length ? ` <span class="muted">· ${esc(chips.join(" · "))}</span>` : ""}</td>
-        <td class="muted chk-meta">${esc(meta)}</td>
-      </tr>`;
+  // --- итог по двум проверкам ------------------------------------------------------
+
+  // Реестр различает две вещи: в него внесён сам домен — или только адрес/подсеть, где
+  // сайт живёт (часто общая CDN вроде Akamai). Для пользователя это разный смысл:
+  // первое — сайт блокируют, второе — он может открываться и сам по себе.
+  const inRegistry = r => r?.blocked === true && !!r.rkn_domain;
+  const ipInRegistry = r => r?.blocked === true && !r.rkn_domain;
+
+  // { label, tone, note } — что сказать пользователю про сайт
+  function verdict(rkn, reach) {
+    if (!reach) return { label: "Проверяю…", tone: "pending", note: "" };
+    const s = reach.status;
+    if (s === "ok" || s === "challenge") {
+      const cf = s === "challenge" ? "Cloudflare проверит браузер" : "";
+      return inRegistry(rkn)
+        ? { label: "Работает через обход", tone: "success", note: ["в реестре РКН", cf].filter(Boolean).join(" · ") }
+        : { label: "Открывается", tone: "success", note: cf };
+    }
+    if (inRegistry(rkn)) return { label: "Заблокирован", tone: "danger", note: "в реестре РКН — включи обход или прокси для него" };
+    if (ipInRegistry(rkn)) return { label: "Заблокирован по IP", tone: "danger", note: "адрес сайта в заблокированной подсети — поможет прокси" };
+    if (s === "denied") return { label: "Сайт отказал", tone: "warning", note: reach.reason || "бан по стране или IP" };
+    if (s === "dns") return { label: "Нет DNS", tone: "warning", note: "имя не разрешается" };
+    if (s === "blocked") return { label: "Не открывается", tone: "danger", note: reach.reason || "соединение обрывается" };
+    return { label: "Ошибка проверки", tone: "muted", note: reach.reason || "" };
   }
 
-  function reachRowHtml(r) {
-    const variant = r.status === "ok" ? "success" : r.status === "challenge" ? "warning"
-      : (r.status === "denied" || r.status === "blocked") ? "danger" : "outline";
-    const label = BLOCK_LABELS[r.status] || r.status;
-    const detail = [r.ip, r.reason, r.ms != null ? `${r.ms} мс` : null].filter(Boolean).join(" · ");
-    return `
-      <tr data-key="${esc(r.target)}">
-        <td class="shrink">${badgeHtml(label, variant)}</td>
-        <td class="mono">${esc(r.target)}</td>
-        <td class="muted">${esc(detail)}</td>
-      </tr>`;
-  }
-
-  const CHECKERS = {
-    rkn: {
-      id: "rkn", title: "Реестр РКН", icon: "shield-check",
-      apiOne: "chebur_check_one", apiStart: "chebur_check_start",
-      isHit: r => r.blocked === true,
-      isProblem: r => r.status !== "free",
-      row: cheburRowHtml,
-      summary(st) {
-        if (st.running) return `Проверяю ${st.done}/${st.expected}…`;
-        if (!st.results.length) return "";
-        const total = st.expected || st.results.length;
-        return `Заблокировано: <b>${st.hits}/${total}</b> <span class="muted">— БЛОК: домен в реестре РКН или в заблокированной подсети</span>`;
-      },
-    },
-    reach: {
-      id: "reach", title: "Доступность", icon: "wifi",
-      apiOne: "block_check_one", apiStart: "block_check_start",
-      isHit: r => r.status === "ok",
-      isProblem: r => r.status !== "ok",
-      row: reachRowHtml,
-      summary(st) {
-        if (st.running) return `Проверяю ${st.done}/${st.expected}…`;
-        if (!st.results.length) return "";
-        const total = st.expected || st.results.length;
-        return `Достучались: <b>${st.hits}/${total}</b> <span class="muted">— CF пройдёт сам в браузере; ОТКАЗ — бан сайта; БЛОК — RST/таймаут; нет DNS — не резолвится</span>`;
-      },
-    },
+  const isProblem = ({ rkn, reach }) => {
+    const t = verdict(rkn, reach).tone;
+    return t === "danger" || t === "warning" || t === "muted";
   };
 
-  // --- рендер --------------------------------------------------------------------
+  // --- разметка --------------------------------------------------------------------
 
-  function errorAlert(msg) {
-    return `<div class="alert destructive">${ic("circle-alert")}<div class="alert-desc">${esc(msg)}</div></div>`;
+  function registryCell(rkn) {
+    if (!rkn) return registryDown ? `<span class="muted">—</span>` : `<span class="muted">…</span>`;
+    if (rkn.status === "rate" || rkn.status === "error") return `<span class="muted" data-tip="Реестр не ответил">—</span>`;
+    if (inRegistry(rkn)) return `<span class="chk-reg is-in">домен</span>`;
+    if (ipInRegistry(rkn)) return `<span class="chk-reg is-ip" data-tip="${esc([...(rkn.subnets || []), ...(rkn.cdn || [])].join(", "))}">по IP</span>`;
+    return `<span class="muted">нет</span>`;
   }
 
-  function listOptionsHtml(selected) {
+  function rowHtml(site, { rkn, reach }) {
+    const v = verdict(rkn, reach);
+    const ms = reach?.ms != null && (reach.status === "ok" || reach.status === "challenge") ? `${fmtNum(reach.ms)} мс` : "";
+    return `
+      <tr data-key="${esc(site)}"${reach?.ip ? ` data-tip="IP ${esc(reach.ip)}"` : ""}>
+        <td class="mono chk-site">${esc(site)}</td>
+        <td><span class="chk-verdict ${v.tone}"><span class="dot ${v.tone === "success" ? "on" : v.tone === "danger" ? "err" : v.tone === "warning" ? "warn" : ""}"></span>${esc(v.label)}</span>
+          ${v.note ? `<div class="chk-note">${esc(v.note)}</div>` : ""}</td>
+        <td class="shrink">${registryCell(rkn)}</td>
+        <td class="shrink num muted">${ms}</td>
+      </tr>`;
+  }
+
+  function summaryHtml() {
+    const all = [...results.values()];
+    if (run) return `Проверяю ${Math.min(run.reachDone, run.total)} из ${run.total}…`;
+    if (!all.length) return "";
+    const open = all.filter(r => verdict(r.rkn, r.reach).tone === "success").length;
+    const reg = all.filter(r => inRegistry(r.rkn)).length;
+    return `Открывается <b>${open} из ${all.length}</b>${reg ? ` · в реестре РКН <b>${reg}</b>` : ""}`;
+  }
+
+  function rowsHtml() {
+    const rows = [...results.entries()].filter(([, r]) => !onlyProblems || isProblem(r));
+    if (!rows.length) {
+      return `<tr><td colspan="4">${emptyHtml({ icon: "circle-check", title: "Проблемных сайтов нет" })}</td></tr>`;
+    }
+    return rows.map(([site, r]) => rowHtml(site, r)).join("");
+  }
+
+  function listOptionsHtml() {
     if (listNames == null) return `<option value="">Загрузка…</option>`;
-    if (!listNames.length) return `<option value="">Списков нет</option>`;
-    return listNames.map(f =>
-      `<option value="${esc(f.name)}"${f.name === selected ? " selected" : ""}>${esc(f.name)} (${fmtNum(f.count)})</option>`).join("");
+    return `<option value="" selected>Проверить список…</option>` + listNames.map(l =>
+      `<option value="${esc(l.name)}">${esc(l.name)} · ${fmtNum(l.count)}</option>`).join("");
   }
 
-  function emptyRowsHtml(st) {
-    return st.running
-      ? `<tr><td colspan="3" class="muted">Жду первые результаты…</td></tr>`
-      : `<tr><td colspan="3">${emptyHtml({ icon: "filter", title: "Ничего не найдено", desc: "Отключи фильтр «только проблемные», чтобы увидеть остальные." })}</td></tr>`;
+  function progress() {
+    if (!run || !run.total) return 0;
+    return Math.min(1, (run.rknDone + run.reachDone) / (run.total * 2));
   }
 
-  function toolbarHtml(id, st) {
+  function resultsHtml() {
+    if (!results.size) return "";
     return `
-      <div class="cluster chk-toolbar">
-        <div class="input-group grow">${ic("search")}<input class="input" data-domain="${id}" placeholder="домен, например youtube.com" value="${esc(st.domain)}"></div>
-        <button class="btn" data-one="${id}">Проверить домен</button>
-        <span class="muted">или список</span>
-        <select class="select-native chk-select" data-list="${id}">${listOptionsHtml(st.list)}</select>
-        <button class="btn outline" data-start="${id}" ${st.running ? "disabled" : ""}>${st.running ? "Проверяю…" : "Проверить список"}</button>
-      </div>`;
-  }
-
-  function resultsBlockHtml(id, st) {
-    if (!st.results.length && !st.running) return "";
-    const cfg = CHECKERS[id];
-    const rows = (st.onlyProblem ? st.results.filter(cfg.isProblem) : st.results).map(cfg.row).join("");
-    return `
-      <div class="stack-sm">
-        <div class="between">
-          <div class="chk-summary" data-key="summary-${id}">${cfg.summary(st)}</div>
-          <label class="check-row"><input type="checkbox" class="checkbox" data-filter="${id}" ${st.onlyProblem ? "checked" : ""}>Только проблемные</label>
-        </div>
-        ${st.running ? `<div class="progress" data-key="progress-${id}"><i style="transform:scaleX(${st.expected ? st.done / st.expected : 0})"></i></div>` : ""}
-        <div class="table-wrap">
-          <table class="table">
-            <thead><tr><th>Статус</th><th>Домен</th><th>Детали</th></tr></thead>
-            <tbody data-key="tbody-${id}">${rows || emptyRowsHtml(st)}</tbody>
-          </table>
-        </div>
-      </div>`;
-  }
-
-  // о сервисе реестра говорим только когда он недоступен — версия и размер базы пользователю не нужны
-  function statusBannerHtml() {
-    if (!cheburStatusError) return "";
-    return `<div class="alert warning">${ic("triangle-alert")}<div class="alert-title">Сервис реестра недоступен</div><div class="alert-desc">${esc(cheburStatusError)}</div></div>`;
-  }
-
-  // заголовок карточки повторял бы вкладку над ней — только содержимое
-  function sectionHtml(id) {
-    const st = state[id];
-    return `
-      ${id === "rkn" ? statusBannerHtml() : ""}
-      <div class="card compact">
+      <div class="card compact" data-key="results">
         <div class="card-content stack-sm">
-          ${toolbarHtml(id, st)}
-          ${st.error ? errorAlert(st.error) : ""}
-          ${resultsBlockHtml(id, st)}
+          <div class="between">
+            <div class="chk-summary" data-key="summary">${summaryHtml()}</div>
+            <label class="check-row"><input type="checkbox" class="checkbox" data-only-problems ${onlyProblems ? "checked" : ""}>Только проблемные</label>
+          </div>
+          ${run ? `<div class="progress" data-key="progress"><i style="transform:scaleX(${progress()})"></i></div>` : ""}
+          <div class="table-wrap">
+            <table class="table chk-table">
+              <thead><tr><th>Сайт</th><th>Итог</th><th>Реестр РКН</th><th>Ответ</th></tr></thead>
+              <tbody data-key="tbody">${rowsHtml()}</tbody>
+            </table>
+          </div>
         </div>
       </div>`;
   }
 
   function render() {
     morph(body, `
-      <div class="tabs-list" data-key="tabs">
-        <button class="tabs-trigger" role="tab" aria-selected="${tab === "rkn"}" data-tab="rkn">${ic("shield-check")}Реестр РКН</button>
-        <button class="tabs-trigger" role="tab" aria-selected="${tab === "reach"}" data-tab="reach">${ic("wifi")}Доступность</button>
+      <div class="card compact" data-key="form">
+        <div class="card-content stack-sm">
+          <div class="chk-form">
+            <div class="input-group grow">${ic("search")}
+              <input class="input" data-input placeholder="Сайт или ссылка — можно несколько через пробел" value="${esc(input)}" autocomplete="off" spellcheck="false">
+            </div>
+            <button class="btn" data-check ${run ? "disabled" : ""}>Проверить</button>
+            <select class="select-native chk-list" data-list ${run || !listNames?.length ? "disabled" : ""}>${listOptionsHtml()}</select>
+          </div>
+          ${registryDown ? `<p class="hint chk-warn">${ic("triangle-alert")}Реестр РКН сейчас недоступен — проверяю только, открываются ли сайты.</p>` : ""}
+        </div>
       </div>
-      ${sectionHtml(tab)}`);
+      ${resultsHtml()}`);
   }
 
-  // точечное обновление во время стрима результатов — без пересборки всей страницы
-  function updateProgress(id) {
-    const st = state[id], cfg = CHECKERS[id];
-    const tbody = body?.querySelector(`[data-key="tbody-${id}"]`);
-    if (tbody) {
-      const rows = (st.onlyProblem ? st.results.filter(cfg.isProblem) : st.results).map(cfg.row).join("");
-      morph(tbody, rows || emptyRowsHtml(st));
+  // во время стрима — только таблица, итог и прогресс, без пересборки страницы
+  function refreshLive() {
+    const tbody = body?.querySelector('[data-key="tbody"]');
+    if (!tbody) return render();
+    morph(tbody, rowsHtml());
+    const sum = body.querySelector('[data-key="summary"]');
+    if (sum) sum.innerHTML = summaryHtml();
+    const bar = body.querySelector('[data-key="progress"] i');
+    if (bar) bar.style.transform = `scaleX(${progress()})`;
+  }
+
+  // --- проверка ----------------------------------------------------------------------
+
+  function put(site, key, value) {
+    const cur = results.get(site) || { rkn: null, reach: null };
+    results.set(site, { ...cur, [key]: value });
+  }
+
+  function finishIfDone() {
+    if (run && run.rknDone >= run.total && run.reachDone >= run.total) {
+      run = null;
+      render();
+    } else {
+      refreshLive();
     }
-    const sum = body?.querySelector(`[data-key="summary-${id}"]`);
-    if (sum) sum.innerHTML = cfg.summary(st);
-    const bar = body?.querySelector(`[data-key="progress-${id}"] i`);
-    if (bar) bar.style.transform = `scaleX(${st.expected ? st.done / st.expected : 0})`;
   }
 
-  // --- данные ----------------------------------------------------------------
+  // введённые вручную: обе проверки на каждый сайт, по PARALLEL сайтов разом
+  async function checkTyped() {
+    const sites = parseTargets(input);
+    if (!sites.length) { toast.warning("Не похоже на адрес сайта", "Например: youtube.com или https://discord.com/app"); return; }
+    results = new Map(sites.map(s => [s, { rkn: null, reach: null }]));
+    run = { total: sites.length, rknDone: 0, reachDone: 0 };
+    render();
+    const one = async site => {
+      await Promise.all([
+        api("block_check_one", site)
+          .then(r => put(site, "reach", r), e => put(site, "reach", { status: "error", reason: e.message }))
+          .finally(() => { run.reachDone++; }),
+        (registryDown ? Promise.resolve({ status: "error" }) : api("chebur_check_one", site))
+          .then(r => put(site, "rkn", r), () => put(site, "rkn", { status: "error" }))
+          .finally(() => { run.rknDone++; }),
+      ]);
+      finishIfDone();
+    };
+    const queue = [...sites];
+    await Promise.all(Array.from({ length: Math.min(PARALLEL, queue.length) }, async () => {
+      while (queue.length) await one(queue.shift());
+    }));
+  }
+
+  // список: обе проверки идут на бэкенде и стримятся пушами
+  async function checkList(name) {
+    if (!name || run) return;
+    results = new Map();
+    run = { total: 0, rknDone: 0, reachDone: 0, list: name };
+    render();
+    try {
+      const reach = await api("block_check_start", name);
+      run.total = reach?.total || 0;
+      if (registryDown) run.rknDone = run.total;
+      else {
+        try { await api("chebur_check_start", name); } catch { run.rknDone = run.total; }
+      }
+    } catch (e) {
+      run = null;
+      toast.error("Не удалось проверить список", e.message);
+    }
+    render();
+  }
+
+  function onReach(r) {
+    if (!run) return;
+    put(r.target, "reach", r);
+    run.reachDone++;
+    finishIfDone();
+  }
+  function onRkn(r) {
+    if (!run) return;
+    put(r.target, "rkn", r);
+    run.rknDone++;
+    finishIfDone();
+  }
+
+  onPush("blockResult", onReach);
+  onPush("cheburResult", onRkn);
+  // «Done» только страхуют: итог считается по количеству пришедших ответов
+  onPush("blockDone", () => { if (run) { run.reachDone = run.total; finishIfDone(); } });
+  onPush("cheburDone", () => { if (run) { run.rknDone = run.total; finishIfDone(); } });
+
+  // --- данные ----------------------------------------------------------------------
 
   async function loadListNames() {
-    try {
-      listNames = await api("lists_all");
-    } catch {
-      listNames = listNames || [];
-    }
+    try { listNames = await api("lists_all"); } catch { listNames = listNames || []; }
     if (body) render();
   }
 
-  async function loadCheburStatus() {
-    try {
-      cheburStatus = await api("chebur_status");
-      cheburStatusError = null;
-    } catch (e) {
-      cheburStatusError = e.message;
-    }
-    if (body && tab === "rkn") render();
-  }
-
-  async function checkOne(id) {
-    const cfg = CHECKERS[id], st = state[id];
-    const domain = st.domain.trim();
-    if (!domain) return;
-    st.error = ""; st.running = false; st.expected = 0; st.done = 0; st.hits = 0; st.results = [];
-    render();
-    try {
-      const r = await api(cfg.apiOne, domain);
-      if (r) { st.results = [r]; st.hits = cfg.isHit(r) ? 1 : 0; st.done = 1; }
-    } catch (e) {
-      st.error = e.message;
-    }
-    render();
-  }
-
-  async function checkList(id) {
-    const cfg = CHECKERS[id], st = state[id];
-    if (st.running) return;
-    const name = st.list;
-    if (!name) { toast.warning("Список не выбран", "Выбери список в выпадающем меню."); return; }
-    st.error = ""; st.results = []; st.done = 0; st.hits = 0;
-    render();
-    try {
-      const info = await api(cfg.apiStart, name);
-      st.expected = info?.total || 0;
-      st.running = true;
-    } catch (e) {
-      st.error = e.message;
-    }
-    render();
-  }
-
-  function pushResult(id, r) {
-    const st = state[id], cfg = CHECKERS[id];
-    st.done++;
-    if (cfg.isHit(r)) st.hits++;
-    st.results.push(r);
-    if (body && tab === id) updateProgress(id);
-  }
-  function pushDone(id) {
-    state[id].running = false;
-    if (body && tab === id) render();
-  }
-
-  onPush("cheburResult", r => pushResult("rkn", r));
-  onPush("cheburDone", () => pushDone("rkn"));
-  onPush("blockResult", r => pushResult("reach", r));
-  onPush("blockDone", () => pushDone("reach"));
-
-  // --- события -----------------------------------------------------------------
-
-  function onClick(e) {
-    const t = e.target.closest("[data-tab]");
-    if (t) { tab = t.dataset.tab; render(); return; }
-    const one = e.target.closest("[data-one]");
-    if (one) { withBusy(one, () => checkOne(one.dataset.one)); return; }
-    const start = e.target.closest("[data-start]");
-    if (start) { withBusy(start, () => checkList(start.dataset.start)); return; }
-  }
-
-  function onFieldEvent(e) {
-    const dom = e.target.closest("[data-domain]");
-    if (dom) { state[dom.dataset.domain].domain = dom.value; return; }
-    const listSel = e.target.closest("[data-list]");
-    if (listSel) { state[listSel.dataset.list].list = listSel.value; return; }
-    const filt = e.target.closest("[data-filter]");
-    if (filt) { state[filt.dataset.filter].onlyProblem = filt.checked; render(); }
+  async function loadRegistryStatus() {
+    try { await api("chebur_status"); registryDown = null; } catch (e) { registryDown = e.message; }
+    if (body) render();
   }
 
   Pages.define({
-    id: "checks", title: "Проверки", icon: "scan-search", group: "Данные",
+    id: "checks", title: "Проверка сайтов", icon: "scan-search", group: "Данные",
     mount(el) {
       root = el;
       root.innerHTML = `
         <div class="page-head">
           <div>
-            <h1 class="page-title">Проверки</h1>
+            <h1 class="page-title">Проверка сайтов</h1>
           </div>
         </div>
         <div class="stack" data-slot="body"></div>`;
       body = root.querySelector("[data-slot=body]");
-      root.addEventListener("click", onClick);
-      root.addEventListener("input", onFieldEvent);
-      root.addEventListener("change", onFieldEvent);
+      root.addEventListener("click", e => {
+        const b = e.target.closest("[data-check]");
+        if (b && !b.disabled) withBusy(b, checkTyped);
+      });
+      root.addEventListener("input", e => {
+        if (e.target.matches("[data-input]")) input = e.target.value;
+      });
+      root.addEventListener("change", e => {
+        if (e.target.matches("[data-list]")) { const name = e.target.value; e.target.value = ""; checkList(name); }
+        if (e.target.matches("[data-only-problems]")) { onlyProblems = e.target.checked; render(); }
+      });
       root.addEventListener("keydown", e => {
-        if (e.key === "Enter" && e.target.matches("[data-domain]")) checkOne(e.target.dataset.domain);
+        if (e.key === "Enter" && e.target.matches("[data-input]") && !run) checkTyped();
       });
       render();
     },
     show() {
       loadListNames();
-      loadCheburStatus();
+      loadRegistryStatus();
     },
   });
 })();
