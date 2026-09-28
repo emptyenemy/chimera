@@ -61,7 +61,7 @@
     autostart = { ...autostart, enabled: target };
     render();
     try {
-      autostart = (await api("autostart_set", target)) || autostart;
+      autostart = { ...autostart, ...(await api("autostart_set", target)) };
       toast.success(autostart.enabled ? "Автозапуск с Windows включён" : "Автозапуск с Windows выключен");
     } catch (e) {
       autostart = { ...autostart, enabled: !target };

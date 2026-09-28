@@ -831,6 +831,7 @@ class Api:
         try:
             if not is_admin():
                 raise PermissionError("Нужны права администратора для настройки автозапуска")
-            return _ok({"enabled": autostart.set_enabled(bool(value))})
+            # тот же вид, что у autostart_get: фронт кладёт ответ в своё состояние целиком
+            return _ok({"enabled": autostart.set_enabled(bool(value)), "supported": autostart.is_supported()})
         except Exception as e:
             return _err(e)

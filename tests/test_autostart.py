@@ -85,6 +85,17 @@ def test_refresh_does_nothing_without_task(monkeypatch):
     assert not run.created
 
 
+def test_api_autostart_set_keeps_supported_flag(monkeypatch):
+    # фронт заменяет состояние ответом целиком: без supported тумблер становился
+    # неактивным и второй раз не переключался до перезапуска программы
+    from ui import api as api_mod
+    monkeypatch.setattr(api_mod, "is_admin", lambda: True)
+    monkeypatch.setattr(api_mod.autostart, "set_enabled", lambda v: v)
+    monkeypatch.setattr(api_mod.autostart, "is_supported", lambda: True)
+    res = api_mod.Api.autostart_set(None, True)
+    assert res == {"ok": True, "data": {"enabled": True, "supported": True}}
+
+
 def test_service_launch_target_frozen_runs_exe_directly(monkeypatch):
     monkeypatch.delattr(sys, "frozen", raising=False)
     monkeypatch.setattr(paths, "IS_FROZEN", True)
