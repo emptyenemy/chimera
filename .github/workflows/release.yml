@@ -16,11 +16,11 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 90
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           submodules: recursive
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.14"
           cache: pip
@@ -48,7 +48,7 @@ jobs:
 
       # Кэш Nuitka: скомпилированные модули и скачанные ею инструменты — повторная
       # сборка заметно быстрее. Ключ — версия зависимостей, от них кэш и устаревает.
-      - uses: actions/cache@v4
+      - uses: actions/cache@v6
         with:
           path: ~\AppData\Local\Nuitka\Nuitka\Cache
           key: nuitka-${{ runner.os }}-${{ hashFiles('requirements.txt', 'requirements-dev.txt') }}
@@ -57,6 +57,16 @@ jobs:
       - name: Сборка
         shell: cmd
         run: call build.bat
+
+      # Собранная программа начисто, как у пользователя: запуск без окна и вызовы
+      # всех модулей через её же интерфейс (tools/smoke_build.py). Ловит то, что
+      # тестам исходников не видно, — модуль или файл, не попавший в exe.
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+
+      - name: Дымовой тест сборки
+        run: python tools/smoke_build.py build\Chimera
 
       - name: Архив
         shell: bash
