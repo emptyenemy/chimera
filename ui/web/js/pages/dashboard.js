@@ -154,6 +154,29 @@
     }
   }
 
+  // «Выключить всё»: обход, прокси, Telegram, hosts, DNS, служба — разом; модули и
+  // настройки остаются, включить обратно можно переключателями ниже
+  const STEP_TITLES = { service: "служба", winws: "обход DPI", proxy: "прокси", tg: "Telegram-прокси", hosts: "hosts", dns: "DNS" };
+
+  async function panic(btn) {
+    const ok = await confirmDialog({
+      title: "Выключить всё?",
+      description: "Остановятся обход DPI, прокси и Telegram-прокси, снимется подмена hosts, DNS вернётся к настройкам провайдера, если его меняла Chimera. Настройки сохранятся.",
+      confirmText: "Выключить всё", destructive: true,
+    });
+    if (!ok) return;
+    await withBusy(btn, async () => {
+      try {
+        const res = await api("panic_all");
+        const failed = (res?.steps || []).filter(s => !s.ok);
+        if (!failed.length) toast.success("Всё выключено");
+        else toast.warning("Выключено не всё", failed.map(s => `${STEP_TITLES[s.step] || s.step}: ${s.error}`).join("; "));
+      } catch (e) {
+        toast.error("Не получилось выключить всё", e.message);
+      }
+    });
+  }
+
   Pages.define({
     id: "dashboard", title: "Обзор", icon: "layout-dashboard", group: "",
     mount(el) {
@@ -163,9 +186,12 @@
           <div>
             <h1 class="page-title">Обзор</h1>
           </div>
+          <button class="btn outline sm" data-act="panic">${ic("power")}Выключить всё</button>
         </div>
         <div class="stack" data-slot="body"></div>`;
       el.addEventListener("click", e => {
+        const pan = e.target.closest('[data-act="panic"]');
+        if (pan) return panic(pan);
         // переключатель — сам по себе, остальная карточка ведёт на страницу модуля
         const t = e.target.closest("[data-toggle]");
         if (t) return t.disabled ? undefined : toggle(t.dataset.toggle);

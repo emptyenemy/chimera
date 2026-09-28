@@ -120,6 +120,9 @@ class Tray(QObject):
             action.triggered.connect(lambda checked, k=key: self.toggle(k, checked))
             self.toggles[key] = action
         menu.addSeparator()
+        self.panic_action = menu.addAction(tray_model.PANIC_LABEL)
+        self.panic_action.triggered.connect(lambda: self.panic())
+        menu.addSeparator()
         menu.addAction("Выход").triggered.connect(self.quit)
         menu.aboutToShow.connect(self.refresh)
         self.menu = menu  # иначе меню соберёт сборщик мусора
@@ -164,6 +167,27 @@ class Tray(QObject):
                 self.notified.emit(f"{label}: не получилось", res.get("error") or "неизвестная ошибка")
         finally:
             self.busy.discard(key)
+
+    def panic(self):
+        # «Выключить всё» из меню: без подтверждения — пункт выбирают осознанно, а
+        # включить обратно можно теми же переключателями
+        self.busy.add("panic")
+        self.panic_action.setEnabled(False)
+        self.bridge.pool.submit(self._run_panic)
+
+    def _run_panic(self):
+        try:
+            method, args = tray_model.PANIC_COMMAND
+            res = json.loads(self.api.dispatch(method, json.dumps(args)))
+            if not res.get("ok"):
+                self.notified.emit("Выключить всё: не получилось", res.get("error") or "неизвестная ошибка")
+                return
+            text = tray_model.panic_summary(res.get("data"))
+            if text:
+                self.notified.emit("Выключить всё: не всё получилось", text)
+        finally:
+            self.busy.discard("panic")
+            self.panic_action.setEnabled(True)
 
     # --- окно ----------------------------------------------------------------------
 

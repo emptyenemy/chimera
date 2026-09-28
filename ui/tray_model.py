@@ -15,6 +15,18 @@ MODULES = (
 )
 
 
+PANIC_LABEL = "Выключить всё"
+PANIC_COMMAND = ("panic_all", [])   # тот же метод Api, что у кнопки на «Обзоре»
+
+
+def panic_summary(data: dict | None) -> str | None:
+    """Текст уведомления о шагах «Выключить всё», которые не получились; None — всё выключено."""
+    failed = [s for s in (data or {}).get("steps") or [] if not s.get("ok")]
+    if not failed:
+        return None
+    return "\n".join(f"{s.get('step')}: {s.get('error') or 'ошибка'}" for s in failed)
+
+
 def is_on(key: str, data: dict | None) -> bool:
     if not data:
         return False

@@ -93,6 +93,27 @@ def test_toggle_error_is_reported(app, config):
     assert got == [("Прокси: не получилось", "Нужны права администратора")]
 
 
+def test_menu_has_panic_item_that_runs_panic_all(app, config):
+    _, api, tray = _tray(app, {})
+    assert "Выключить всё" in [a.text() for a in tray.menu.actions()]
+
+    tray.panic()
+
+    assert api.calls == [("panic_all", [])]
+    assert "panic" not in tray.busy
+
+
+def test_panic_failures_are_reported(app, config):
+    data = {"steps": [{"step": "hosts", "ok": False, "error": "Нужны права администратора"}], "failed": 1}
+    _, _, tray = _tray(app, {}, result={"ok": True, "data": data})
+    got = []
+    tray.notified.connect(lambda title, text: got.append((title, text)))
+
+    tray.panic()
+
+    assert got == [("Выключить всё: не всё получилось", "hosts: Нужны права администратора")]
+
+
 def test_close_hides_to_tray_and_hints_once(app, config, monkeypatch):
     window, _, tray = _tray(app, {})
     quits = []

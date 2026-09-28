@@ -516,6 +516,28 @@ class ProxyManager:
             pass
         self._sysproxy_on = False
 
+    @staticmethod
+    def _read_autoconfig_url() -> str | None:
+        try:
+            with winreg.OpenKey(winreg.HKEY_CURRENT_USER, _INET_SETTINGS, 0, winreg.KEY_READ) as k:
+                value, _ = winreg.QueryValueEx(k, "AutoConfigURL")
+        except OSError:
+            return None
+        return str(value) or None
+
+    def cleanup_stale_system_proxy(self) -> bool:
+        """Снимает PAC из системного прокси, если он наш, а прокси не запущен.
+
+        Так остаётся после аварийного завершения программы: браузеры слали бы наши
+        домены на мёртвый SOCKS-порт, и сайты из списков переставали открываться.
+        Чужой PAC (корпоративный) не трогаем. True — что-то сняли."""
+        if self.running:
+            return False
+        if self._read_autoconfig_url() != self._pac_url():
+            return False
+        self._disable_system_proxy()
+        return True
+
     # --- жизненный цикл ------------------------------------------------------
 
     @property

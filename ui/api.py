@@ -10,7 +10,7 @@ import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
-from modules import appconfig, autostart, blockcheck, cheburcheck, control, domains, paths, service, upstream, winproc
+from modules import appconfig, applog, autostart, blockcheck, cheburcheck, control, domains, paths, service, upstream, winproc
 from modules import discord as discord_cache
 from modules.dns_jumper import DnsJumper
 from modules.hosts import HostsManager
@@ -51,7 +51,7 @@ class Api:
         # Если фоновая служба (modules/service.py) уже запущена — она единственный
         # владелец процессов, UI не поднимает свои автозапуски поверх неё.
         if not service.is_running():
-            threading.Thread(target=self._autostart_all, daemon=True).start()
+            threading.Thread(target=self._startup_then_autostart, daemon=True).start()
         threading.Thread(target=self._refresh_autostart_task, daemon=True).start()
         # Закрыть программу по её же команде (обновление): бэкенд подменяет на свой
         # выход через поток UI; по умолчанию — сразу, модули к этому моменту уже погашены.
@@ -74,6 +74,25 @@ class Api:
             ("selfupdate", self.selfupdate_state, 5.0, False),
         ])
         self.hub.start()
+
+    def _startup_then_autostart(self) -> None:
+        # хвосты прошлого запуска убираем до автозапусков: поднятый ими прокси заново
+        # поставит свой PAC, а чистка не должна принять его за чужой хвост
+        self._startup_cleanup()
+        self._autostart_all()
+
+    def _startup_cleanup(self) -> None:
+        """Убирает то, что осталось после аварийного завершения программы: системный
+        PAC на мёртвый прокси. Фоновая служба — владелец модулей, при ней не трогаем.
+        Ошибка чистки запуску не мешает."""
+        try:
+            if service.is_running():
+                return
+            if self.proxy.cleanup_stale_system_proxy():
+                applog.write("Снят системный PAC-прокси, оставшийся от прошлого запуска: "
+                             "прокси не работал, браузеры слали бы сайты на мёртвый порт")
+        except Exception as e:
+            applog.write(f"Очистка хвостов при запуске не удалась: {e}")
 
     def _autostart_all(self) -> None:
         # общая с service-режимом логика (modules/service.py) — ошибки одного
@@ -113,6 +132,53 @@ class Api:
             self.proxy.stop()  # снять TUN/маршруты sing-box, иначе сеть «провиснет»
         except Exception:
             pass
+
+    def panic_all(self):
+        """«Выключить всё»: гасит обход, прокси, Telegram-прокси и службу, снимает подмену
+        hosts, возвращает DNS на адаптерах, где его поставили мы, и убирает системный PAC.
+
+        Шаги независимы: сбой одного (нет прав, занятый файл) остальным не мешает. Ответ —
+        по шагу на строку: {step, ok, error?}. Модули и настройки остаются как были, поэтому
+        включить всё обратно можно обычными переключателями."""
+        def service_step():
+            if service.is_running():
+                service.send_stop()
+
+        def hosts_step():
+            if not is_admin():
+                raise PermissionError("Нужны права администратора для записи в hosts")
+            self.hosts.set_enabled(False)
+
+        def dns_step():
+            adapters = self.dns.changed_adapters()
+            if not adapters:
+                return
+            if not is_admin():
+                raise PermissionError("Нужны права администратора для сброса DNS")
+            errors = []
+            for idx in adapters:
+                try:
+                    self.dns.reset_dns(idx)
+                except Exception as e:
+                    errors.append(f"адаптер {idx}: {e}")
+            if errors:
+                raise RuntimeError("; ".join(errors))
+
+        # служба первой: пока она жива, она перезапускала бы то, что мы гасим здесь.
+        # Прокси останавливается до остального — его stop() заодно снимает системный PAC.
+        steps = (("service", service_step), ("winws", self.winws.stop), ("proxy", self.proxy.stop),
+                 ("tg", self.tg.stop), ("hosts", hosts_step), ("dns", dns_step))
+        report = []
+        for name, fn in steps:
+            try:
+                fn()
+                report.append({"step": name, "ok": True})
+            except Exception as e:
+                report.append({"step": name, "ok": False, "error": str(e)})
+        failed = [r for r in report if not r["ok"]]
+        applog.write("Выключить всё: " + ("готово" if not failed else
+                     "не удалось: " + "; ".join(f"{r['step']} ({r['error']})" for r in failed)))
+        return _ok({"steps": report, "failed": len(failed)})
 
     def app_info(self):
         # frozen — собранная программа: в ней нет pywebview и git, фронт прячет то, что там не работает
@@ -231,6 +297,7 @@ class Api:
         (("dns_",), ("dns",)),
         (("lists_",), ("proxy", "hosts", "winws")),  # счётчики доменов в выбранных списках
         (("selfupdate_",), ("selfupdate",)),
+        (("panic_",), ("winws", "proxy", "tg", "hosts", "dns", "filters")),
     )
     # чтения ничего не меняют — после них хаб не дёргаем
     _READ_SUFFIXES = ("_state", "_log", "_stats", "_overview", "_read", "_all", "_status",
@@ -240,7 +307,7 @@ class Api:
     # кончается на «читающий» _probe_config, но это запись в config.json
     _WRITE_WORDS = frozenset({"set", "add", "delete", "save", "create", "rename", "start",
                               "stop", "update", "download", "regen", "open", "clear",
-                              "enabled", "install", "uninstall", "apply", "reset"})
+                              "enabled", "install", "uninstall", "apply", "reset", "panic"})
 
     # сверка с апстримом — только сеть, хотя в имени и есть «update»
     _READ_NAMES = frozenset({"tg_check_update", "upstream_check_updates"})

@@ -43,3 +43,24 @@ def test_other_commands():
     assert tm.toggle_command("proxy", {}, True) == ("proxy_start", [])
     assert tm.toggle_command("tg", {}, False) == ("tg_stop", [])
     assert tm.toggle_command("hosts", {}, False) == ("hosts_set_enabled", [False])
+
+
+def test_panic_command_and_label():
+    assert tm.PANIC_COMMAND == ("panic_all", [])
+    assert tm.PANIC_LABEL == "Выключить всё"
+
+
+def test_panic_summary_is_silent_when_everything_stopped():
+    assert tm.panic_summary({"steps": [{"step": "winws", "ok": True}], "failed": 0}) is None
+    assert tm.panic_summary(None) is None
+
+
+def test_panic_summary_lists_failed_steps():
+    data = {"steps": [{"step": "winws", "ok": True},
+                      {"step": "hosts", "ok": False, "error": "Нужны права администратора"},
+                      {"step": "dns", "ok": False, "error": "адаптер 3: нет доступа"}],
+            "failed": 2}
+    text = tm.panic_summary(data)
+    assert "hosts: Нужны права администратора" in text
+    assert "dns: адаптер 3: нет доступа" in text
+    assert "winws" not in text

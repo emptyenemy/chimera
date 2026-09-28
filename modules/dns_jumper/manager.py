@@ -10,12 +10,16 @@ import re
 import subprocess
 from concurrent.futures import ThreadPoolExecutor
 
-from .. import appconfig, dns_providers
+from .. import appconfig, dns_providers, paths
 from ..hosts.resolver import ping_dns
 from . import netinfo, probe
 
 # тест-домены пробы возможностей (config.json -> ключ dns_probe), с дефолтами
 PROBE_DEFAULTS = {"bypass": ["chatgpt.com"], "ad": "doubleclick.net"}
+
+# индексы адаптеров, где DNS поставили мы: «Выключить всё» сбрасывает только их и не
+# трогает адаптеры, у которых DNS выставлен пользователем или провайдером
+CHANGED_PATH = paths.data_path("dns_changed.json")
 
 
 def _ps(cmd: str) -> str:
@@ -119,6 +123,7 @@ class DnsJumper:
                     f"-ServerAddresses {addr_list}")
         cmds.append("Clear-DnsClientCache")
         _ps("; ".join(cmds))
+        self._remember(idx, True)
         return {**p, "encrypted": bool(doh)}
 
     def reset_dns(self, adapter_index: int) -> None:
@@ -127,6 +132,24 @@ class DnsJumper:
             f"Set-DnsClientServerAddress -InterfaceIndex {int(adapter_index)} "
             f"-ResetServerAddresses; Clear-DnsClientCache"
         )
+        self._remember(int(adapter_index), False)
+
+    # --- адаптеры, где DNS поставили мы ---------------------------------------
+
+    def changed_adapters(self) -> list[int]:
+        try:
+            data = json.loads(CHANGED_PATH.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return []
+        return sorted({int(i) for i in data if isinstance(i, int)}) if isinstance(data, list) else []
+
+    def _remember(self, idx: int, changed: bool) -> None:
+        current = set(self.changed_adapters())
+        current.add(idx) if changed else current.discard(idx)
+        try:
+            CHANGED_PATH.write_text(json.dumps(sorted(current)), encoding="utf-8")
+        except OSError:
+            pass  # учёт вспомогательный: не удалось записать — DNS всё равно уже применён
 
     def ping_all(self) -> list[dict]:
         """Пингует все серверы всех провайдеров параллельно."""
