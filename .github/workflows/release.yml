@@ -1,0 +1,74 @@
+# Релиз по тегу: git tag v0.2.0 && git push origin v0.2.0.
+# Тег с дефисом (v0.3.0-beta.1) публикуется пре-релизом — его видит только бета-канал
+# самообновления. Подробности — docs/RELEASES.md.
+
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write  # создать релиз и прикрепить архив
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            requirements-dev.txt
+
+      - name: Зависимости
+        run: python -m pip install -r requirements-dev.txt
+
+      - name: Тесты
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: python -m pytest -q
+
+      - name: Версия из тега
+        id: ver
+        shell: bash
+        run: |
+          python tools/set_version.py "$GITHUB_REF_NAME"
+          echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Бинарники (sing-box, winws2)
+        run: python tools/fetch_bins.py
+
+      # Кэш Nuitka: скомпилированные модули и скачанные ею инструменты — повторная
+      # сборка заметно быстрее. Ключ — версия зависимостей, от них кэш и устаревает.
+      - uses: actions/cache@v4
+        with:
+          path: ~\AppData\Local\Nuitka\Nuitka\Cache
+          key: nuitka-${{ runner.os }}-${{ hashFiles('requirements.txt', 'requirements-dev.txt') }}
+          restore-keys: nuitka-${{ runner.os }}-
+
+      - name: Сборка
+        shell: cmd
+        run: call build.bat
+
+      - name: Архив
+        shell: bash
+        run: |
+          python -c "import shutil; shutil.make_archive('Chimera-${{ steps.ver.outputs.version }}-win64', 'zip', root_dir='build', base_dir='Chimera')"
+          ls -la Chimera-*-win64.zip
+
+      - name: Релиз
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          flags=(--generate-notes --title "Chimera $GITHUB_REF_NAME")
+          if [[ "$GITHUB_REF_NAME" == *-* ]]; then flags+=(--prerelease); fi
+          gh release create "$GITHUB_REF_NAME" "Chimera-${{ steps.ver.outputs.version }}-win64.zip" "${flags[@]}"

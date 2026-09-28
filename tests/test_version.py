@@ -3,6 +3,8 @@
 import importlib.util
 from pathlib import Path
 
+import pytest
+
 from modules import version
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -40,10 +42,24 @@ def test_file_version():
     assert version.file_version("dev") == "0.0.0.0"
 
 
-def test_set_version_rewrites_file(tmp_path):
+def _set_version_module():
     spec = importlib.util.spec_from_file_location("set_version", ROOT / "tools" / "set_version.py")
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
+    return mod
+
+
+def test_set_version_rejects_non_version_tag(tmp_path):
+    # тег вида vtest или v1.2 не должен дать сборку с мусорной версией
+    target = tmp_path / "version.py"
+    target.write_text('VERSION = "dev"\n', encoding="utf-8")
+    with pytest.raises(ValueError, match="не версия"):
+        _set_version_module().write("vtest", target)
+    assert target.read_text(encoding="utf-8") == 'VERSION = "dev"\n'
+
+
+def test_set_version_rewrites_file(tmp_path):
+    mod = _set_version_module()
     target = tmp_path / "version.py"
     target.write_text((ROOT / "modules" / "version.py").read_text(encoding="utf-8"), encoding="utf-8")
     mod.write("v0.2.0", target)

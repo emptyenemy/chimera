@@ -9,11 +9,19 @@ import re
 import sys
 from pathlib import Path
 
-VERSION_FILE = Path(__file__).resolve().parent.parent / "modules" / "version.py"
+ROOT = Path(__file__).resolve().parent.parent
+VERSION_FILE = ROOT / "modules" / "version.py"
+sys.path.insert(0, str(ROOT))
+
+from modules.version import parse  # noqa: E402
 
 
 def write(version: str, path: Path = VERSION_FILE) -> str:
     version = version.strip().removeprefix("v")
+    # тег вида vtest или v1.2 — не версия: лучше уронить сборку, чем выпустить exe
+    # с версией, которую самообновление не сможет сравнить
+    if parse(version) is None:
+        raise ValueError(f"{version!r} — не версия: нужен тег вида v0.2.0 или v0.3.0-beta.1")
     text = path.read_text(encoding="utf-8")
     new, n = re.subn(r'^VERSION = ".*"$', f'VERSION = "{version}"', text, count=1, flags=re.M)
     if n != 1:
