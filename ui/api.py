@@ -17,6 +17,7 @@ from modules.proxy import ProxyManager
 from modules.tgproxy import TgProxy
 from modules.winws import WinwsManager
 from modules.hosts.manager import is_admin
+from ui.hub import StateHub
 
 WEB_DIR = Path(__file__).parent / "web"
 VERSION = "1.0.0"
@@ -49,6 +50,19 @@ class Api:
         # владелец процессов, UI не поднимает свои автозапуски поверх неё.
         if not service.is_running():
             threading.Thread(target=self._autostart_all, daemon=True).start()
+        # Состояние модулей фронт больше не опрашивает сам — его пушит хаб (см. ui/hub.py).
+        # lazy — только пока вкладку кто-то смотрит: dns_state это секунды PowerShell,
+        # а живая статистика TG нужна лишь на её вкладке.
+        self.hub = StateHub(lambda key, payload: self._push("hub", payload), [
+            ("winws", self.winws_state, 2.0, False),
+            ("proxy", self.proxy_state, 2.0, False),
+            ("tg", self.tg_state, 2.0, False),
+            ("hosts", self.hosts_state, 3.0, False),
+            ("filters", self.filters_state, 15.0, True),
+            ("tgStats", self.tg_stats, 1.0, True),
+            ("dns", self.dns_state, 15.0, True),
+        ])
+        self.hub.start()
 
     def _autostart_all(self) -> None:
         # общая с service-режимом логика (modules/service.py) — ошибки одного
@@ -63,6 +77,7 @@ class Api:
         Если рядом работает фоновая служба — она единственный владелец процессов
         (иначе закрытие окна погасило бы то, что служба должна держать поднятым);
         UI просто перестаёт опрашивать состояние и выходит."""
+        self.hub.stop()
         if service.is_running():
             return
         self.hosts.stop_background()
@@ -77,6 +92,22 @@ class Api:
 
     def app_info(self):
         return _ok({"admin": is_admin(), "version": VERSION, "service_running": service.is_running()})
+
+    # --- хаб состояния (ui/hub.py) -------------------------------------------
+
+    def hub_snapshot(self):
+        """Всё уже известное состояние — для первого рендера, без ожидания опросов."""
+        return _ok(self.hub.snapshot())
+
+    def hub_watch(self, keys, on=True):
+        """Вкладка открылась (on) / закрылась — включить/выключить ленивые источники."""
+        self.hub.watch(keys, bool(on))
+        return _ok()
+
+    def hub_refresh(self, keys):
+        """Перечитать источники вне очереди (кнопка «Обновить» и т.п.)."""
+        self.hub.poke(*keys)
+        return _ok()
 
     def upstream_versions(self):
         """Локальные версии источников (быстро, без сети)."""
@@ -127,7 +158,7 @@ class Api:
         self.push(fn, payload)
 
     def dispatch(self, method: str, args_json: str) -> str:
-        """Единая точка входа для JS (см. ui/web/app.js: api()) — диспатчит по имени
+        """Единая точка входа для JS (см. ui/web/js/core.js: api()) — диспатчит по имени
         на обычные методы ниже, они как были — так и остались (_ok/_err, любые сигнатуры).
         Не заворачиваем каждый метод в отдельный слот моста: их ~60, и ни QWebChannel,
         ни js_api не умеют в произвольные *args/**kwargs — единый JSON-RPC проще.
@@ -143,6 +174,49 @@ class Api:
             return json.dumps(fn(*args))
         except Exception as e:
             return json.dumps(_err(e))
+        finally:
+            self._poke_after(method)
+
+    # префикс команды -> какие источники хаба она меняет
+    _POKE = (
+        (("winws_",), ("winws",)),
+        (("filters_", "game_filter_", "ipset_", "fake_"), ("filters", "winws")),
+        (("proxy_",), ("proxy",)),
+        (("tg_",), ("tg", "tgStats")),
+        (("hosts_",), ("hosts",)),
+        (("dns_",), ("dns",)),
+        (("lists_",), ("proxy", "hosts", "winws")),  # счётчики доменов в выбранных списках
+    )
+    # чтения ничего не меняют — после них хаб не дёргаем
+    _READ_SUFFIXES = ("_state", "_log", "_stats", "_overview", "_read", "_all", "_status",
+                      "_ping", "_one", "_probe", "_probe_config", "_check_update", "_get",
+                      "_info", "_versions", "_snapshot")
+    # глагол записи в любом слове имени перевешивает суффикс: dns_set_probe_config
+    # кончается на «читающий» _probe_config, но это запись в config.json
+    _WRITE_WORDS = frozenset({"set", "add", "delete", "save", "create", "rename", "start",
+                              "stop", "update", "download", "regen", "open", "clear",
+                              "enabled", "install", "uninstall", "apply", "reset"})
+
+    # сверка с апстримом — только сеть, хотя в имени и есть «update»
+    _READ_NAMES = frozenset({"tg_check_update", "upstream_check_updates"})
+
+    @classmethod
+    def is_read(cls, method: str) -> bool:
+        """Метод только читает (не меняет ни систему, ни настройки)."""
+        if method in cls._READ_NAMES:
+            return True
+        if cls._WRITE_WORDS.intersection(method.split("_")):
+            return False
+        return method.endswith(cls._READ_SUFFIXES)
+
+    def _poke_after(self, method: str) -> None:
+        """После команды — перечитать затронутые источники, не дожидаясь их тика."""
+        hub = getattr(self, "hub", None)
+        if hub is None or self.is_read(method):
+            return
+        for prefixes, keys in self._POKE:
+            if method.startswith(prefixes):
+                hub.poke(*keys)
 
     # --- hosts -------------------------------------------------------------
 

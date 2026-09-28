@@ -1,0 +1,18 @@
+/* Списки */
+
+.lst-layout { display: grid; grid-template-columns: 300px 1fr; gap: 16px; }
+@media (max-width: 860px) { .lst-layout { grid-template-columns: 1fr; } }
+
+.lst-side { min-width: 0; }
+.lst-side-scroll { max-height: 560px; overflow-y: auto; }
+.lst-item { cursor: pointer; padding: 8px 10px; content-visibility: auto; contain-intrinsic-size: 40px; }
+.lst-item-name { font-size: 13.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.lst-badges { gap: 4px; }
+.lst-badges .icon { font-size: 14px; }
+.lst-badge-proxy { color: var(--info); }
+.lst-badge-winws { color: var(--warning); }
+.lst-badge-hosts { color: var(--success); }
+
+.lst-editor-card { min-width: 0; }
+.lst-editor-wrap { display: flex; }
+.lst-editor { flex: 1; min-height: 480px; }

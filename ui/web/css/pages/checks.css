@@ -1,0 +1,9 @@
+/* Проверки */
+
+.chk-toolbar { flex-wrap: wrap; }
+.chk-toolbar .input-group { min-width: 220px; }
+.chk-select { width: 220px; flex: none; }
+.chk-meta { max-width: 480px; }
+
+/* результатов бывает сотни доменов — не считаем раскладку строк, пока их не видно */
+[data-page="checks"] .table tbody tr { content-visibility: auto; contain-intrinsic-size: 41px; }

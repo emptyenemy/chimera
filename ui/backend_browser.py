@@ -51,7 +51,7 @@ def _mark_page(html: bytes, token: str) -> bytes:
 
     Фронт не может опознать движок по протоколу: pywebview тоже поднимает свой
     http-сервер для локальных файлов, так что http:// сам по себе ничего не
-    значит (см. initBridge в ui/web/app.js). Маркер снимает эту двусмысленность,
+    значит (см. initBridge в ui/web/js/core.js). Маркер снимает эту двусмысленность,
     а токен заодно уезжает из адресной строки в скрипт.
     """
     tag = ('<script>window.__CHIMERA_HTTP__=true;window.__CHIMERA_TOKEN__='

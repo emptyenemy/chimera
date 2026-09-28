@@ -505,8 +505,10 @@ class ProxyManager:
         if self.config["link"]:
             try:
                 p = parser.parse_link(self.config["link"])
+                transport = p["outbound"].get("transport", {}).get("type", "tcp")
                 parsed = {"label": p["label"], "protocol": p["protocol"],
-                          "server": p["server"], "security": p["security"]}
+                          "server": p["server"], "security": p["security"],
+                          "transport": transport}
             except ValueError as e:
                 err = f"Ссылка не разобрана: {e}"
         ours = self._ours_alive

@@ -17,7 +17,7 @@ class Bridge(QObject):
 
     call() ничего не возвращает и мгновенно отпускает поток UI: работа уходит в
     пул, ответ прилетает сигналом resolved(callId, resultJson), фронт резолвит по
-    callId свой промис (см. ui/web/app.js). Синхронный слот с result=str короче,
+    callId свой промис (см. ui/web/js/core.js). Синхронный слот с result=str короче,
     но QWebChannel исполняет слот в потоке объекта — то есть в потоке UI, и любой
     поход в сеть/subprocess (dns_state ~4 c, proxy_state ~1 c, опрос дашборда
     каждые 3 с) намертво фризил окно на всё время вызова.

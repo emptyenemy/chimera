@@ -1,0 +1,17 @@
+/* Прокси */
+
+.px-status.is-on { border-color: color-mix(in srgb, var(--success) 30%, var(--border)); }
+.px-status-top { display: flex; align-items: flex-start; gap: 16px; }
+.px-status-desc { margin-top: 6px; color: var(--muted-foreground); font-size: 13.5px; line-height: 19px; }
+.px-alert { margin-top: 10px; }
+.px-status-actions { display: flex; align-items: center; gap: 8px; flex: none; }
+.px-status-foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; border-top: 1px solid var(--border); padding-top: 12px; margin-top: -4px; }
+.px-autostart { gap: 8px; }
+
+.px-mode-hint { max-width: 420px; text-align: right; }
+
+.px-link { min-height: 84px; }
+.px-parsed { align-items: center; }
+
+.px-lists-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 4px 16px; max-height: 260px; overflow-y: auto; }
+.px-lists-scope { margin-top: 10px; }

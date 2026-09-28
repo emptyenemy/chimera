@@ -1,0 +1,29 @@
+/* Стратегии */
+
+.strat-status.is-on { border-color: color-mix(in srgb, var(--success) 30%, var(--border)); }
+.strat-status-top { display: flex; align-items: flex-start; gap: 16px; }
+.strat-status-desc { margin-top: 6px; color: var(--muted-foreground); font-size: 13.5px; line-height: 19px; }
+.strat-alert { margin-top: 10px; }
+.strat-status-foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; border-top: 1px solid var(--border); padding-top: 12px; margin-top: -4px; }
+.strat-autostart { gap: 8px; }
+
+.strat-search { width: 220px; }
+.strat-search .input { width: 100%; }
+
+.strat-rows { max-height: 460px; overflow-y: auto; padding-right: 2px; }
+.strat-row { content-visibility: auto; contain-intrinsic-size: 0 62px; cursor: pointer; }
+.strat-row .item-title { display: flex; align-items: center; gap: 8px; white-space: normal; }
+.strat-row .item-desc { white-space: normal; }
+
+.strat-lists-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 4px 16px; max-height: 260px; overflow-y: auto; }
+.strat-lists-scope { margin-top: 10px; }
+
+.strat-filter-row { gap: 16px; }
+.strat-filter-row > div:first-child { min-width: 0; }
+.strat-fake-slots { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; margin-top: 8px; }
+
+.strat-filter-row .between > div:first-child { min-width: 0; }
+.strat-game-ranges { display: flex; align-items: flex-end; gap: 12px; margin-top: 12px; }
+.strat-game-field { width: 220px; flex: none; }
+.strat-game-field .input { width: 100%; }
+.strat-game-err { color: var(--destructive); }

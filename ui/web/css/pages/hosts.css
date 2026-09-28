@@ -1,0 +1,24 @@
+/* Hosts */
+
+.hosts-prov-name { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; font-weight: 500; line-height: 20px; }
+.hosts-ping { display: inline-flex; align-items: center; gap: 6px; flex: none; font-size: 13px; white-space: nowrap; }
+
+.hosts-list-row { justify-content: space-between; width: 100%; padding: 6px 8px; border-radius: calc(var(--radius) - 4px); }
+.hosts-list-row:hover { background: color-mix(in oklch, var(--accent) 40%, transparent); }
+.hosts-list-row.is-taken { opacity: .55; }
+.hosts-list-row input:disabled { cursor: not-allowed; }
+.hosts-owner { font-size: 12.5px; white-space: nowrap; }
+
+.hosts-prov.is-unavailable { opacity: .55; cursor: not-allowed; }
+.hosts-prov.is-unavailable .item-desc { color: var(--destructive); }
+
+.hosts-health { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; font-size: 12.5px; }
+.hosts-health .icon { font-size: 14px; }
+
+.hosts-static-row { justify-content: space-between; }
+
+.hosts-bg-num { max-width: 220px; }
+.hosts-bg-num .input { width: 100%; }
+
+.hosts-order-row { gap: 8px; padding: 6px 10px; }
+.hosts-order-num { width: 18px; flex: none; text-align: right; font-variant-numeric: tabular-nums; }

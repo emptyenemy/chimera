@@ -1,0 +1,17 @@
+/* DNS */
+
+.dns-current { font-size: 13px; margin-top: 2px; }
+
+.dns-row { align-items: flex-start; }
+.dns-row .item-media { margin-top: 2px; }
+.dns-row .item-actions { flex-wrap: wrap; justify-content: flex-end; align-self: center; }
+.dns-row-title { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; font-weight: 500; line-height: 20px; }
+
+.dns-ping { display: flex; flex-wrap: wrap; align-content: flex-start; gap: 4px 10px; flex: none; align-self: center; min-width: 76px; font-size: 13px; }
+.dns-ping-item { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
+
+.dns-probe { display: flex; flex-wrap: wrap; gap: 4px 14px; margin-top: 6px; font-size: 12.5px; color: var(--muted-foreground); }
+.dns-probe-ok, .dns-probe-fail { display: inline-flex; align-items: center; gap: 3px; }
+.dns-probe-ok { color: var(--success); }
+.dns-probe-fail { color: var(--destructive); }
+.dns-probe .icon { font-size: 13px; }

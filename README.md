@@ -20,7 +20,7 @@
 ├── config.json        # interface (ui|tui|service), ui_backend (pyside6|pywebview|browser) + общие настройки
 ├── data/              # рантайм-данные модулей (state/логи/сгенерированные конфиги, не в git) — modules/paths.py
 ├── modules/           # вся логика: winws, proxy, tgproxy, hosts, dns_jumper, domains, ...
-├── ui/                # api.py (методы для фронта) + backend_qt/backend_webview/backend_browser + web/ (фронт)
+├── ui/                # api.py (методы для фронта) + hub.py (пуш состояния) + backend_* + web/ (фронт: js/core.js, js/pages/, css/)
 ├── lists/             # списки доменов по сервисам (общий слой для всех модулей)
 ├── strategies/        # стратегии winws2 (*.txt) + assets/ (fake-блобы) + hostlists/
 ├── tools/             # port_flowseal.py — генератор стратегий из .bat Flowseal
