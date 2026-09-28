@@ -38,7 +38,7 @@ const Status = {
 
     // служба держит процессы сама — окно их не запускает и не гасит при выходе
     morph($("#sb-service"), app.service_running
-      ? `<div class="sb-service" data-key="plank">${ic("server")}<span>Модулями управляет фоновая служба CHIMERA</span></div>`
+      ? `<div class="sb-service" data-key="plank">${ic("server")}<span>Модулями управляет фоновая служба Chimera</span></div>`
       : "");
   }
 

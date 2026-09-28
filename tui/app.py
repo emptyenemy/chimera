@@ -127,7 +127,7 @@ def _overview(m: Menu) -> None:
 
     info = m.api.app_info()
     if info["ok"] and info["data"].get("service_running"):
-        m.print(_c("Служба CHIMERA уже работает в фоне — процессами управляет она.", YELLOW))
+        m.print(_c("Служба Chimera уже работает в фоне — процессами управляет она.", YELLOW))
     m.print("")
 
 

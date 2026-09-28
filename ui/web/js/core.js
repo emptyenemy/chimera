@@ -420,7 +420,6 @@ const Pages = (() => {
       if (b.dataset.page === page.id) b.setAttribute("aria-current", "page");
       else b.removeAttribute("aria-current");
     }
-    document.title = `${page.title} — CHIMERA`;
     if (push && location.hash !== "#" + page.id) history.replaceState(null, "", "#" + page.id);
     try { localStorage.setItem("chimera.page", page.id); } catch {}
   }

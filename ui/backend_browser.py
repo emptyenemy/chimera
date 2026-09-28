@@ -180,7 +180,7 @@ def _watchdog(server, api: Api, hub: _Hub, stop: threading.Event) -> None:
     """Нет запросов дольше IDLE_TIMEOUT — вкладку закрыли, гасимся как по закрытию окна."""
     while not stop.wait(5.0):
         if time.monotonic() - hub.touched > IDLE_TIMEOUT:
-            print("Вкладка закрыта — останавливаю CHIMERA.")
+            print("Вкладка закрыта — останавливаю Chimera.")
             api.shutdown()
             threading.Thread(target=server.shutdown, daemon=True).start()
             return
@@ -199,7 +199,7 @@ def run():
     server.api, server.hub, server.token = api, hub, secrets.token_urlsafe(24)
 
     url = f"http://{HOST}:{server.server_address[1]}/?t={server.token}"
-    print(f"CHIMERA открыта в браузере: {url}\nЗакрой вкладку или нажми Ctrl+C, чтобы выйти.")
+    print(f"Chimera открыта в браузере: {url}\nЗакрой вкладку или нажми Ctrl+C, чтобы выйти.")
     stop = threading.Event()
     threading.Thread(target=_watchdog, args=(server, api, hub, stop), daemon=True).start()
     webbrowser.open(url)

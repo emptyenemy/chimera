@@ -57,7 +57,7 @@ def run():
     view.load(QUrl.fromLocalFile(str(WEB_DIR / "index.html")))
 
     window = QMainWindow()
-    window.setWindowTitle("CHIMERA")
+    window.setWindowTitle("Chimera")
     window.setCentralWidget(view)
     window.resize(1080, 720)
     window.setMinimumSize(860, 560)

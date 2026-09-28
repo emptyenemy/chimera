@@ -93,7 +93,7 @@
       </div>
       ${tun && st.needs_admin && !admin ? `<div class="alert warning">${ic("triangle-alert")}
         <div class="alert-title">Режим TUN требует администратора</div>
-        <div class="alert-desc">Переключись на «Прокси (PAC)» или перезапусти CHIMERA от имени администратора.</div>
+        <div class="alert-desc">Переключись на «Прокси (PAC)» или перезапусти Chimera от имени администратора.</div>
       </div>` : ""}`;
   }
 

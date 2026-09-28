@@ -29,7 +29,7 @@ class JsApi:
 def run():
     api = Api()
     window = webview.create_window(
-        "CHIMERA",
+        "Chimera",
         str(WEB_DIR / "index.html"),
         js_api=JsApi(api),
         width=1080,

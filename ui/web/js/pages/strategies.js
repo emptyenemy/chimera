@@ -80,7 +80,7 @@
       </div>
       ${!admin ? `<div class="alert warning">${ic("triangle-alert")}
         <div class="alert-title">Нет прав администратора</div>
-        <div class="alert-desc">Запуск zapret2 требует администратора — перезапусти CHIMERA от имени администратора.</div>
+        <div class="alert-desc">Запуск zapret2 требует администратора — перезапусти Chimera от имени администратора.</div>
       </div>` : ""}`;
   }
 
