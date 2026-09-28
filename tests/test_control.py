@@ -112,12 +112,13 @@ def test_args_may_come_as_json_string(server):
 
 def test_method_outside_allowlist_is_forbidden_and_not_called(server):
     srv, api = server
-    # hosts_set_assignments и тому подобное CLI не нужны — набор методов задан явно
-    status, body = _request(srv, "POST", "/api", {"method": "hosts_set_assignments", "args": [{}]})
+    # подписки окна и открытие ссылок в браузере CLI не нужны — набор методов задан таблицей команд
+    status, body = _request(srv, "POST", "/api", {"method": "hub_watch", "args": [[], True]})
     assert body["ok"] is False and body["code"] == "forbidden"
+    _, body2 = _request(srv, "POST", "/api", {"method": "open_url", "args": ["http://x"]})
+    assert body2["code"] == "forbidden"
     assert api.calls == []
-    assert "hosts_set_assignments" not in control.ALLOWED_METHODS
-    assert len(control.ALLOWED_METHODS) < 93
+    assert "open_url" not in control.ALLOWED_METHODS and "hub_watch" not in control.ALLOWED_METHODS
 
 
 def test_private_method_name_is_forbidden(server):
@@ -140,9 +141,9 @@ def test_secrets_are_masked_unless_revealed(server):
 
 def test_config_set_only_for_safe_keys(server):
     srv, api = server
-    _, bad = _request(srv, "POST", "/api", {"method": "config_set", "args": ["auto_elevate", False]})
+    _, bad = _request(srv, "POST", "/api", {"method": "config_set", "args": ["interface", "service"]})
     assert bad["code"] == "forbidden"
-    _, bad2 = _request(srv, "POST", "/api", {"method": "config_set", "args": ["ui_backend", "browser"]})
+    _, bad2 = _request(srv, "POST", "/api", {"method": "config_set", "args": ["game_filter", "all"]})
     assert bad2["code"] == "forbidden"
     assert api.calls == []
     _, ok = _request(srv, "POST", "/api", {"method": "config_set", "args": ["update_channel", "beta"]})

@@ -26,6 +26,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 from modules import paths
+from modules.cli.registry import allowed_methods
 from modules.version import VERSION
 
 # Версия протокола CLI <-> приложение. Растёт только при несовместимых изменениях.
@@ -34,26 +35,16 @@ HOST = "127.0.0.1"
 TOKEN_HEADER = "X-Chimera-Token"
 CONTROL_PATH = paths.data_path("control.json")
 
-# Методы Api, доступные CLI. Всё остальное (привязки hosts, правка провайдеров DNS,
-# скачивание ядра и т. д.) через канал недоступно.
-ALLOWED_METHODS = frozenset({
-    "app_info",
-    "winws_state", "winws_start", "winws_stop", "winws_log", "filters_state",
-    "proxy_state", "proxy_start", "proxy_stop", "proxy_set_mode", "proxy_log",
-    "tg_state", "tg_start", "tg_stop", "tg_log",
-    "hosts_state", "hosts_set_enabled",
-    "dns_state", "dns_set", "dns_reset",
-    "lists_all", "lists_read", "lists_save", "lists_create", "lists_delete",
-    "block_check_one", "chebur_check_one",
-    "config_read", "config_set",
-    "selfupdate_state", "selfupdate_check", "selfupdate_install",
-})
+# Методы Api, доступные CLI, берутся из таблицы команд (modules/cli/registry.py): каждое
+# действие интерфейса, у которого есть команда, доступно и по каналу. Остальное (подписки
+# окна, открытие ссылок в браузере и т. п.) через канал недоступно.
+ALLOWED_METHODS = allowed_methods()
 
-# Настройки config.json, которые можно менять через CLI. Движок окна, режим интерфейса
-# и автоповышение прав сюда не входят: с ними можно сломать запуск.
+# Настройки config.json, которые можно менять через CLI: ровно те, что меняет окно
+# (Настройки: движок окна, автоповышение, трей, канал и проверка обновлений).
+# Режим интерфейса (interface) и остальное — правкой config.json.
 CONFIG_KEYS_WRITABLE = frozenset({
-    "update_channel", "update_check", "close_to_tray", "dns_probe",
-    "game_filter", "game_filter_tcp", "game_filter_udp",
+    "ui_backend", "auto_elevate", "close_to_tray", "update_channel", "update_check",
 })
 
 MAX_BODY = 1 << 20  # запросы CLI — доли килобайта; больше мегабайта — не наш клиент
@@ -300,7 +291,7 @@ class ControlServer:
     def port(self) -> int:
         return self._httpd.server_address[1]
 
-    def start(self) -> "ControlServer":
+    def start(self) -> ControlServer:
         httpd = _Server((HOST, self._port), _Handler)
         httpd.api, httpd.allowed, httpd.token, httpd.finish = self.api, self.allowed, self.token, self._finish
         self._httpd = httpd
