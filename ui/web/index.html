@@ -18,10 +18,22 @@
 <style>
 /* Плашка «модулями управляет служба» — у shell.js нет своего css-файла, стилей на одно
    мелкое сообщение хватает тут; токены те же, что и у остального сайдбара. */
-.sb-service { display: flex; align-items: flex-start; gap: 8px; margin: 0 8px 8px; padding: 8px 10px;
+.sb-service { display: flex; align-items: flex-start; gap: 8px; margin: 0 8px 8px; padding: 8px 10px; overflow: hidden;
   border-radius: var(--radius); background: var(--sidebar-accent); font-size: 12.5px; line-height: 16px; }
 .sb-service .icon { flex: none; margin-top: 1px; color: var(--muted-foreground); }
+/* min-width — чтобы при анимации ширины текст не переносился в столбик и плашка не прыгала */
+.sb-service span { min-width: 160px; transition: opacity .15s ease; }
+.sb-collapsed .sb-service { padding: 8px; height: 32px; }
+.sb-collapsed .sb-service span { opacity: 0; }
 </style>
+<script>
+/* Сворачивание сайдбара — до первой отрисовки, иначе свёрнутая панель мигнёт развёрнутой.
+   Остальная логика (кнопка, Ctrl+B) — в js/shell.js. */
+try {
+  if (JSON.parse(localStorage.getItem("chimera.sidebar") || "{}").collapsed)
+    document.documentElement.classList.add("sb-collapsed");
+} catch {}
+</script>
 </head>
 <body>
 <div class="app">
@@ -32,6 +44,10 @@
         <b>Chimera</b>
         <span id="sb-ver"></span>
       </div>
+      <button type="button" class="sb-toggle" id="sb-toggle" aria-label="Свернуть панель"
+        data-tip="Свернуть панель · Ctrl+B" data-tip-rail="Развернуть панель · Ctrl+B">
+        <i data-icon="panel-left-close" class="when-open"></i><i data-icon="panel-left-open" class="when-closed"></i>
+      </button>
     </div>
     <div id="sb-service"></div>
     <nav class="sb-content" id="sb-nav"></nav>

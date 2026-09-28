@@ -435,7 +435,7 @@ const Pages = (() => {
       <div class="sb-group">
         ${g.name ? `<div class="sb-label">${esc(g.name)}</div>` : ""}
         ${g.pages.map(p => `
-          <button class="sb-item" data-page="${p.id}">
+          <button class="sb-item" data-page="${p.id}" data-tip-rail="${esc(p.title)}">
             ${ic(p.icon)}<span>${esc(p.title)}</span>
             <span class="sb-dot" data-nav-dot="${p.id}"></span>
           </button>`).join("")}
@@ -587,23 +587,32 @@ function closeMenu() {
 document.addEventListener("keydown", e => { if (e.key === "Escape") closeMenu(); });
 
 // --- Tooltip: data-tip="текст" на любом элементе ------------------------------------
+// data-tip-rail="текст" — подсказка только в свёрнутом сайдбаре (подписи там скрыты),
+// справа от элемента; если заданы оба, в свёрнутом виде берётся она, в развёрнутом — data-tip.
 
 (() => {
   let tip = null, timer = 0, owner = null;
   const hide = () => { clearTimeout(timer); tip?.remove(); tip = null; owner = null; };
+  const rail = el => el.dataset.tipRail !== undefined && document.documentElement.classList.contains("sb-collapsed");
   document.addEventListener("mouseover", e => {
-    const t = e.target.closest("[data-tip]");
+    const t = e.target.closest("[data-tip], .sb-collapsed [data-tip-rail]");
     if (t === owner) return;
     hide();
     if (!t) return;
     owner = t;
     timer = setTimeout(() => {
       if (!owner?.isConnected) return;
+      const side = rail(owner);
       tip = document.createElement("div");
       tip.className = "tooltip";
-      tip.textContent = owner.dataset.tip;
+      tip.textContent = side ? owner.dataset.tipRail : owner.dataset.tip;
       document.body.appendChild(tip);
       const r = owner.getBoundingClientRect(), tr = tip.getBoundingClientRect();
+      if (side) {
+        tip.style.top = Math.max(4, r.top + r.height / 2 - tr.height / 2) + "px";
+        tip.style.left = r.right + 8 + "px";
+        return;
+      }
       let top = r.top - tr.height - 6;
       if (top < 4) top = r.bottom + 6;
       tip.style.top = top + "px";
@@ -611,6 +620,7 @@ document.addEventListener("keydown", e => { if (e.key === "Escape") closeMenu();
     }, 350);
   });
   document.addEventListener("mousedown", hide, true);
+  document.addEventListener("keydown", hide, true);  // Ctrl+B двигает сайдбар из-под подсказки
   document.addEventListener("scroll", hide, true);
 })();
 

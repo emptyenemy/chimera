@@ -94,33 +94,58 @@ input, textarea, .selectable, .log, code, .mono { user-select: text; }
 .muted { color: var(--muted-foreground); }
 .num { font-variant-numeric: tabular-nums; }
 
-/* ── Раскладка приложения: Sidebar (shadcn: w-64 bg-sidebar border-r) + контент ── */
-.app { display: grid; grid-template-columns: 232px 1fr; height: 100vh; }
+/* ── Раскладка приложения: Sidebar (shadcn: w-64 bg-sidebar border-r) + контент ──
+   Ширина сайдбара — переменная: --sb-w задаёт ресайз (inline-стиль на <html>),
+   класс sb-collapsed на <html> сворачивает панель в полосу иконок (--sb-rail,
+   shadcn collapsible="icon": 3rem). Оба ставятся ещё в <head>, до первой отрисовки. */
+.app {
+  --sb-rail: 48px; --sb-cur: var(--sb-w, 232px);
+  display: grid; grid-template-columns: var(--sb-cur) 1fr; height: 100vh;
+  transition: grid-template-columns .2s ease;
+}
+.sb-collapsed .app { --sb-cur: var(--sb-rail); }
 .main { position: relative; overflow-y: auto; overflow-x: hidden; scroll-behavior: auto; }
 
 .sidebar {
-  display: flex; flex-direction: column; min-height: 0;
+  position: relative; display: flex; flex-direction: column; min-height: 0; min-width: 0; overflow: hidden;
   background: var(--sidebar); color: var(--sidebar-foreground);
   border-right: 1px solid var(--sidebar-border);
 }
-.sb-header { display: flex; align-items: center; gap: 10px; padding: 16px 16px 12px; }
+.sb-header { position: relative; display: flex; align-items: center; gap: 10px; padding: 16px 16px 12px; transition: padding .2s ease; }
 /* Логотип (js/logo.js) — цветом текста темы, без акцентной плашки. */
-.sb-logo { width: 32px; height: 32px; flex: none; color: var(--foreground); }
+.sb-logo { width: 32px; height: 32px; flex: none; color: var(--foreground); transition: opacity .15s ease; }
 .logo { display: block; width: 100%; height: 100%; }
-.sb-brand { display: flex; flex-direction: column; min-width: 0; }
+.sb-brand { display: flex; flex-direction: column; min-width: 0; margin-right: 32px; white-space: nowrap; transition: opacity .15s ease; }
 .sb-brand b { font-size: 14px; line-height: 18px; font-weight: 600; letter-spacing: .02em; }
 .sb-brand span { font-size: 12px; line-height: 16px; color: var(--muted-foreground); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.sb-content { flex: 1; min-height: 0; overflow-y: auto; padding: 4px 8px; }
+/* Кнопка свернуть/развернуть привязана к правому краю: при анимации ширины едет вместе
+   с ним, а в свёрнутой полосе ложится ровно поверх знака и проявляется по наведению. */
+.sb-toggle {
+  position: absolute; top: 16px; right: 12px; display: grid; place-items: center; width: 32px; height: 32px; padding: 0;
+  border: none; border-radius: calc(var(--radius) - 2px); background: transparent; color: var(--muted-foreground);
+  cursor: pointer; outline: none; transition: background-color .1s ease, color .1s ease, opacity .15s ease, right .2s ease;
+}
+.sb-toggle .icon { font-size: 16px; }
+.sb-toggle:hover { background: var(--sidebar-accent); color: var(--sidebar-foreground); }
+.sb-toggle:focus-visible { box-shadow: var(--focus-ring); }
+.sb-toggle .when-closed, .sb-collapsed .sb-toggle .when-open { display: none; }
+.sb-collapsed .sb-toggle .when-closed { display: block; }
+.sb-content { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; padding: 4px 8px; }
 /* SidebarGroupLabel: h-8 px-2 text-xs font-medium text-sidebar-foreground/70 */
-.sb-label { display: flex; align-items: center; height: 32px; padding: 0 8px; font-size: 12px; font-weight: 500; color: color-mix(in oklch, var(--sidebar-foreground) 70%, transparent); }
+.sb-label {
+  display: flex; align-items: center; height: 32px; padding: 0 8px; overflow: hidden; white-space: nowrap;
+  font-size: 12px; font-weight: 500; color: color-mix(in oklch, var(--sidebar-foreground) 70%, transparent);
+  transition: height .2s ease, opacity .15s ease;
+}
 .sb-group + .sb-group { margin-top: 8px; }
 /* SidebarMenuButton: h-8 gap-2 rounded-md p-2 text-sm; active: bg-sidebar-accent font-medium */
 .sb-item {
-  display: flex; align-items: center; gap: 8px; width: 100%; height: 32px; padding: 0 8px;
-  border: none; border-radius: calc(var(--radius) - 2px); background: transparent;
+  position: relative; display: flex; align-items: center; gap: 8px; width: 100%; height: 32px; padding: 0 8px;
+  border: none; border-radius: calc(var(--radius) - 2px); background: transparent; overflow: hidden; white-space: nowrap;
   color: var(--sidebar-foreground); font-size: 14px; text-align: left; cursor: pointer; outline: none;
   transition: background-color .1s ease;
 }
+.sb-item > span:not(.sb-dot) { overflow: hidden; text-overflow: ellipsis; transition: opacity .15s ease; }
 .sb-item .icon { font-size: 16px; color: var(--muted-foreground); }
 .sb-item:hover { background: var(--sidebar-accent); }
 .sb-item:focus-visible { box-shadow: var(--focus-ring); }
@@ -129,7 +154,25 @@ input, textarea, .selectable, .log, code, .mono { user-select: text; }
 .sb-item .sb-dot { margin-left: auto; }
 .sb-footer { padding: 8px; border-top: 1px solid var(--sidebar-border); }
 .sb-status { display: flex; flex-direction: column; gap: 2px; }
-.sb-status-row { display: flex; align-items: center; gap: 8px; padding: 6px 8px; font-size: 12px; line-height: 16px; color: var(--muted-foreground); }
+.sb-status-row {
+  display: flex; align-items: center; gap: 8px; padding: 6px 8px; overflow: hidden; white-space: nowrap;
+  font-size: 12px; line-height: 16px; color: var(--muted-foreground); transition: padding .2s ease;
+}
+.sb-status-row > span:last-child { overflow: hidden; text-overflow: ellipsis; transition: opacity .15s ease; }
+
+/* Свёрнутая полоса: остаются знак, иконки и точки; подписи гаснут, а не перестраиваются —
+   иконки при этом стоят на тех же местах, что и в развёрнутой панели. */
+.sb-collapsed .sb-header { padding-left: 8px; padding-right: 8px; }
+.sb-collapsed .sb-brand { opacity: 0; }
+.sb-collapsed .sb-toggle { right: 8px; opacity: 0; }
+.sb-collapsed .sb-header:hover .sb-toggle, .sb-collapsed .sb-toggle:focus-visible { opacity: 1; }
+.sb-collapsed .sb-header:hover .sb-logo { opacity: 0; }
+.sb-collapsed .sb-label { height: 0; opacity: 0; }
+.sb-collapsed .sb-item > span:not(.sb-dot),
+.sb-collapsed .sb-status-row > span:last-child { opacity: 0; }
+/* точка состояния модуля — в углу иконки, с вырезом цветом фона панели */
+.sb-collapsed .sb-item .sb-dot { position: absolute; top: 6px; left: 19px; width: 7px; height: 7px; margin: 0; box-shadow: 0 0 0 2px var(--sidebar); }
+.sb-collapsed .sb-status-row { padding-left: 12px; }
 
 /* ── Страница ─────────────────────────────────────────────────────────────── */
 .page { max-width: 1080px; margin: 0 auto; padding: 28px 32px 48px; }
