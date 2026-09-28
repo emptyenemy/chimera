@@ -8,6 +8,11 @@ REM
 REM --include-data-dir silently skips "code-like" files (.bin, .dll, .exe, ...).
 REM The strategies' fake blobs are .bin - without an explicit --include-data-files
 REM rule winws2 fails in the built program (tests/test_build_bat.py guards this).
+REM The tg-ws-proxy core ships as plain .py and is imported at runtime, so Nuitka
+REM never sees its imports: every stdlib module it uses is listed explicitly
+REM below (tests/test_build_bat.py checks the list against the core's imports).
+REM lists/ and Flowseal's hosts file are read at runtime from next to the exe.
+REM
 REM --remove-output drops build\main.build (generated C and objects) afterwards;
 REM rebuilds stay fast through Nuitka's own cache in %LOCALAPPDATA%\Nuitka.
 REM
@@ -68,6 +73,8 @@ python -m nuitka ^
     --remove-output ^
     --include-data-dir=ui/web=ui/web ^
     --include-data-dir=strategies=strategies ^
+    --include-data-dir=lists=lists ^
+    --include-data-files=upstream/zapret-discord-youtube/.service/hosts=upstream/zapret-discord-youtube/.service/hosts ^
     --include-data-files=strategies/assets=strategies/assets/=*.bin ^
     --include-data-files=modules/dns_providers.json=modules/dns_providers.json ^
     --include-data-files=assets/logo/chimera.ico=assets/logo/chimera.ico ^
@@ -78,6 +85,28 @@ python -m nuitka ^
     --include-module=ui.backend_browser ^
     --include-module=modules.service ^
     --include-package=tui ^
+    --include-package=asyncio ^
+    --include-package=logging ^
+    --include-package=ctypes ^
+    --include-package=urllib ^
+    --include-package=http ^
+    --include-module=argparse ^
+    --include-module=base64 ^
+    --include-module=collections ^
+    --include-module=dataclasses ^
+    --include-module=hashlib ^
+    --include-module=hmac ^
+    --include-module=os ^
+    --include-module=random ^
+    --include-module=re ^
+    --include-module=socket ^
+    --include-module=ssl ^
+    --include-module=string ^
+    --include-module=struct ^
+    --include-module=sys ^
+    --include-module=threading ^
+    --include-module=time ^
+    --include-module=typing ^
     main.py
 
 if errorlevel 1 (
