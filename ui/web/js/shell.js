@@ -51,9 +51,10 @@ const Status = {
   Store.on(["winws", "proxy", "tg", "hosts", "app"], render);
 })();
 
-// --- Сворачивание сайдбара ------------------------------------------------------------
-// Класс sb-collapsed на <html> (его же ставит скрипт в <head> до первой отрисовки),
-// состояние — в localStorage "chimera.sidebar". Ctrl+B — как у сайдбара shadcn.
+// --- Сворачивание и ширина сайдбара ---------------------------------------------------
+// Класс sb-collapsed и переменная --sb-w на <html> (их же ставит скрипт в <head> до
+// первой отрисовки), состояние — в localStorage "chimera.sidebar". Ctrl+B — как у
+// сайдбара shadcn. Ресайз двигает только --sb-w: страницы не перерисовываются.
 
 const Sidebar = (() => {
   const KEY = "chimera.sidebar";
@@ -80,5 +81,53 @@ const Sidebar = (() => {
   });
   if (collapsed()) setCollapsed(true);  // подпись кнопки — под состояние, поднятое в <head>
 
-  return { load, save, collapsed, setCollapsed, toggle };
+  // ширина: дефолт как в .app (232px), тянуть меньше SNAP — значит свернуть в полосу
+  const W_DEF = 232, W_MIN = 180, W_MAX = 360, SNAP = 120;
+  const clamp = w => Math.round(Math.min(W_MAX, Math.max(W_MIN, w)));
+  const width = () => parseFloat(getComputedStyle(root).getPropertyValue("--sb-w")) || W_DEF;
+  const setWidth = w => root.style.setProperty("--sb-w", w + "px");
+
+  const handle = $("#sb-resize");
+  let drag = null;
+  handle?.addEventListener("pointerdown", e => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    handle.setPointerCapture(e.pointerId);
+    // wOpen — ширина развёрнутой панели до начала: к ней вернёмся, если утащат в полосу
+    drag = { x0: e.clientX, w0: collapsed() ? 48 : width(), wOpen: width(), x: e.clientX, raf: 0 };
+    root.classList.add("sb-resizing");
+  });
+  handle?.addEventListener("pointermove", e => {
+    if (!drag) return;
+    drag.x = e.clientX;
+    // не чаще раза в кадр: pointermove сыплет быстрее, чем браузер успевает перекладку
+    drag.raf ||= requestAnimationFrame(() => {
+      drag.raf = 0;
+      const raw = drag.w0 + drag.x - drag.x0;
+      if (raw < SNAP) {
+        setWidth(drag.wOpen);  // по пути через минимум ширина прижалась к W_MIN — откатываем
+        if (!collapsed()) setCollapsed(true);
+        return;
+      }
+      if (collapsed()) setCollapsed(false);
+      setWidth(clamp(raw));
+    });
+  });
+  const stop = () => {
+    if (!drag) return;
+    cancelAnimationFrame(drag.raf);
+    drag = null;
+    root.classList.remove("sb-resizing");
+    save({ width: width() });
+  };
+  handle?.addEventListener("pointerup", stop);
+  handle?.addEventListener("pointercancel", stop);
+  // двойной клик — ширина по умолчанию (и развернуть, если панель была свёрнута)
+  handle?.addEventListener("dblclick", () => {
+    root.style.removeProperty("--sb-w");
+    save({ width: null });
+    if (collapsed()) setCollapsed(false);
+  });
+
+  return { load, save, collapsed, setCollapsed, toggle, width, setWidth };
 })();

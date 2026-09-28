@@ -27,11 +27,12 @@
 .sb-collapsed .sb-service span { opacity: 0; }
 </style>
 <script>
-/* Сворачивание сайдбара — до первой отрисовки, иначе свёрнутая панель мигнёт развёрнутой.
-   Остальная логика (кнопка, Ctrl+B) — в js/shell.js. */
+/* Ширина и сворачивание сайдбара — до первой отрисовки, иначе панель мигнёт в размере
+   по умолчанию. Остальная логика (кнопка, Ctrl+B, ручка ресайза) — в js/shell.js. */
 try {
-  if (JSON.parse(localStorage.getItem("chimera.sidebar") || "{}").collapsed)
-    document.documentElement.classList.add("sb-collapsed");
+  const sb = JSON.parse(localStorage.getItem("chimera.sidebar") || "{}");
+  if (sb.collapsed) document.documentElement.classList.add("sb-collapsed");
+  if (sb.width > 0) document.documentElement.style.setProperty("--sb-w", sb.width + "px");
 } catch {}
 </script>
 </head>
@@ -56,6 +57,7 @@ try {
         <div class="sb-status-row"><span class="dot"></span><span>Загрузка…</span></div>
       </div>
     </div>
+    <div class="sb-resize" id="sb-resize" role="separator" aria-orientation="vertical" aria-label="Ширина панели"></div>
   </aside>
   <main class="main" id="main"></main>
 </div>
