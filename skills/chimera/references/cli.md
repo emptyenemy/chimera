@@ -34,7 +34,7 @@
 | Команда | Что делает |
 |---|---|
 | `chimera backup create\|list\|restore\|diff` | снимки настроек и откат |
-| `chimera profile export\|import` | поделиться настройками по разделам |
+| `chimera config export\|import` | поделиться настройками по разделам |
 | `chimera panic` | выключить всё и сбросить hosts, DNS, системный прокси |
 | `chimera doctor` | отчёт для issues, секреты замаскированы |
 | `chimera path add\|remove` | добавить папку программы в PATH пользователя |
