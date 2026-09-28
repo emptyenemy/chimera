@@ -1,0 +1,1025 @@
+# Командная строка chimera
+
+<!-- Файл сгенерирован: python tools/gen_cli_docs.py. Руками не править — правьте modules/cli/registry.py. -->
+
+Всё, что делается в интерфейсе Chimera, делается командой `chimera …`. Справка встроена: `chimera --help`, `chimera <команда> --help`, `chimera docs`.
+
+Запуск без аргументов из терминала печатает справку; двойной клик по `Chimera.exe` открывает окно. `chimera --window` и `chimera --browser` открывают окно или вкладку браузера.
+
+## Общие параметры
+
+- `--json` — машинный вывод
+- `--show-secrets` — не скрывать секреты
+- `-h/--help` — справка
+- `--version` — версия
+
+## Коды возврата
+
+- `0` — успех
+- `1` — ошибка выполнения (отказ приложения, нет такого объекта, сбой сети)
+- `2` — неверные аргументы
+- `3` — Chimera не запущена, старая версия приложения или нет связи
+
+## Формат `--json`
+
+Вывод — один объект:
+
+- `schema` — версия формата вывода (сейчас 1); растёт только при несовместимых изменениях
+- `ok` — true/false — успех команды
+- `command` — команда без параметров, например `winws start`
+- `level` — read | app | system — что команда меняет (только при ok=true)
+- `data` — то, что вернул метод приложения, без потерь; у составных команд (status, check) — сводка
+- `error` — при ok=false: {code, message}; code — usage, not_running, app_too_old, remote_error, forbidden, …
+
+## Уровни команд
+
+- `read` — чтение
+- `app` — изменение приложения
+- `system` — изменение системы
+
+Уровни нужны, чтобы ограничивать удалённые каналы. Секреты (ссылка прокси, секрет Telegram-прокси) в выводе скрыты; `--show-secrets` показывает их.
+
+## Что в интерфейсе — какая команда
+
+| В интерфейсе | Команда | Уровень |
+|---|---|---|
+| Обзор: карточки модулей | `chimera status` | read |
+| Настройки: версия программы | `chimera version` | read |
+| Запуск программы / автозапуск | `chimera start` | app |
+| Меню значка → Выход | `chimera stop` | app |
+| Перезапуск программы | `chimera restart` | app |
+| Настройки → Обновление Chimera: статус | `chimera update state` | read |
+| Настройки → Обновление Chimera → «Проверить» | `chimera update check` | read |
+| Настройки → Обновление Chimera → «Обновить» | `chimera update install` | system |
+| Настройки → Запускать вместе с Windows | `chimera autostart state` | read |
+| Настройки → Запускать вместе с Windows | `chimera autostart set <значение>` | system |
+| Настройки → Очистить кэш Discord | `chimera discord clear-cache` | app |
+| Настройки → Источники и обновления | `chimera sources versions` | read |
+| Настройки → Источники и обновления → «Проверить» | `chimera sources check [имя]` | read |
+| Настройки → Источники и обновления → «Обновить» | `chimera sources update <имя>` | system |
+| Настройки | `chimera config get [ключ]` | read |
+| Настройки: переключатели и выбор | `chimera config set <ключ> <значение>` | app |
+| Стратегии: шапка, Обзор | `chimera winws state` | read |
+| Стратегии: список карточек | `chimera winws strategies` | read |
+| Стратегии → «Запустить» / Обзор → включатель | `chimera winws start [стратегия]` | system |
+| Стратегии / Обзор → «Остановить» | `chimera winws stop` | system |
+| Стратегии → автозапуск | `chimera winws autostart <значение>` | app |
+| Стратегии → выбор списков | `chimera winws lists [списки…]` | app |
+| Стратегии → фильтры | `chimera winws filters` | read |
+| Стратегии → Game-фильтр | `chimera winws game <режим> [--tcp <tcp>] [--udp <udp>]` | system |
+| Стратегии → IPSet | `chimera winws ipset <режим>` | app |
+| Стратегии → IPSet → «Обновить» | `chimera winws ipset-update` | system |
+| Стратегии → Fake | `chimera winws fake <слот> <блоб>` | app |
+| Прокси: шапка, Обзор | `chimera proxy state` | read |
+| Прокси / Обзор → включатель | `chimera proxy start` | system |
+| Прокси / Обзор → «Остановить» | `chimera proxy stop` | system |
+| Прокси → режим | `chimera proxy mode <режим>` | system |
+| Прокси → поле ссылки | `chimera proxy link [ссылка] [--clear]` | app |
+| Прокси → выбор списков | `chimera proxy lists [списки…]` | app |
+| Прокси → приложения | `chimera proxy apps [приложения…]` | app |
+| Прокси → «Запущенные программы» | `chimera proxy apps-running` | read |
+| Прокси → автозапуск | `chimera proxy autostart <значение>` | app |
+| Прокси → «Скачать sing-box» | `chimera proxy core-download` | app |
+| Telegram: шапка, Обзор | `chimera tg state` | read |
+| Telegram / Обзор → включатель | `chimera tg start` | app |
+| Telegram / Обзор → «Остановить» | `chimera tg stop` | app |
+| Telegram → статистика | `chimera tg stats` | read |
+| Telegram → «Скопировать ссылку» | `chimera tg link` | read |
+| Telegram → настройки | `chimera tg config [--host <host>] [--port <port>] [--secret <secret>] [--autostart <autostart>]` | app |
+| Telegram → «Новый секрет» | `chimera tg regen-secret` | app |
+| Telegram → продвинутые | `chimera tg advanced <настройки…>` | app |
+| Telegram → «Проверить обновление» | `chimera tg check-update` | read |
+| Hosts: шапка, Обзор | `chimera hosts state` | read |
+| Hosts: вся вкладка | `chimera hosts overview` | read |
+| Hosts / Обзор → включатель | `chimera hosts on` | system |
+| Hosts / Обзор → включатель | `chimera hosts off` | system |
+| Hosts → привязка списков | `chimera hosts assign [привязки…] [--replace]` | system |
+| Hosts → «Добавить провайдера» | `chimera hosts provider-add <имя> <doh> <серверы…>` | app |
+| Hosts → провайдер → «Удалить» | `chimera hosts provider-delete <id>` | app |
+| Hosts → провайдер → «Пинг» | `chimera hosts ping <id>` | read |
+| Hosts → фоновые опции | `chimera hosts background [настройки…]` | app |
+| DNS: вся вкладка | `chimera dns state` | read |
+| DNS → «Проверить скорость» | `chimera dns ping [id]` | read |
+| DNS → «Проба» у провайдера | `chimera dns probe <id>` | read |
+| DNS → настройка пробы | `chimera dns probe-config [--bypass <bypass>] [--ad <ad>]` | app |
+| DNS → провайдер → «Применить» | `chimera dns set <адаптер> <провайдер>` | system |
+| DNS → «Сбросить» | `chimera dns reset <адаптер>` | system |
+| DNS → «Добавить провайдера» | `chimera dns provider-add <имя> <серверы…> [--ipv6 <ipv6>] [--doh <doh>] [--dot <dot>] [--unblock] [--filtering]` | app |
+| DNS → провайдер → «Удалить» | `chimera dns provider-delete <id>` | app |
+| Списки: список и редактор | `chimera lists show [имя]` | read |
+| Списки → редактор → «Сохранить» | `chimera lists save <имя> [--file <file>]` | app |
+| Списки → «Новый список» | `chimera lists create <имя>` | app |
+| Списки → «Удалить» | `chimera lists delete <имя>` | app |
+| Списки → «Переименовать» | `chimera lists rename <старое> <новое>` | app |
+| Списки → редактор | `chimera lists add <имя> <домены…>` | app |
+| Списки → редактор | `chimera lists remove <имя> <домены…>` | app |
+| Проверки → поле «Проверить сайт» | `chimera check site <домен> [--only <only>]` | read |
+| Проверки → «Проверить список» | `chimera check list <список> [--only <only>]` | read |
+| Проверки → шапка | `chimera check status` | read |
+| Стратегии / Прокси / Telegram → лог | `chimera logs <модуль> [--tail <tail>]` | read |
+| Настройки → фоновая служба (командная строка) | `chimera service <команда> [параметры…]` | system |
+| Справка | `chimera docs [тема]` | read |
+| Справка | `chimera agent-info` | read |
+| Настройки → командная строка | `chimera path show` | read |
+| Настройки → командная строка | `chimera path add` | app |
+| Настройки → командная строка | `chimera path remove` | app |
+
+Не превращены в команды (с причинами):
+
+- `dispatch` — внутренний вход моста окна, его роль у канала управления
+- `shutdown` — гашение модулей при выходе из окна; в терминале это `chimera stop`
+- `open_url` — открывает ссылку в браузере на компьютере пользователя; в терминале адрес и так виден
+- `tg_open_link` — открывает Telegram на этом компьютере; ссылку даёт `chimera tg link`
+- `hub_snapshot` — подписка окна на push-события состояния
+- `hub_watch` — подписка окна на push-события состояния
+- `hub_refresh` — подписка окна на push-события состояния
+- `block_check_start` — результаты приходят push-событиями окна; в CLI то же делает `chimera check list <список>`
+- `chebur_check_start` — результаты приходят push-событиями окна; в CLI то же делает `chimera check list <список>`
+
+## Команды подробно
+
+### status
+
+Что работает сейчас.
+
+#### `chimera status`
+
+Состояние приложения и модулей: обход, прокси, Telegram-прокси, hosts. Уровень: чтение.
+
+```
+chimera status
+chimera status --json
+```
+
+### start
+
+Запустить Chimera без окна (в трее).
+
+#### `chimera start`
+
+Запустить Chimera без окна, в трее. Права администратора запросит сама программа. Уровень: изменение приложения.
+
+```
+chimera start
+```
+
+### stop
+
+Закрыть Chimera.
+
+#### `chimera stop`
+
+Закрыть Chimera и погасить её модули. Уровень: изменение приложения.
+
+```
+chimera stop
+```
+
+### restart
+
+Перезапустить Chimera.
+
+#### `chimera restart`
+
+Перезапустить Chimera. Уровень: изменение приложения.
+
+```
+chimera restart
+```
+
+### version
+
+Версия программы и протокола.
+
+#### `chimera version`
+
+Версия программы и версия протокола командной строки. Уровень: чтение. Работает и без запущенной Chimera.
+
+```
+chimera --version
+chimera version --json
+```
+
+### update
+
+Обновление Chimera.
+
+#### `chimera update state`
+
+Состояние обновления: текущая и найденная версии, стадия. Уровень: чтение.
+
+```
+chimera update state
+```
+
+#### `chimera update check`
+
+Проверить, вышла ли новая версия. Уровень: чтение.
+
+```
+chimera update check
+```
+
+#### `chimera update install`
+
+Скачать, проверить и установить найденную версию; программа перезапустится. Уровень: изменение системы.
+
+```
+chimera update check && chimera update install
+```
+
+### autostart
+
+Запуск Chimera вместе с Windows.
+
+#### `chimera autostart state`
+
+Включён ли запуск вместе с Windows. Уровень: чтение.
+
+```
+chimera autostart state
+```
+
+#### `chimera autostart set <значение>`
+
+Включить или выключить запуск вместе с Windows (нужны права администратора). Уровень: изменение системы.
+
+- `значение` — on или off
+
+```
+chimera autostart set on
+```
+
+### discord
+
+Очистка кэша Discord.
+
+#### `chimera discord clear-cache`
+
+Очистить кэш Discord (Discord должен быть закрыт). Уровень: изменение приложения.
+
+```
+chimera discord clear-cache
+```
+
+### sources
+
+Внешние источники: zapret2, стратегии Flowseal и др..
+
+#### `chimera sources versions`
+
+Локальные версии внешних источников (без сети). Уровень: чтение.
+
+```
+chimera sources versions
+```
+
+#### `chimera sources check [имя]`
+
+Сверить версии источников с GitHub (все или один). Уровень: чтение.
+
+- `имя` — источник; без имени — все
+
+```
+chimera sources check
+chimera sources check zapret2
+```
+
+#### `chimera sources update <имя>`
+
+Подтянуть свежую версию источника (git fetch + checkout). Уровень: изменение системы.
+
+- `имя` — источник из `chimera sources versions`
+
+```
+chimera sources update zapret2
+```
+
+### config
+
+Настройки программы (config.json).
+
+#### `chimera config get [ключ]`
+
+Показать настройки программы: все или одну. Уровень: чтение. Работает и без запущенной Chimera.
+
+- `ключ` — имя настройки; без него — все
+
+```
+chimera config get
+chimera config get update_channel
+```
+
+#### `chimera config set <ключ> <значение>`
+
+Изменить настройку. Доступно то, что меняет окно: ui_backend, auto_elevate, close_to_tray, update_channel, update_check. Остальное — правкой config.json. Уровень: изменение приложения. Работает и без запущенной Chimera.
+
+- `ключ` — имя настройки
+- `значение` — true/false, число или строка
+
+```
+chimera config set update_channel beta
+chimera config set close_to_tray false
+```
+
+### winws
+
+Обход DPI (zapret2 / winws2).
+
+#### `chimera winws state`
+
+Состояние обхода: запущен ли, стратегия, списки, ошибка, версия. Уровень: чтение.
+
+```
+chimera winws state
+```
+
+#### `chimera winws strategies`
+
+Список доступных стратегий. Уровень: чтение.
+
+```
+chimera winws strategies --json
+```
+
+#### `chimera winws start [стратегия]`
+
+Запустить стратегию. Без имени — последнюю использованную. Уровень: изменение системы.
+
+- `стратегия` — id из `chimera winws strategies`; по умолчанию последняя
+
+```
+chimera winws start
+chimera winws start alt2
+```
+
+#### `chimera winws stop`
+
+Остановить обход. Уровень: изменение системы.
+
+```
+chimera winws stop
+```
+
+#### `chimera winws autostart <значение>`
+
+Запускать стратегию при старте Chimera. Уровень: изменение приложения.
+
+- `значение` — on или off
+
+```
+chimera winws autostart on
+```
+
+#### `chimera winws lists [списки…]`
+
+Какие списки доменов гнать через обход (без имён — очистить). Применяется сразу. Уровень: изменение приложения.
+
+- `списки` — имена списков
+
+```
+chimera winws lists youtube discord
+```
+
+#### `chimera winws filters`
+
+Состояние фильтров: game, ipset, fake-блобы. Уровень: чтение.
+
+```
+chimera winws filters
+```
+
+#### `chimera winws game <режим> [--tcp <tcp>] [--udp <udp>]`
+
+Игровой фильтр: off, all, tcp или udp; порты — необязательно. Уровень: изменение системы.
+
+- `режим` — режим
+- `--tcp` — диапазон TCP-портов
+- `--udp` — диапазон UDP-портов
+
+```
+chimera winws game udp
+chimera winws game all --tcp 1024-65535
+```
+
+#### `chimera winws ipset <режим>`
+
+Режим ipset: none, any или loaded. Уровень: изменение приложения.
+
+- `режим` — режим
+
+```
+chimera winws ipset loaded
+```
+
+#### `chimera winws ipset-update`
+
+Скачать свежий список подсетей (ipset). Уровень: изменение системы.
+
+```
+chimera winws ipset-update
+```
+
+#### `chimera winws fake <слот> <блоб>`
+
+Подставить fake-блоб в слот (discord или game). Уровень: изменение приложения.
+
+- `слот` — слот из `chimera winws filters`
+- `блоб` — имя блоба
+
+```
+chimera winws fake discord quic_initial_www_google_com
+```
+
+### proxy
+
+Прокси на sing-box.
+
+#### `chimera proxy state`
+
+Состояние прокси: запущен ли, режим, списки, число доменов, ядро. Уровень: чтение.
+
+```
+chimera proxy state
+```
+
+#### `chimera proxy start`
+
+Запустить прокси (sing-box). Уровень: изменение системы.
+
+```
+chimera proxy start
+```
+
+#### `chimera proxy stop`
+
+Остановить прокси. Уровень: изменение системы.
+
+```
+chimera proxy stop
+```
+
+#### `chimera proxy mode <режим>`
+
+Режим прокси: pac (без админа), split (выборочный TUN) или tun (весь трафик). Уровень: изменение системы.
+
+- `режим` — режим
+
+```
+chimera proxy mode pac
+```
+
+#### `chimera proxy link [ссылка] [--clear]`
+
+Задать ссылку прокси (vless://, trojan://, ss://, vmess://). `-` — прочитать из stdin, `--clear` — удалить. Уровень: изменение приложения.
+
+- `ссылка` — ссылка или `-`
+- `--clear` — удалить ссылку
+
+```
+chimera proxy link vless://...
+echo vless://... | chimera proxy link -
+chimera proxy link --clear
+```
+
+#### `chimera proxy lists [списки…]`
+
+Какие списки идут через прокси (без имён — очистить). Применяется сразу. Уровень: изменение приложения.
+
+- `списки` — имена списков
+
+```
+chimera proxy lists youtube telegram
+```
+
+#### `chimera proxy apps [приложения…]`
+
+Приложения для выборочного TUN, имена образов (Discord.exe). Без имён — очистить. Уровень: изменение приложения.
+
+- `приложения` — Discord.exe …
+
+```
+chimera proxy apps Discord.exe chrome.exe
+```
+
+#### `chimera proxy apps-running`
+
+Запущенные сейчас программы пользователя (для выбора в выборочный TUN). Уровень: чтение.
+
+```
+chimera proxy apps-running
+```
+
+#### `chimera proxy autostart <значение>`
+
+Запускать прокси при старте Chimera. Уровень: изменение приложения.
+
+- `значение` — on или off
+
+```
+chimera proxy autostart on
+```
+
+#### `chimera proxy core-download`
+
+Скачать ядро sing-box (пиннутая версия, с проверкой SHA256). Уровень: изменение приложения.
+
+```
+chimera proxy core-download
+```
+
+### tg
+
+Telegram-прокси.
+
+#### `chimera tg state`
+
+Состояние Telegram-прокси и его настройки. Уровень: чтение.
+
+```
+chimera tg state
+```
+
+#### `chimera tg start`
+
+Запустить Telegram-прокси. Уровень: изменение приложения.
+
+```
+chimera tg start
+```
+
+#### `chimera tg stop`
+
+Остановить Telegram-прокси. Уровень: изменение приложения.
+
+```
+chimera tg stop
+```
+
+#### `chimera tg stats`
+
+Счётчики работающего Telegram-прокси. Уровень: чтение.
+
+```
+chimera tg stats
+```
+
+#### `chimera tg link`
+
+Ссылка tg://proxy для подключения (секрет скрыт без --show-secrets). Уровень: чтение.
+
+```
+chimera tg link --show-secrets
+```
+
+#### `chimera tg config [--host <host>] [--port <port>] [--secret <secret>] [--autostart <autostart>]`
+
+Изменить адрес, порт, секрет или автозапуск (остальное не меняется). Уровень: изменение приложения.
+
+- `--host` — адрес; 0.0.0.0 — открыть для устройств в сети
+- `--port` — порт
+- `--secret` — секрет из 32 hex-символов
+- `--autostart` — on или off
+
+```
+chimera tg config --port 1443
+chimera tg config --host 0.0.0.0
+```
+
+#### `chimera tg regen-secret`
+
+Сгенерировать новый секрет (старая ссылка перестанет работать). Уровень: изменение приложения.
+
+```
+chimera tg regen-secret
+```
+
+#### `chimera tg advanced <настройки…>`
+
+Продвинутые настройки ядра: ключ=значение (значение — JSON или строка). Уровень: изменение приложения.
+
+- `настройки` — ключ=значение …
+
+```
+chimera tg advanced fake_tls_domain=example.com
+chimera tg advanced fallback_cfproxy=false
+```
+
+#### `chimera tg check-update`
+
+Проверить обновление ядра Telegram-прокси. Уровень: чтение.
+
+```
+chimera tg check-update
+```
+
+### hosts
+
+Подмена IP в системном hosts.
+
+#### `chimera hosts state`
+
+Состояние подмены hosts: применена ли, сколько записей. Уровень: чтение.
+
+```
+chimera hosts state
+```
+
+#### `chimera hosts overview`
+
+Всё по hosts: провайдеры, списки, привязки, состояние. Уровень: чтение.
+
+```
+chimera hosts overview --json
+```
+
+#### `chimera hosts on`
+
+Включить подмену hosts (привязки сохраняются). Уровень: изменение системы.
+
+```
+chimera hosts on
+```
+
+#### `chimera hosts off`
+
+Выключить подмену hosts: блок из файла убирается, привязки остаются. Уровень: изменение системы.
+
+```
+chimera hosts off
+```
+
+#### `chimera hosts assign [привязки…] [--replace]`
+
+Привязать списки к провайдерам: провайдер=список,список (пусто — снять). Меняются только указанные провайдеры; --replace заменяет все привязки. Уровень: изменение системы.
+
+- `привязки` — провайдер=список,список …
+- `--replace` — заменить все привязки
+
+```
+chimera hosts assign comss=youtube,discord
+chimera hosts assign xbox=
+```
+
+#### `chimera hosts provider-add <имя> <doh> <серверы…>`
+
+Добавить hosts-провайдера (имя, DoH-адрес, серверы). Уровень: изменение приложения.
+
+- `имя` — str
+- `doh` — адрес DoH или - 
+- `серверы` — IP-адреса
+
+```
+chimera hosts provider-add my https://dns.example/dns-query 1.2.3.4
+```
+
+#### `chimera hosts provider-delete <id>`
+
+Удалить hosts-провайдера. Уровень: изменение приложения.
+
+- `id` — id провайдера
+
+```
+chimera hosts provider-delete my
+```
+
+#### `chimera hosts ping <id>`
+
+Проверить доступность hosts-провайдера. Уровень: чтение.
+
+- `id` — id провайдера
+
+```
+chimera hosts ping comss
+```
+
+#### `chimera hosts background [настройки…]`
+
+Настройки фонового потока hosts: ключ=значение (значение — JSON). Уровень: изменение приложения.
+
+- `настройки` — ключ=значение …
+
+```
+chimera hosts background
+chimera hosts background auto_update=true
+```
+
+### dns
+
+Системный DNS и DNS-провайдеры.
+
+#### `chimera dns state`
+
+Адаптеры, их текущий DNS и провайдеры. Уровень: чтение.
+
+```
+chimera dns state
+```
+
+#### `chimera dns ping [id]`
+
+Пинг DNS-провайдеров: всех или одного. Уровень: чтение.
+
+- `id` — провайдер; без него — все
+
+```
+chimera dns ping
+```
+
+#### `chimera dns probe <id>`
+
+Проверить, отвечает ли провайдер на «обходные» и рекламные домены. Уровень: чтение.
+
+- `id` — id провайдера
+
+```
+chimera dns probe cloudflare
+```
+
+#### `chimera dns probe-config [--bypass <bypass>] [--ad <ad>]`
+
+Домены пробы: показать, либо задать --bypass и --ad. Уровень: изменение приложения.
+
+- `--bypass` — домен «обходной» пробы
+- `--ad` — домен рекламной пробы
+
+```
+chimera dns probe-config
+chimera dns probe-config --bypass rutracker.org
+```
+
+#### `chimera dns set <адаптер> <провайдер>`
+
+Поставить DNS-провайдера на адаптер (нужны права администратора). Уровень: изменение системы.
+
+- `адаптер` — номер адаптера из `chimera dns state`
+- `провайдер` — id провайдера
+
+```
+chimera dns set 12 cloudflare
+```
+
+#### `chimera dns reset <адаптер>`
+
+Вернуть DNS адаптера на автоматический (DHCP). Уровень: изменение системы.
+
+- `адаптер` — номер адаптера из `chimera dns state`
+
+```
+chimera dns reset 12
+```
+
+#### `chimera dns provider-add <имя> <серверы…> [--ipv6 <ipv6>] [--doh <doh>] [--dot <dot>] [--unblock] [--filtering]`
+
+Добавить DNS-провайдера. Уровень: изменение приложения.
+
+- `имя` — str
+- `серверы` — IPv4-адреса
+- `--ipv6` — IPv6-адреса через запятую
+- `--doh` — адрес DoH
+- `--dot` — имя DoT
+- `--unblock` — разблокирующий
+- `--filtering` — с фильтрацией
+
+```
+chimera dns provider-add my 9.9.9.9 149.112.112.112 --doh https://dns.quad9.net/dns-query
+```
+
+#### `chimera dns provider-delete <id>`
+
+Удалить DNS-провайдера. Уровень: изменение приложения.
+
+- `id` — id провайдера
+
+```
+chimera dns provider-delete my
+```
+
+### lists
+
+Списки доменов.
+
+#### `chimera lists show [имя]`
+
+Списки с числом доменов и подключениями; с именем — содержимое списка. Уровень: чтение. Работает и без запущенной Chimera.
+
+- `имя` — список; без него — все
+
+```
+chimera lists show
+chimera lists show youtube
+```
+
+#### `chimera lists save <имя> [--file <file>]`
+
+Записать список целиком из файла (--file) или stdin. Уровень: изменение приложения. Работает и без запущенной Chimera.
+
+- `имя` — список
+- `--file` — файл со списком; без него — stdin
+
+```
+chimera lists save youtube --file youtube.txt
+```
+
+#### `chimera lists create <имя>`
+
+Создать пустой список. Уровень: изменение приложения. Работает и без запущенной Chimera.
+
+- `имя` — латиница, цифры, . - _
+
+```
+chimera lists create games
+```
+
+#### `chimera lists delete <имя>`
+
+Удалить список. Уровень: изменение приложения.
+
+- `имя` — str
+
+```
+chimera lists delete games
+```
+
+#### `chimera lists rename <старое> <новое>`
+
+Переименовать список вместе со ссылками на него. Уровень: изменение приложения.
+
+- `старое` — str
+- `новое` — str
+
+```
+chimera lists rename games play
+```
+
+#### `chimera lists add <имя> <домены…>`
+
+Добавить домены в список (список создаётся, если его нет). Применяется сразу. Уровень: изменение приложения. Работает и без запущенной Chimera.
+
+- `имя` — str
+- `домены` — домены или подсети
+
+```
+chimera lists add youtube ytimg.com googlevideo.com
+```
+
+#### `chimera lists remove <имя> <домены…>`
+
+Убрать домены из списка. Уровень: изменение приложения. Работает и без запущенной Chimera.
+
+- `имя` — str
+- `домены` — домены или подсети
+
+```
+chimera lists remove youtube ytimg.com
+```
+
+### check
+
+Открывается ли сайт и заблокирован ли он.
+
+#### `chimera check site <домен> [--only <only>]`
+
+Проверить один домен: доступность с этого компьютера и наличие в реестре блокировок. Уровень: чтение. Работает и без запущенной Chimera.
+
+- `домен` — домен или адрес
+- `--only` — только local или registry
+
+```
+chimera check discord.com
+chimera check site discord.com --only local
+```
+
+#### `chimera check list <список> [--only <only>]`
+
+Проверить все домены списка (параллельно), как «Проверить список» в окне. Уровень: чтение. Работает и без запущенной Chimera.
+
+- `список` — имя списка
+- `--only` — только local или registry
+
+```
+chimera check list discord
+```
+
+#### `chimera check status`
+
+Состояние сервиса реестра блокировок (версия, дата обновления). Уровень: чтение.
+
+```
+chimera check status
+```
+
+### logs
+
+Последние строки логов модулей.
+
+#### `chimera logs <модуль> [--tail <tail>]`
+
+Последние строки лога модуля: winws, proxy или tg. Уровень: чтение. Работает и без запущенной Chimera.
+
+- `модуль` — модуль
+- `--tail` — сколько последних строк (по умолчанию 40)
+
+```
+chimera logs winws
+chimera logs proxy --tail 100
+```
+
+### service
+
+Фоновая служба Windows.
+
+#### `chimera service <команда> [параметры…]`
+
+Фоновая служба: install, uninstall, start, stop, status, run (как `main.py service`). Уровень: изменение системы. Работает и без запущенной Chimera.
+
+- `команда` — действие
+- `параметры` — например --dry-run
+
+```
+chimera service status
+chimera service install --dry-run
+```
+
+### path
+
+Команда chimera в PATH пользователя.
+
+#### `chimera path show`
+
+Есть ли папка программы в PATH пользователя. Уровень: чтение. Работает и без запущенной Chimera.
+
+```
+chimera path show
+```
+
+#### `chimera path add`
+
+Добавить папку программы в PATH пользователя (после этого `chimera` работает из любой папки). Уровень: изменение приложения. Работает и без запущенной Chimera.
+
+```
+chimera path add
+```
+
+#### `chimera path remove`
+
+Убрать папку программы из PATH пользователя. Уровень: изменение приложения. Работает и без запущенной Chimera.
+
+```
+chimera path remove
+```
+
+### docs
+
+Документация этой версии: команды, папки и файлы, формат вывода.
+
+#### `chimera docs [тема]`
+
+Документация этой версии программы. Темы: commands (команды), layout (папки и файлы), output (коды возврата и формат --json). Без темы — оглавление; с --json — всё в машинном виде. Уровень: чтение. Работает и без запущенной Chimera.
+
+- `тема` — тема
+
+```
+chimera docs
+chimera docs layout
+chimera docs --json
+```
+
+### agent-info
+
+Сводка для агентов: версии, команды с уровнями, пути (`--json`).
+
+#### `chimera agent-info`
+
+Сводка для агентов: версия программы и протокола, совместимая версия скилла, команды с уровнями, пути к данным. Для машинного разбора — с --json. Уровень: чтение. Работает и без запущенной Chimera.
+
+```
+chimera agent-info --json
+```
+
+## Файлы
+
+| Путь | Что это |
+|---|---|
+| `config.json` | можно править: Настройки программы. Менять командой `chimera config set` (часть ключей — только правкой файла). |
+| `lists/*.txt` | можно править: Списки доменов и подсетей, по одной записи в строке, # — комментарий. Команды `chimera lists …`. |
+| `strategies/*.txt` | генерируется, не править: Стратегии winws2, портируются из Flowseal (tools/port_flowseal.py). Не править. |
+| `strategies/hostlists/list-general-user.txt` | генерируется, не править: Собирается из выбранных у обхода списков. Не править. |
+| `strategies/hostlists/ipset-user.txt` | генерируется, не править: Подсети из выбранных списков. Не править. |
+| `strategies/hostlists/list-exclude-user.txt` | можно править: Домены-исключения для обхода. Править только по просьбе пользователя. |
+| `strategies/hostlists/ipset-exclude-user.txt` | можно править: Подсети-исключения для обхода. Править только по просьбе пользователя. |
+| `strategies/hostlists/ipset-all.txt` | можно править: Общий список подсетей (режим ipset). Меняется командами `chimera winws ipset …`. |
+| `data/winws.json` | внутреннее состояние: Последняя стратегия, выбранные списки, автозапуск обхода. Менять командами `chimera winws …`. |
+| `data/proxy.json` | секрет: Ссылка прокси (учётные данные), режим, списки, приложения. Не читать и не показывать. |
+| `data/tgproxy.json` | секрет: Порт, секрет и параметры Telegram-прокси. Не читать и не показывать. |
+| `data/hosts.json` | внутреннее состояние: Привязки списков к провайдерам hosts, фоновые опции. Команды `chimera hosts …`. |
+| `data/dns_providers.user.json` | внутреннее состояние: DNS-провайдеры, добавленные пользователем. Команды `chimera dns provider-…`. |
+| `data/singbox-config.json` | генерируется, не править: Конфиг sing-box. Пересобирается программой. |
+| `data/singbox-domains.json` | генерируется, не править: Домены выбранных у прокси списков (файл правил sing-box). Пересобирается. |
+| `data/singbox-ips.json` | генерируется, не править: Подсети выбранных у прокси списков. Пересобирается. |
+| `data/proxy.pac` | генерируется, не править: PAC-файл режима pac. Пересобирается. |
+| `data/logs/*.log` | лог, только читать: Логи модулей (winws, proxy, tgproxy, hosts, service, update). Читать: `chimera logs <модуль>`. |
+| `data/changes.log` | лог, только читать: Журнал изменений через командную строку: время, источник, команда, результат. |
+| `data/control.json` | секрет: Порт и токен канала управления. Агенту читать не нужно, не показывать. |
+| `bin/` | внешнее, не править: Бинарники (sing-box, winws2). Не править. |
+| `upstream/` | внешнее, не править: Внешние проекты (сабмодули). Не править. |
