@@ -16,7 +16,8 @@
 @font-face { font-family: "JetBrains Mono"; src: url("../fonts/JetBrainsMono-Medium.woff2") format("woff2"); font-weight: 500; font-display: swap; }
 @font-face { font-family: "JetBrains Mono"; src: url("../fonts/JetBrainsMono-Bold.woff2") format("woff2"); font-weight: 700; font-display: swap; }
 
-/* Токены shadcn/ui — new-york, dark, base neutral; --primary — Tailwind violet-500. */
+/* Токены shadcn/ui — new-york, dark, base neutral, без цветного акцента: --primary — тот же
+   нейтральный, что у shadcn по умолчанию. Цветные акценты вернутся вместе с выбором темы. */
 :root {
   color-scheme: dark;
   --radius: 0.625rem;
@@ -26,8 +27,8 @@
   --card-foreground: oklch(0.985 0 0);
   --popover: oklch(0.205 0 0);
   --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.606 0.25 292.717);
-  --primary-foreground: oklch(0.985 0 0);
+  --primary: oklch(0.922 0 0);
+  --primary-foreground: oklch(0.205 0 0);
   --secondary: oklch(0.269 0 0);
   --secondary-foreground: oklch(0.985 0 0);
   --muted: oklch(0.269 0 0);
