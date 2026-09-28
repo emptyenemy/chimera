@@ -190,12 +190,6 @@
     return `<span class="dot ${cls}"></span><span class="num">${fmtNum(r.ms)} мс</span>`;
   }
 
-  function adminAlertHtml() {
-    if (Store.get("app")?.admin !== false) return "";
-    return `<div class="alert warning" data-key="admin-alert">${ic("triangle-alert")}
-      <div class="alert-title">Нет прав администратора</div>
-      <div class="alert-desc">Запись в hosts потребует перезапуска программы от имени администратора.</div></div>`;
-  }
 
   function lastSwitchHtml(st) {
     if (!st.last_switch) return "";
@@ -207,44 +201,32 @@
     </div>`;
   }
 
-  function statusHtml() {
-    const st = state();
-    const pairs = Object.entries(st.assignments || {}).filter(([, v]) => (Array.isArray(v) ? v.length : v));
-    if (enabledBusy) return badgeHtml("Применяю…", "outline");
-    if (st.enabled === false) {
-      return pairs.length ? badgeHtml("Выключено — привязки сохранены", "outline", "power")
-                           : badgeHtml("Выключено", "outline", "power");
-    }
-    if (pairs.length && st.applied) {
-      return badgeHtml(`Работает · ${fmtNum(st.count || 0)} ${plural(st.count || 0, "запись", "записи", "записей")}`,
-        "success", "check");
-    }
-    return badgeHtml("Сервисы не выбраны", "outline", "info");
-  }
 
-  function healthLineHtml(st) {
-    if (!st.health || !st.health.total) return "";
-    const pct = Math.round((st.health.ratio || 0) * 100);
-    const ago = agoText("health", st.health.checked_at);
-    const tone = pct >= 80 ? "success" : pct >= 50 ? "warning" : "danger";
-    return `<p class="hosts-health muted" data-key="health">${ic("activity")}
-      <span class="badge ${tone}">${pct}% живых</span>
-      <span>${fmtNum(st.health.total)} ${plural(st.health.total, "запись", "записи", "записей")} проверено${ago ? ` · ${ago}` : ""}</span>
-    </p>`;
-  }
 
+  // Статус — как у остальных модулей: точка, одна строка (с долей живых записей), кнопка
   function toggleCardHtml() {
     const st = state();
+    const on = !!st.applied;
+    const bound = Object.values(st.assignments || {}).some(v => (Array.isArray(v) ? v.length : v));
+    const noAdmin = Store.get("app")?.admin === false;
+    let title;
+    if (on) {
+      const pct = st.health?.total ? Math.round((st.health.ratio || 0) * 100) : null;
+      const tone = pct === null ? "" : pct >= 80 ? "success" : pct >= 50 ? "warning" : "danger";
+      title = `Работает · ${fmtNum(st.count || 0)} ${plural(st.count || 0, "запись", "записи", "записей")}`
+        + (pct === null ? "" : ` · <span class="hosts-pct ${tone}" data-tip="Доля записей, которые сейчас отвечают">${pct}% живых</span>`);
+    } else if (noAdmin) title = `<span class="hosts-reason">Нужны права администратора</span>`;
+    else if (!bound) title = `<span class="hosts-reason">Выбери провайдера и сайты ниже</span>`;
+    else title = "Выключено";
+    const disabled = enabledBusy || (!on && (noAdmin || !bound));
     return `
-      <div class="card compact" data-key="card-toggle">
-        <div class="card-header">
-          <div class="card-title">${ic("unlock")}Разблокировка hosts</div>
-          <div class="card-description">Подменяет IP выбранных сервисов через DNS-провайдера — работает без смены системного DNS.</div>
-          <div class="card-action">${switchHtml(!!st.applied, "data-toggle-enabled", { disabled: enabledBusy, pending: enabledBusy })}</div>
-        </div>
-        <div class="card-content stack-sm">
-          ${statusHtml()}
-          ${healthLineHtml(st)}
+      <div class="card compact hosts-status${on ? " is-on" : ""}" data-key="card-toggle">
+        <div class="card-content hosts-status-row">
+          <span class="dot ${on ? "on" : ""}"></span>
+          <div class="grow hosts-status-title">${title}</div>
+          <button type="button" class="btn sm${on ? " destructive" : ""}${enabledBusy ? " busy" : ""}" data-toggle-enabled${disabled ? " disabled" : ""}>
+            ${enabledBusy ? ic("loader-circle") : ""}${on ? "Выключить" : "Включить"}
+          </button>
         </div>
       </div>`;
   }
@@ -262,7 +244,7 @@
     const on = isStatic ? !!st.assignments?.[p.id] : (st.assignments?.[p.id] || []).length;
     const canDelete = !isStatic && !p.builtin;
     const desc = unavailable ? p.reason
-      : isStatic ? "Встроенный список — записи применяются целиком"
+      : isStatic ? "Встроенный список"
       : (p.servers?.length ? esc(p.servers.join(" · ")) : (p.doh ? esc(p.doh) : "—"));
     return `
       <div class="item ${unavailable ? "" : "interactive"} hosts-prov${unavailable ? " is-unavailable" : ""}"
@@ -295,7 +277,7 @@
       return emptyHtml({ icon: "list-checks", title: "Списков нет", desc: "Добавь домены на странице «Списки»." });
     }
     const assignments = state().assignments || {};
-    return `<div class="stack-sm" data-key="lists-list">${lists.map(l => {
+    return `<div class="hosts-lists-grid" data-key="lists-list">${lists.map(l => {
       const owner = listOwner(l.name, assignments);
       const mine = owner === selectedProvider;
       const elsewhere = owner && !mine;
@@ -316,10 +298,7 @@
       const on = !!state().assignments?.[p.id];
       return `
         <div class="card compact" data-key="card-lists">
-          <div class="card-header">
-            <div class="card-title">${ic("package")}Встроенный список</div>
-            <div class="card-description">«${esc(p.name)}» — фиксированный набор адресов, домены отдельно не выбираются.</div>
-          </div>
+          <div class="card-header"><div class="card-title">${ic("package")}${esc(p.name)}</div></div>
           <div class="card-content">
             <div class="switch-row hosts-static-row">
               <span>Применять записи «${esc(p.name)}»</span>
@@ -330,10 +309,7 @@
     }
     return `
       <div class="card compact" data-key="card-lists">
-        <div class="card-header">
-          <div class="card-title">${ic("list-checks")}Что разблокировать</div>
-          <div class="card-description">${selectedProvider ? `Списки для «${esc(providerName(selectedProvider))}»` : "Выбери провайдера слева"}</div>
-        </div>
+        <div class="card-header"><div class="card-title">${ic("list-checks")}${selectedProvider ? `Сайты через «${esc(providerName(selectedProvider))}»` : "Сайты"}</div></div>
         <div class="card-content">${listsHtml()}</div>
       </div>`;
   }
@@ -400,61 +376,44 @@
     const checkM = bg.check_interval ? Math.round(bg.check_interval / 60) : "";
     const order = effectiveOrder(bg, providers.filter(p => p.type === "dns"));
     return `
-      <div class="stack-sm">
-        <div class="switch-row">
-          <div><div class="label">Автообновление IP</div><p class="hint">Пересчитывает адреса dns-привязок по расписанию — провайдер мог сменить IP.</p></div>
-          ${switchHtml(bg.refresh_enabled !== false, `data-bg-switch="refresh_enabled"`)}
-        </div>
-        <div class="field hosts-bg-num">
-          <label class="label muted">Интервал обновления, часов</label>
-          <input class="input sm mono" type="text" inputmode="numeric" data-bg-num="refresh_interval_h" placeholder="${REFRESH_DEFAULT_H}" value="${esc(refreshH)}">
-        </div>
+      <div class="switch-row">
+        <div class="label grow">Обновлять IP</div>
+        <label class="hosts-every muted">каждые
+          <input class="input sm mono" type="text" inputmode="numeric" data-bg-num="refresh_interval_h" placeholder="${REFRESH_DEFAULT_H}" value="${esc(refreshH)}"> ч</label>
+        ${switchHtml(bg.refresh_enabled !== false, `data-bg-switch="refresh_enabled"`)}
+      </div>
+      <div class="switch-row">
+        <div class="label grow">Проверять записи</div>
+        <label class="hosts-every muted">каждые
+          <input class="input sm mono" type="text" inputmode="numeric" data-bg-num="check_interval_m" placeholder="${CHECK_DEFAULT_M}" value="${esc(checkM)}"> мин</label>
+        ${switchHtml(bg.check_enabled !== false, `data-bg-switch="check_enabled"`)}
       </div>
       <div class="separator"></div>
       <div class="stack-sm">
         <div class="switch-row">
-          <div><div class="label">Проверка живых записей</div><p class="hint">TCP+TLS-чекер уже применённых записей — считает долю живых (health).</p></div>
-          ${switchHtml(bg.check_enabled !== false, `data-bg-switch="check_enabled"`)}
-        </div>
-        <div class="field hosts-bg-num">
-          <label class="label muted">Интервал проверки, минут</label>
-          <input class="input sm mono" type="text" inputmode="numeric" data-bg-num="check_interval_m" placeholder="${CHECK_DEFAULT_M}" value="${esc(checkM)}">
-        </div>
-      </div>
-      <div class="separator"></div>
-      <div class="stack-sm">
-        <div class="switch-row">
-          <div><div class="label">Автопереключение</div><p class="hint">Привязка деградировала (мало живых записей) — переключить на следующего живого dns-провайдера по порядку ниже.</p></div>
+          <div><div class="label">Автопереключение</div><p class="hint">Записи перестали отвечать — перейти на следующего провайдера по списку.</p></div>
           ${switchHtml(!!bg.autoswitch_enabled, `data-bg-switch="autoswitch_enabled"`)}
         </div>
-        ${orderHtml(order)}
+        ${bg.autoswitch_enabled ? orderHtml(order) : ""}
       </div>`;
   }
 
   function render() {
     const st = state();
     morph(root.querySelector("[data-slot=body]"), `
-      ${adminAlertHtml()}
       ${lastSwitchHtml(st)}
       ${toggleCardHtml()}
       <div class="grid-2">
         <div class="card compact" data-key="card-providers">
           <div class="card-header">
-            <div class="card-title">${ic("globe")}DNS-провайдер</div>
-            <div class="card-description">Кому резолвить выбранные сервисы</div>
+            <div class="card-title">${ic("globe")}Провайдер</div>
             <div class="card-action"><button class="btn ghost sm" data-add-provider>${ic("plus")}Добавить</button></div>
           </div>
           <div class="card-content">${providersHtml()}</div>
         </div>
         ${rightCardHtml()}
-      </div>
-      <div class="card compact" data-key="card-background">
-        <div class="card-header">
-          <div class="card-title">${ic("sliders-horizontal")}Автоматика</div>
-          <div class="card-description">Фоновое обновление, проверка живых записей и автопереключение — модуль работает и без открытого окна.</div>
-        </div>
-        <div class="card-content">${backgroundHtml()}</div>
       </div>`);
+    morph(root.querySelector("[data-slot=bg]"), backgroundHtml());
   }
 
   Pages.define({
@@ -467,7 +426,10 @@
             <h1 class="page-title">Hosts</h1>
           </div>
         </div>
-        <div class="stack" data-slot="body"></div>`;
+        <div class="stack">
+          <div class="stack" data-slot="body"></div>
+          ${foldHtml("sliders-horizontal", "Дополнительно", '<div class="stack" data-slot="bg"></div>')}
+        </div>`;
 
       el.addEventListener("click", e => {
         if (e.target.closest("[data-toggle-enabled]")) return onToggleEnabled();
