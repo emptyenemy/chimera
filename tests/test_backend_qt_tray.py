@@ -118,6 +118,16 @@ def test_close_quits_when_tray_disabled_in_settings(app, config, monkeypatch):
     assert quits == [1]
 
 
+def test_quit_request_closes_program_and_hides_tray_icon(app, config, monkeypatch):
+    # обновление просит выйти из потока пула — сигнал доводит это до потока UI
+    window, _, tray = _tray(app, {})
+    quits = []
+    monkeypatch.setattr(backend_qt.QApplication, "quit", lambda: quits.append(1))
+    window.quit_requested.emit()
+    assert quits == [1]
+    assert not tray.icon.isVisible()
+
+
 def test_close_quits_without_tray(app, config, monkeypatch):
     window = backend_qt.MainWindow()  # трей не поднялся (нет области уведомлений)
     quits = []

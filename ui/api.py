@@ -5,6 +5,7 @@
 """
 
 import json
+import os
 import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
@@ -19,6 +20,7 @@ from modules.version import VERSION
 from modules.winws import WinwsManager
 from modules.hosts.manager import is_admin
 from ui.hub import StateHub
+from ui.updater import Updater
 
 WEB_DIR = Path(__file__).parent / "web"
 
@@ -51,6 +53,13 @@ class Api:
         if not service.is_running():
             threading.Thread(target=self._autostart_all, daemon=True).start()
         threading.Thread(target=self._refresh_autostart_task, daemon=True).start()
+        # Закрыть программу по её же команде (обновление): бэкенд подменяет на свой
+        # выход через поток UI; по умолчанию — сразу, модули к этому моменту уже погашены.
+        self.request_quit = lambda: os._exit(0)
+        # Обновление программы: прогресс скачивания пушится хабом сразу, не по тику
+        self.updater = Updater(on_change=lambda: getattr(self, "hub", None) and self.hub.poke("selfupdate"))
+        self._bg_stop = threading.Event()
+        self.updater.start_background(self._bg_stop)
         # Состояние модулей фронт больше не опрашивает сам — его пушит хаб (см. ui/hub.py).
         # lazy — только пока вкладку кто-то смотрит: dns_state это секунды PowerShell,
         # а живая статистика TG нужна лишь на её вкладке.
@@ -62,6 +71,7 @@ class Api:
             ("filters", self.filters_state, 15.0, True),
             ("tgStats", self.tg_stats, 1.0, True),
             ("dns", self.dns_state, 15.0, True),
+            ("selfupdate", self.selfupdate_state, 5.0, False),
         ])
         self.hub.start()
 
@@ -90,6 +100,7 @@ class Api:
         (иначе закрытие окна погасило бы то, что служба должна держать поднятым);
         UI просто перестаёт опрашивать состояние и выходит."""
         self.hub.stop()
+        self._bg_stop.set()
         if service.is_running():
             return
         self.hosts.stop_background()
@@ -104,6 +115,24 @@ class Api:
 
     def app_info(self):
         return _ok({"admin": is_admin(), "version": VERSION, "service_running": service.is_running()})
+
+    # --- обновление программы (ui/updater.py, modules/selfupdate.py) ----------
+
+    def selfupdate_state(self):
+        return _ok(self.updater.snapshot())
+
+    def selfupdate_check(self):
+        try:
+            return _ok(self.updater.check())
+        except Exception as e:
+            return _err(e)
+
+    def selfupdate_install(self):
+        """Скачать, распаковать и поставить найденную версию; программа закроется и запустится снова."""
+        try:
+            return _ok(self.updater.install(shutdown=self.shutdown, request_quit=self.request_quit))
+        except Exception as e:
+            return _err(e)
 
     # --- хаб состояния (ui/hub.py) -------------------------------------------
 
@@ -198,6 +227,7 @@ class Api:
         (("hosts_",), ("hosts",)),
         (("dns_",), ("dns",)),
         (("lists_",), ("proxy", "hosts", "winws")),  # счётчики доменов в выбранных списках
+        (("selfupdate_",), ("selfupdate",)),
     )
     # чтения ничего не меняют — после них хаб не дёргаем
     _READ_SUFFIXES = ("_state", "_log", "_stats", "_overview", "_read", "_all", "_status",

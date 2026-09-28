@@ -61,11 +61,19 @@ class MainWindow(QMainWindow):
     # показать окно — из любого потока (повторный запуск ловит поток modules/instance,
     # а трогать виджеты можно только из потока UI: сигнал доставит туда сам)
     show_requested = Signal()
+    # закрыть программу совсем — тоже из любого потока (установка обновления идёт в пуле)
+    quit_requested = Signal()
 
     def __init__(self):
         super().__init__()
         self.tray = None  # Tray, если значок в трее поднялся
         self.show_requested.connect(self.bring_to_front)
+        self.quit_requested.connect(self.quit_app)
+
+    def quit_app(self):
+        if self.tray:
+            self.tray.icon.hide()  # иначе значок висит в трее до наведения мыши
+        QApplication.quit()
 
     def bring_to_front(self):
         self.setWindowState((self.windowState() & ~Qt.WindowState.WindowMinimized) | Qt.WindowState.WindowActive)
@@ -206,6 +214,7 @@ def run():
     window.tray = tray
     # повторный запуск exe показывает это окно (см. modules/instance.py и main.py)
     listener = instance.listen(window.show_requested.emit)
+    api.request_quit = window.quit_requested.emit  # обновление закрывает программу через поток UI
 
     def _on_closing():
         if listener:
