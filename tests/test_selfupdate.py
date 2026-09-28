@@ -3,6 +3,7 @@
 import ctypes
 import hashlib
 import io
+import os
 import subprocess
 import sys
 import urllib.error
@@ -285,6 +286,24 @@ def test_apply_script_keeps_user_edits_in_lists(tmp_path):
     assert (app / "lists" / "fresh.txt").exists()
     assert (app / "lists" / "mine.txt").exists()
     assert (app / "lists" / "removed.txt").exists()
+
+
+@windows_only
+def test_apply_script_replaces_file_with_same_size_and_time(tmp_path):
+    # robocopy по умолчанию считает файлы одинаковыми по размеру и времени; новая версия
+    # с тем же размером и той же датой (тот же день сборки, округление времени в zip)
+    # всё равно должна лечь поверх старой
+    app, staged, upd = tmp_path / "app", tmp_path / "update" / "staged" / "Chimera", tmp_path / "update"
+    _write(app / "Chimera.exe", "old")
+    selfupdate.write_manifest(app)
+    _write(staged / "Chimera.exe", "new")
+    selfupdate.write_manifest(staged)
+    stamp = 1_700_000_000
+    os.utime(app / "Chimera.exe", (stamp, stamp))
+    os.utime(staged / "Chimera.exe", (stamp, stamp))
+    r, log = _run_script(app, staged, upd)
+    assert r.returncode == 0, log
+    assert (app / "Chimera.exe").read_text(encoding="utf-8") == "new"
 
 
 def _lock(path, share):

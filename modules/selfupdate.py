@@ -253,6 +253,9 @@ def write_script(app_dir: Path, staged: Path, pid: int, restart_service: bool, r
     # /E без /MIR — копировать, ничего не удаляя; /R:2 /W:1 — занятый файл не ждать
     # по умолчанию «миллион раз по 30 с»; /NP /NJH /NJS — лог короче
     rc = "/E /R:2 /W:1 /NP /NJH /NJS"
+    # /IS /IT — копировать и «одинаковые» файлы: robocopy сравнивает только размер и
+    # время, и файл новой версии того же размера с той же датой иначе остался бы старым
+    force = "/IS /IT"
     # пользовательские папки — отдельным проходом: /XC /XN /XO пропускают всё, что уже
     # лежит у пользователя, и копируют только новые файлы релиза
     user_dirs = [f'robocopy {_q(_win(st, d))} {_q(_win(app, d))} /XC /XN /XO {rc} >>"%LOG%"' + "\r\n"
@@ -275,7 +278,7 @@ def write_script(app_dir: Path, staged: Path, pid: int, restart_service: bool, r
         "goto wait",
         ":gone",
         'echo [%date% %time%] программа закрыта, ставлю новую версию>>"%LOG%"',
-        f'robocopy {_q(st)} {_q(app)} /XF {xf} /XD {xd} {rc} >>"%LOG%"',
+        f'robocopy {_q(st)} {_q(app)} /XF {xf} /XD {xd} {force} {rc} >>"%LOG%"',
         "if errorlevel 8 goto rollback",
         *user_dirs,
         *(f'del /F /Q {_q(_win(app, rel))} >nul 2>&1' for rel in stale),
@@ -285,7 +288,7 @@ def write_script(app_dir: Path, staged: Path, pid: int, restart_service: bool, r
         "goto after",
         ":rollback",
         'echo [%date% %time%] ошибка копирования — откат на прежнюю версию>>"%LOG%"',
-        f'robocopy {_q(rb)} {_q(app)} {rc} >>"%LOG%"',
+        f'robocopy {_q(rb)} {_q(app)} {force} {rc} >>"%LOG%"',
         *(f'del /F /Q {_q(_win(app, rel))} >nul 2>&1' for rel in added),
         "set RESULT=2",
         ":after",
