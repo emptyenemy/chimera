@@ -493,10 +493,16 @@ class Api:
         except Exception as e:
             return _err(e)
 
-    def game_filter_set(self, mode):
+    def game_filter_set(self, mode, tcp=None, udp=None):
+        """mode — off/all/tcp/udp; tcp/udp — диапазоны портов (см. filters.validate_game_range),
+        не переданы — старые значения не трогаем (обратная совместимость со старым вызовом
+        одним аргументом)."""
         try:
             from modules.winws import filters
-            return _ok(filters.set_game_mode(mode))
+            filters.set_game_mode(mode)
+            if tcp is not None or udp is not None:
+                filters.set_game_ranges(tcp, udp)
+            return _ok(filters.state())
         except Exception as e:
             return _err(e)
 

@@ -1,8 +1,10 @@
 """Game-фильтр и IPSet-фильтр — настройки запуска winws2 (портированы с Flowseal service.bat).
 
-Game-фильтр: расширяет перехват на «игровые» высокие порты (1024-65535) и добавляет
-профиль десинка по ним (для игр трафик не TLS/QUIC, а произвольный по случайным портам).
-Хранится в config.json: "game_filter" = off|all|tcp|udp. Выкл = порт-заглушка 12.
+Game-фильтр: расширяет перехват на «игровые» высокие порты (по умолчанию 1024-65535,
+диапазон настраиваемый) и добавляет профиль десинка по ним (для игр трафик не TLS/QUIC,
+а произвольный по случайным портам). Хранится в config.json: "game_filter" = off|all|tcp|udp,
+"game_filter_tcp"/"game_filter_udp" — диапазоны портов (формат и границы — как у Flowseal
+:validate_game_filter_range). Выкл = порт-заглушка 12.
 
 IPSet-фильтр: состояние файла strategies/hostlists/ipset-all.txt (его используют
 fallback-профили «по IP»):
@@ -19,6 +21,7 @@ Fake replace: ACTIVE_DISCORD_UDP.bin и ACTIVE_GAME_UDP.bin — не блобы,
 """
 
 import hashlib
+import re
 import shutil
 import urllib.request
 from pathlib import Path
@@ -38,7 +41,12 @@ IPSET_URL = (
 # --- game filter ---------------------------------------------------------------
 
 GAME_MODES = ("off", "all", "tcp", "udp")
-_GAME_RANGE = "1024-65535"
+GAME_RANGE_DEFAULT = "1024-65535"
+
+# Один элемент диапазона: порт (без ведущего нуля, до 5 цифр) или "порт-порт".
+# Как у Flowseal (:gf_validate_item) — findstr /r /x /c:"[1-9][0-9]*" /c:"[1-9][0-9]*-[1-9][0-9]*"
+# плюс проверка длины (!Start:~5,1! пусто -> не больше 5 цифр).
+_GAME_RANGE_ITEM_RE = re.compile(r"^[1-9][0-9]{0,4}(-[1-9][0-9]{0,4})?$")
 
 
 def game_mode() -> str:
@@ -53,14 +61,64 @@ def set_game_mode(mode: str) -> str:
     return mode
 
 
+def validate_game_range(value: str) -> str:
+    """Диапазон(ы) портов game-фильтра — как :validate_game_filter_range у Flowseal:
+    список через запятую, элемент — порт или "порт-порт", без пробелов и ведущих
+    нулей, 1..65535, начало не больше конца. Возвращает нормализованную строку
+    (без пробелов) либо бросает ValueError с описанием, что не так."""
+    s = "".join(str(value).split())
+    if not s:
+        raise ValueError("Диапазон портов не может быть пустым")
+    for item in s.split(","):
+        m = _GAME_RANGE_ITEM_RE.match(item)
+        if not m:
+            raise ValueError(
+                f"Неверный формат диапазона портов: {item!r} "
+                "(пример: 1024-1934,1936-65535)"
+            )
+        start_s, _, end_s = item.partition("-")
+        start, end = int(start_s), int(end_s or start_s)
+        if start > 65535 or end > 65535:
+            raise ValueError(f"Порт вне диапазона 1..65535: {item!r}")
+        if start > end:
+            raise ValueError(f"Начало диапазона больше конца: {item!r}")
+    return s
+
+
+def _stored_range(key: str) -> str:
+    """Диапазон из config.json с фолбэком на дефолт — как game_mode() для битого
+    значения (например, руками подпорченный config.json)."""
+    value = appconfig.load().get(key, GAME_RANGE_DEFAULT)
+    try:
+        return validate_game_range(str(value))
+    except ValueError:
+        return GAME_RANGE_DEFAULT
+
+
+def game_ranges() -> dict:
+    """{'tcp': диапазон, 'udp': диапазон} — независимо от текущего режима."""
+    return {"tcp": _stored_range("game_filter_tcp"), "udp": _stored_range("game_filter_udp")}
+
+
+def set_game_ranges(tcp: str | None = None, udp: str | None = None) -> dict:
+    """Сохраняет диапазон(ы). None — соответствующий диапазон не трогаем (задан
+    только tcp или только udp)."""
+    if tcp is not None:
+        appconfig.set_value("game_filter_tcp", validate_game_range(tcp))
+    if udp is not None:
+        appconfig.set_value("game_filter_udp", validate_game_range(udp))
+    return game_ranges()
+
+
 def game_ports(mode: str | None = None) -> dict | None:
     """{'tcp': ports|None, 'udp': ports|None} для game-профиля, или None если выключен."""
     mode = mode or game_mode()
     if mode == "off":
         return None
+    ranges = game_ranges()
     return {
-        "tcp": _GAME_RANGE if mode in ("all", "tcp") else None,
-        "udp": _GAME_RANGE if mode in ("all", "udp") else None,
+        "tcp": ranges["tcp"] if mode in ("all", "tcp") else None,
+        "udp": ranges["udp"] if mode in ("all", "udp") else None,
     }
 
 
@@ -202,6 +260,7 @@ def state() -> dict:
     """Сводка для UI."""
     return {
         "game": game_mode(),
+        "game_ranges": game_ranges(),
         "ipset": ipset_state(),
         "ipset_count": ipset_count(),
         "ipset_stored": ipset_stored(),

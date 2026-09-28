@@ -78,6 +78,75 @@ def test_game_ports_explicit_mode_overrides_config(fake_config):
     assert filters.game_ports("all") == {"tcp": "1024-65535", "udp": "1024-65535"}
 
 
+# --- filters.validate_game_range ------------------------------------------------
+
+
+@pytest.mark.parametrize("value", [
+    "1024-65535",
+    "80",
+    "65535",
+    "1",
+    "1024-1934,1936-65535",
+    "  1024 - 65535 ",  # пробелы вырезаются целиком, как у Flowseal
+])
+def test_validate_game_range_accepts_valid(value):
+    assert filters.validate_game_range(value) == "".join(value.split())
+
+
+@pytest.mark.parametrize("value", [
+    "",
+    "   ",
+    "0",
+    "0-100",
+    "01-100",           # ведущий ноль
+    "100-50",           # начало больше конца
+    "1024-70000",       # конец за пределами 65535
+    "700000",           # больше 5 цифр
+    "80-",
+    "-80",
+    "abc",
+    "80,",
+])
+def test_validate_game_range_rejects_invalid(value):
+    with pytest.raises(ValueError):
+        filters.validate_game_range(value)
+
+
+# --- filters.game_ranges / set_game_ranges --------------------------------------
+
+
+def test_game_ranges_default(fake_config):
+    assert filters.game_ranges() == {"tcp": "1024-65535", "udp": "1024-65535"}
+
+
+def test_game_ranges_falls_back_on_bogus_stored_value(fake_config):
+    fake_config["game_filter_tcp"] = "not-a-range"
+    assert filters.game_ranges()["tcp"] == "1024-65535"
+
+
+def test_set_game_ranges_roundtrip(fake_config):
+    result = filters.set_game_ranges(tcp="2000-3000", udp="4000-5000")
+    assert result == {"tcp": "2000-3000", "udp": "4000-5000"}
+    assert filters.game_ranges() == {"tcp": "2000-3000", "udp": "4000-5000"}
+
+
+def test_set_game_ranges_partial_update_keeps_other_side(fake_config):
+    filters.set_game_ranges(tcp="2000-3000", udp="4000-5000")
+    filters.set_game_ranges(tcp="9000-9999")
+    assert filters.game_ranges() == {"tcp": "9000-9999", "udp": "4000-5000"}
+
+
+def test_set_game_ranges_rejects_invalid():
+    with pytest.raises(ValueError):
+        filters.set_game_ranges(tcp="bogus")
+
+
+def test_game_ports_uses_configured_ranges(fake_config):
+    filters.set_game_ranges(tcp="2000-3000", udp="4000-5000")
+    fake_config["game_filter"] = "all"
+    assert filters.game_ports() == {"tcp": "2000-3000", "udp": "4000-5000"}
+
+
 # --- WinwsManager._apply_game_filter ------------------------------------------
 
 
@@ -146,3 +215,15 @@ def test_apply_game_filter_non_game_lines_untouched(fake_config):
     fake_config["game_filter"] = "off"
     lines = ["--filter-tcp=80,443", "--lua-desync=fake:blob=tls_google"]
     assert WinwsManager._apply_game_filter(lines) == lines
+
+
+def test_apply_game_filter_uses_configured_custom_ranges(fake_config):
+    fake_config["game_filter"] = "all"
+    filters.set_game_ranges(tcp="2000-3000", udp="4000-5000")
+    out = WinwsManager._apply_game_filter(_lines_with_game_profiles())
+    text = "\n".join(out)
+    assert "--wf-tcp-out=80,443,2000-3000" in text
+    assert "--wf-udp-out=443,4000-5000" in text
+    assert "--filter-tcp=2000-3000" in out
+    assert "--filter-udp=4000-5000" in out
+    assert "1024-65535" not in text
