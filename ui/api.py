@@ -10,6 +10,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 from modules import appconfig, autostart, blockcheck, cheburcheck, domains, upstream
+from modules import discord as discord_cache
 from modules.dns_jumper import DnsJumper
 from modules.hosts import HostsManager
 from modules.proxy import ProxyManager
@@ -205,6 +206,14 @@ class Api:
         автопереключение при деградации привязки (см. modules/hosts/background.py)."""
         try:
             return _ok(self.hosts.set_background(options))
+        except Exception as e:
+            return _err(e)
+
+    # --- очистка кэша Discord (как пункт service.bat у Flowseal) -------------
+
+    def discord_clear_cache(self):
+        try:
+            return _ok(discord_cache.clear_cache())
         except Exception as e:
             return _err(e)
 
