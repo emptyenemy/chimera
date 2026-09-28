@@ -5,6 +5,12 @@ REM
 REM   build.bat              full build (Nuitka + post steps)
 REM   build.bat --post-only  post steps only, on an existing build\main.dist
 REM
+REM --include-data-dir silently skips "code-like" files (.bin, .dll, .exe, ...).
+REM The strategies' fake blobs are .bin - without an explicit --include-data-files
+REM rule winws2 fails in the built program (tests/test_build_bat.py guards this).
+REM --remove-output drops build\main.build (generated C and objects) afterwards;
+REM rebuilds stay fast through Nuitka's own cache in %LOCALAPPDATA%\Nuitka.
+REM
 REM Standalone, not onefile: paths in the code resolve either as
 REM Path(__file__).parent... (see modules/appconfig.py) or through modules/paths.py
 REM (APP_DIR = the exe's folder when frozen/Nuitka, data/ next to it) - both need a
@@ -59,8 +65,10 @@ python -m nuitka ^
     --file-version=%FILEVER% ^
     --product-version=%FILEVER% ^
     --output-dir=build ^
+    --remove-output ^
     --include-data-dir=ui/web=ui/web ^
     --include-data-dir=strategies=strategies ^
+    --include-data-files=strategies/assets=strategies/assets/=*.bin ^
     --include-data-files=modules/dns_providers.json=modules/dns_providers.json ^
     --include-data-files=assets/logo/chimera.ico=assets/logo/chimera.ico ^
     --include-data-files=upstream/tg-ws-proxy/proxy=upstream/tg-ws-proxy/proxy/=*.py ^
