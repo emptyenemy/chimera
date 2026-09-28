@@ -6,14 +6,12 @@
    статистика — ленивый `tgStats` (только пока эта страница открыта). */
 
 (() => {
-  const REPO = "https://github.com/Flowseal/tg-ws-proxy";
 
   let root;
   let logView = null;
   let secretVisible = false;   // секрет скрыт по умолчанию
   let togglePending = false;   // старт/стоп в полёте — тумблер в целевом положении
   let saveTimer = null;        // debounce автосохранения host/port/secret
-  let updateInfo = null;       // tg_check_update — раз за сессию, как в старом UI
   let advancedOpen = false;    // «Продвинутые настройки» свёрнуты по умолчанию
   let advSaveTimer = null;     // debounce автосохранения текстовых продвинутых полей
   let dcDraft = null;          // локальный черновик списка dc_redirects, пока не сохранён
@@ -179,31 +177,25 @@
 
   // --- разметка -------------------------------------------------------------------
 
+  // Шапка — как у стратегий и прокси: статус одной строкой, автозапуск, кнопка; ниже — как подключить
   function heroHtml(st) {
-    const on = !!st?.running;
-    const sub = !st ? "Загрузка…" : on ? `${esc(st.host)}:${esc(st.port)}` : "MTProto через WebSocket";
+    if (!st) return `<div class="card compact"><div class="card-content">${skeletonHtml(2, 24)}</div></div>`;
+    const on = !!st.running;
     return `
-      <div class="card tg-hero${on ? " is-on" : ""}">
-        <div class="card-content tg-hero-row">
-          <div class="tg-hero-icon">${ic("send")}</div>
-          <div class="grow">
-            <div class="tg-hero-title">${!st ? "Загрузка…" : on ? "Прокси запущен" : "Прокси остановлен"}</div>
-            <div class="tg-hero-sub">${sub}</div>
-          </div>
-          ${st ? switchHtml(on, 'data-toggle="tg"', { disabled: togglePending, pending: togglePending }) : ""}
+      <div class="card compact tg-hero${on ? " is-on" : ""}">
+        <div class="card-content tg-status-row">
+          <span class="dot ${on ? "on" : ""}"></span>
+          <div class="grow tg-status-title">${on ? `Работает · ${esc(st.host)}:${esc(st.port)}` : "Остановлено"}</div>
+          <label class="tg-autostart"><span class="muted">Автозапуск</span>${switchHtml(!!st.autostart, 'data-toggle="tg-autostart"')}</label>
+          <button type="button" class="btn sm${on ? " destructive" : ""}${togglePending ? " busy" : ""}" data-toggle="tg"${togglePending ? " disabled" : ""}>
+            ${togglePending ? ic("loader-circle") : ""}${on ? "Остановить" : "Запустить"}
+          </button>
         </div>
         <div class="card-content tg-actions">
-          <button class="btn outline sm" data-act="open-link"${st?.link ? "" : " disabled"}>${ic("external-link")}Подключить в Telegram</button>
-          <button class="btn ghost sm" data-act="copy-link"${st?.link ? "" : " disabled"}>${ic("copy")}Скопировать ссылку</button>
-          <span class="grow"></span>
-          ${st?.version ? `<span class="muted tg-ver">tg-ws-proxy ${esc(st.version)}</span>` : ""}
-          ${updateInfo?.has_update
-            ? `<span data-tip="${esc(updateInfo.url)}"><button class="btn link xs" data-url="${esc(updateInfo.url)}">доступна v${esc(updateInfo.latest)}</button></span>`
-            : ""}
-          <button class="btn ghost xs" data-url="${REPO}">${ic("external-link")}репозиторий</button>
+          <button class="btn outline sm" data-act="open-link"${st.link ? "" : " disabled"}>${ic("external-link")}Подключить в Telegram</button>
+          <button class="btn ghost sm" data-act="copy-link"${st.link ? "" : " disabled"}>${ic("copy")}Скопировать ссылку</button>
         </div>
-        ${st?.error ? `<div class="card-content"><div class="alert destructive">${ic("triangle-alert")}
-          <div class="alert-title">Ошибка</div><div class="alert-desc">${esc(st.error)}</div></div></div>` : ""}
+        ${st.error ? `<div class="card-content"><div class="alert destructive">${ic("circle-alert")}<div class="alert-desc">${esc(st.error)}</div></div></div>` : ""}
       </div>`;
   }
 
@@ -214,22 +206,19 @@
     const port = cfgDraft?.port ?? st.port;
     const secret = cfgDraft?.secret ?? st.secret;
     return `
-      <div class="card">
-        <div class="card-header">
-          <div class="card-title">${ic("settings")}Настройки подключения</div>
-          <div class="card-description">Сохраняется сразу; если прокси запущен — перезапустится с новыми значениями.</div>
-        </div>
+      <div class="card compact">
+        <div class="card-header"><div class="card-title">${ic("settings")}Подключение</div></div>
         <div class="card-content stack">
           <div class="switch-row">
-            <div class="tg-row-label"><b>Адрес</b><span>127.0.0.1 — только этот ПК · 0.0.0.0 — видно в локальной сети</span></div>
+            <div class="tg-row-label"><b>Адрес</b><span>0.0.0.0 — доступ из локальной сети</span></div>
             <input class="input tg-field" data-f="host" value="${esc(host)}" spellcheck="false">
           </div>
           <div class="switch-row">
-            <div class="tg-row-label"><b>Порт</b><span>По умолчанию 1443</span></div>
+            <div class="tg-row-label"><b>Порт</b></div>
             <input class="input tg-field" type="number" min="1" max="65535" data-f="port" value="${esc(port)}">
           </div>
           <div class="switch-row">
-            <div class="tg-row-label"><b>Секрет</b><span>32 hex-символа, в ссылку подставляется с префиксом dd</span></div>
+            <div class="tg-row-label"><b>Секрет</b></div>
             <div class="input-group tg-secret-group">
               <input class="input mono tg-field" type="${secretVisible ? "text" : "password"}"
                 data-f="secret" value="${esc(secret)}" spellcheck="false" autocomplete="off">
@@ -240,10 +229,6 @@
                   data-tip="Сгенерировать новый">${ic("refresh-cw")}</button>
               </span>
             </div>
-          </div>
-          <div class="switch-row">
-            <div class="tg-row-label"><b>Автозапуск</b><span>Поднимать прокси при старте программы</span></div>
-            ${switchHtml(!!st.autostart, 'data-toggle="tg-autostart"')}
           </div>
         </div>
       </div>`;
@@ -310,28 +295,25 @@
           </div>`;
   }
 
+  // Выглядит как общий свёрнутый блок (foldHtml), но открытость хранится тут: карточка
+  // живёт внутри перерисовываемого morph()-тела, и состояние в DOM оно бы сбросило
   function advancedHtml(st) {
     if (!st) return "";
     return `
-      <div class="card tg-adv${advancedOpen ? " open" : ""}">
-        <button type="button" class="card-header tg-adv-toggle" data-act="toggle-advanced" aria-expanded="${advancedOpen}">
-          <div class="card-title">${ic("sliders-horizontal")}Продвинутые настройки</div>
-          <div class="card-action">${ic("chevron-down", "tg-adv-chevron")}</div>
+      <div class="card fold${advancedOpen ? " open" : ""}">
+        <button type="button" class="card-header" data-act="toggle-advanced" aria-expanded="${advancedOpen}">
+          <div class="card-title">${ic("sliders-horizontal")}Дополнительно</div>
+          <div class="card-action">${ic("chevron-down", "fold-chevron")}</div>
         </button>
-        <div class="tg-adv-body"${advancedOpen ? "" : " hidden"}>
+        <div class="card-content fold-body"${advancedOpen ? "" : " hidden"}>
           ${advancedOpen ? advancedBodyHtml(st) : ""}
         </div>
       </div>`;
   }
 
+  // статистика есть только у работающего прокси — у остановленного карточки нет вовсе
   function statsHtml(st, stats) {
-    if (!st?.running) {
-      return `<div class="card"><div class="card-header"><div class="card-title">${ic("gauge")}Статистика</div></div>
-        <div class="card-content">${emptyHtml({
-          icon: "gauge", title: "Прокси остановлен",
-          desc: "Запусти прокси, чтобы видеть живую статистику соединений.",
-        })}</div></div>`;
-    }
+    if (!st?.running) return "";
     if (!stats) {
       return `<div class="card"><div class="card-header"><div class="card-title">${ic("gauge")}Статистика</div></div>
         <div class="card-content tg-stats">${skeletonHtml(4, 60)}</div></div>`;
@@ -353,20 +335,12 @@
     </div>`;
   }
 
-  function logsHtml() {
-    return `<div class="card">
-      <div class="card-header"><div class="card-title">${ic("terminal")}Логи</div></div>
-      <div class="card-content"><div id="tg-log" class="log" data-morph="skip"></div></div>
-    </div>`;
-  }
-
   function render() {
     morph(root.querySelector("[data-slot=body]"), `
       ${heroHtml(Store.get("tg"))}
-      ${configHtml(Store.get("tg"))}
-      ${advancedHtml(Store.get("tg"))}
       ${statsHtml(Store.get("tg"), Store.get("tgStats"))}
-      ${logsHtml()}`);
+      ${configHtml(Store.get("tg"))}
+      ${advancedHtml(Store.get("tg"))}`);
   }
 
   // --- события ----------------------------------------------------------------
@@ -443,14 +417,16 @@
             <h1 class="page-title">Telegram-прокси</h1>
           </div>
         </div>
-        <div class="stack" data-slot="body"></div>`;
+        <div class="stack">
+          <div class="stack" data-slot="body"></div>
+          ${foldHtml("terminal", "Логи", '<div id="tg-log" class="log"></div>')}
+        </div>`;
       el.addEventListener("click", onClick);
       el.addEventListener("input", onInput);
       el.addEventListener("keydown", onKeydown);
       el.addEventListener("focusout", onFocusOut);
       render();
       logView = new LogView($("#tg-log", root), "tg_log");
-      api("tg_check_update").then(u => { updateInfo = u; render(); }).catch(() => {});
     },
     show(ctx) {
       ctx.on(["tg", "tgStats"], render);
