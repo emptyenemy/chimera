@@ -186,18 +186,19 @@ class WinwsManager:
 
     def set_lists(self, names) -> dict:
         """Какие списки доменов (lists/*.txt) гнать через winws по hostlist-профилям
-        стратегии. Перегенерирует list-general-user.txt и, если winws сейчас запущен,
-        сразу перезапускает текущую стратегию — иначе новый список не подхватится
-        (хостлист читается winws2 один раз при старте)."""
+        стратегии. Перегенерирует list-general-user.txt и ipset-user.txt; перезапуск
+        не нужен — winws2 сам перечитывает hostlist и ipset при изменении файла."""
         from modules import domains
         valid = {i["name"] for i in domains.list_info()}
         self.config["lists"] = [n for n in (names or []) if n in valid]
         self._save()
-        self._regenerate_user_hostlist()
-        sid = self._current or self.config.get("last_strategy")
-        if self.running and sid:
-            self.start(sid)
+        self.refresh_user_lists()
         return self.state()
+
+    def refresh_user_lists(self) -> None:
+        """Перекладывает текущие списки в файлы winws2 (когда изменилось содержимое
+        списка, а не их набор). Запущенный winws2 подхватит файлы сам."""
+        self._regenerate_user_hostlist()
 
     def _regenerate_user_hostlist(self) -> None:
         """Раскладывает выбранные списки по двум файлам: домены -> hostlist, IP -> ipset."""
