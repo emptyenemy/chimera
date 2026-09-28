@@ -118,6 +118,28 @@
   await step("проверка домена", async () => { await api("block_check_one", "example.com"); }, { network: true });
   await step("реестр РКН", async () => { await api("chebur_status"); }, { network: true });
 
+  // страница «Проверка сайтов» целиком: список -> две потоковые проверки на бэкенде ->
+  // пуши -> сведённая таблица; самый короткий список, чтобы не ждать
+  await step("проверка сайтов: список", async () => {
+    Pages.go("checks");
+    const lists = await api("lists_all");
+    const small = [...lists].sort((a, b) => a.count - b.count)[0];
+    for (let i = 0; i < 50 && !document.querySelector('[data-list] option[value="' + small.name + '"]'); i++) await sleep(100);
+    const sel = document.querySelector("[data-list]");
+    sel.value = small.name;
+    sel.dispatchEvent(new Event("change", { bubbles: true }));
+    let summary = "";
+    for (let i = 0; i < 300; i++) {
+      await sleep(200);
+      summary = document.querySelector('[data-key="summary"]')?.textContent || "";
+      if (summary.startsWith("Открывается")) break;
+    }
+    need(summary.startsWith("Открывается"), `проверка не закончилась: «${summary}»`);
+    const rows = document.querySelectorAll('[data-page="checks"] tbody tr[data-key]').length;
+    need(rows > 0, "таблица результатов пустая");
+    return `${small.name}: ${summary}`;
+  }, { network: true });
+
   // источники и обновление программы
   await step("версии компонентов", async () => {
     const v = await api("upstream_versions");
@@ -131,6 +153,62 @@
     return s.current;
   });
   await step("самообновление: проверка", async () => { await api("selfupdate_check"); }, { network: true });
+
+  // --- полный режим (tools/smoke_build.py --full, только CI/одноразовые машины) ------
+  // Всё, что требует прав администратора и меняет систему: каждый шаг возвращает её
+  // как было. Без прав или без флага — пропуск.
+  const full = window.__SMOKE_FULL__ === true && (await api("app_info")).admin === true;
+  const fullStep = (name, fn) => step(name, async () => (full ? fn() : skip("нужен --full и права администратора")));
+  const until = async (fn, what, tries = 60) => {
+    for (let i = 0; i < tries; i++) { if (await fn()) return; await sleep(250); }
+    throw new Error(`не дождался: ${what}`);
+  };
+
+  await fullStep("обход DPI: запуск и остановка", async () => {
+    const st = await api("winws_state");
+    await api("winws_start", st.strategies[0].id);
+    await until(async () => (await api("winws_state")).running, "winws2 запущен");
+    await api("winws_stop");
+    await until(async () => !(await api("winws_state")).running, "winws2 остановлен");
+  });
+
+  await fullStep("hosts: применение и снятие", async () => {
+    const o = await api("hosts_overview");
+    const flowseal = o.providers.find(p => p.type === "static");
+    await api("hosts_set_assignments", { [flowseal.id]: true });
+    await api("hosts_set_enabled", true);
+    await until(async () => (await api("hosts_state")).applied, "записи в hosts");
+    await api("hosts_set_enabled", false);
+    await api("hosts_set_assignments", {});
+    await until(async () => !(await api("hosts_state")).applied, "hosts очищен");
+  });
+
+  for (const mode of ["pac", "split", "tun"]) {
+    await fullStep(`прокси: запуск и остановка (${mode})`, async () => {
+      if (proxyBusy) return skip("sing-box уже работает в системе");
+      await api("proxy_set_link", "vless://00000000-0000-0000-0000-000000000000@127.0.0.1:1?type=tcp&security=none#smoke");
+      await api("proxy_set_lists", ["youtube"]);
+      await api("proxy_set_mode", mode);
+      await api("proxy_start");
+      await until(async () => (await api("proxy_state")).running, "sing-box запущен");
+      await api("proxy_stop");
+      await until(async () => !(await api("proxy_state")).running, "sing-box остановлен");
+    });
+  }
+
+  await fullStep("DNS: смена и сброс", async () => {
+    const d = await api("dns_state");
+    const a = d.adapters.find(x => x.dns?.length) || d.adapters[0];
+    await api("dns_set", a.index, "cloudflare");
+    await api("dns_reset", a.index);
+  });
+
+  await fullStep("автозапуск с Windows: включить и выключить", async () => {
+    const on = await api("autostart_set", true);
+    need(on.enabled && on.supported, "задача не создалась");
+    const off = await api("autostart_set", false);
+    need(!off.enabled && off.supported, "задача не удалилась");
+  });
 
   await step("настройки", async () => { await api("config_read"); });
   await step("автозапуск", async () => {

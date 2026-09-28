@@ -1,6 +1,10 @@
 """Дымовой тест собранной программы — «как у пользователя, начисто».
 
-    python tools/smoke_build.py [папка сборки]      (по умолчанию build\\Chimera)
+    python tools/smoke_build.py [папка сборки] [--full]      (по умолчанию build\\Chimera)
+
+--full — ещё и то, что требует прав администратора и меняет систему (запуск winws2,
+запись hosts, прокси в PAC и TUN, смена DNS, задача автозапуска). Каждый шаг
+возвращает как было, но запускать только в CI или на одноразовой машине.
 
 Копирует сборку во временную папку без data/ и config.json, запускает Chimera.exe
 без окна (Qt offscreen) и без запроса прав, подключается к встроенному Chromium по
@@ -52,7 +56,20 @@ def _wait_cdp(port: int, proc: subprocess.Popen, timeout: float = 60) -> None:
     raise RuntimeError("страница программы не поднялась за минуту")
 
 
-def run(build: Path) -> int:
+def _cli_check(app: Path, env: dict) -> dict:
+    """Командная строка собранного exe: `Chimera.exe service status` — тот путь main.py,
+    которым ставится и управляется фоновая служба."""
+    try:
+        r = subprocess.run([str(app / "Chimera.exe"), "service", "status"], cwd=app, env=env,
+                           capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=60)
+        ok = r.returncode == 0
+        return {"name": "командная строка: service status", "ok": ok,
+                "detail": (r.stdout or r.stderr).strip().splitlines()[0] if (r.stdout or r.stderr).strip() else f"код {r.returncode}"}
+    except (OSError, subprocess.SubprocessError) as e:
+        return {"name": "командная строка: service status", "ok": False, "detail": str(e)}
+
+
+def run(build: Path, full: bool = False) -> int:
     if not (build / "Chimera.exe").exists():
         print(f"нет {build / 'Chimera.exe'} — сначала build.bat")
         return 2
@@ -75,8 +92,8 @@ def run(build: Path) -> int:
     proc = subprocess.Popen([str(app / "Chimera.exe")], cwd=app, env=env, stdout=log, stderr=subprocess.STDOUT)
     try:
         _wait_cdp(port, proc)
-        r = subprocess.run(["node", str(CDP), str(port), str(CHECKS)], capture_output=True, text=True,
-                           encoding="utf-8", errors="replace", timeout=240)
+        r = subprocess.run(["node", str(CDP), str(port), str(CHECKS), *(["full"] if full else [])],
+                           capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=420)
         if r.returncode != 0:
             print(r.stdout, r.stderr)
             return 1
@@ -84,6 +101,7 @@ def run(build: Path) -> int:
     finally:
         subprocess.run(["taskkill", "/PID", str(proc.pid), "/T", "/F"], capture_output=True)
         log.close()
+    result["steps"].append(_cli_check(app, env))
 
     failed = 0
     for s in result["steps"]:
@@ -103,4 +121,5 @@ def run(build: Path) -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(run(Path(sys.argv[1]) if len(sys.argv) > 1 else ROOT / "build" / "Chimera"))
+    args = [a for a in sys.argv[1:] if a != "--full"]
+    sys.exit(run(Path(args[0]) if args else ROOT / "build" / "Chimera", full="--full" in sys.argv))

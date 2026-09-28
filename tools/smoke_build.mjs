@@ -2,11 +2,12 @@
 // (tools/smoke_checks.js). Запускается из tools/smoke_build.py. Без зависимостей:
 // WebSocket встроен в Node 22.
 //
-//   node tools/smoke_build.mjs <cdp-port> <checks.js>
+//   node tools/smoke_build.mjs <cdp-port> <checks.js> [full]
 import { readFileSync } from "node:fs";
 
-const [port, checksPath] = process.argv.slice(2);
-const checks = readFileSync(checksPath, "utf8");
+const [port, checksPath, mode] = process.argv.slice(2);
+// full — шаги с правами администратора, которые меняют систему (см. smoke_checks.js)
+const checks = (mode === "full" ? "window.__SMOKE_FULL__ = true;\n" : "") + readFileSync(checksPath, "utf8");
 
 const targets = await (await fetch(`http://127.0.0.1:${port}/json`)).json();
 const page = targets.find(t => t.type === "page");
