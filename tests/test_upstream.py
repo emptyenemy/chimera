@@ -22,6 +22,24 @@ def test_key_orders_versions(lower, higher):
     assert upstream._key(lower) < upstream._key(higher)
 
 
+def test_current_in_build_reads_versions_json(tmp_path, monkeypatch):
+    # в собранной программе git нет — версии сабмодулей пишутся при сборке в versions.json
+    vf = tmp_path / "versions.json"
+    vf.write_text('{"Движок zapret2 (winws2)": "v1.0.5.2", "winws-бандл (bol-van)": "6eb463a"}',
+                  encoding="utf-8")
+    monkeypatch.setattr(upstream.paths, "IS_FROZEN", True)
+    monkeypatch.setattr(upstream, "VERSIONS_FILE", vf)
+    assert upstream._current(upstream._source("Движок zapret2 (winws2)")) == "v1.0.5.2"
+    assert upstream._current(upstream._source("winws-бандл (bol-van)")) == "6eb463a"
+    assert upstream._current(upstream._source("TG-прокси (Flowseal)")) == "—"  # нет в файле
+
+
+def test_current_in_build_without_versions_json(tmp_path, monkeypatch):
+    monkeypatch.setattr(upstream.paths, "IS_FROZEN", True)
+    monkeypatch.setattr(upstream, "VERSIONS_FILE", tmp_path / "missing.json")
+    assert upstream._current(upstream._source("Движок zapret2 (winws2)")) == "—"
+
+
 def test_key_v_prefix_equal_to_bare_version():
     assert upstream._key("v1.9.9") == upstream._key("1.9.9")
 

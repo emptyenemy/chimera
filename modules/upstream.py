@@ -31,7 +31,12 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from contextlib import redirect_stdout
 from pathlib import Path
 
+from modules import paths
+
 ROOT = Path(__file__).resolve().parent.parent
+# Версии git-источников на момент сборки (пишет tools/fetch_bins.py --versions):
+# в собранной программе сабмодулей и .git нет, спросить git не у кого.
+VERSIONS_FILE = paths.APP_DIR / "versions.json"
 
 _CREATE_NO_WINDOW = 0x08000000
 
@@ -182,8 +187,17 @@ def _latest_python_stable() -> str | None:
 
 # --- текущая версия (локально, без сети) ------------------------------------
 
+def _built_versions() -> dict:
+    try:
+        return json.loads(VERSIONS_FILE.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+
+
 def _current(src: dict) -> str:
     kind = src["kind"]
+    if kind in ("tag", "commit") and paths.IS_FROZEN:
+        return _built_versions().get(src["name"]) or "—"
     if kind == "tag":
         return _git_tag(ROOT / src["path"])
     if kind == "commit":

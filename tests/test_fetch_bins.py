@@ -1,0 +1,65 @@
+"""Подготовка бинарников для сборки (tools/fetch_bins.py) — без сети."""
+
+import hashlib
+import importlib.util
+import json
+from pathlib import Path
+
+import pytest
+
+ROOT = Path(__file__).resolve().parent.parent
+_spec = importlib.util.spec_from_file_location("fetch_bins", ROOT / "tools" / "fetch_bins.py")
+fetch_bins = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(fetch_bins)
+
+
+def test_copy_winws_takes_only_winws_folder(tmp_path):
+    src = tmp_path / "bundle"
+    (src / "zapret-winws" / "lua").mkdir(parents=True)
+    (src / "zapret-winws" / "winws2.exe").write_bytes(b"exe")
+    (src / "zapret-winws" / "lua" / "a.lua").write_text("x")
+    (src / "cygwin").mkdir()
+    (src / "cygwin" / "big.dll").write_bytes(b"0" * 10)
+    dest = tmp_path / "out" / "zapret-win-bundle"
+
+    fetch_bins.copy_winws(src, dest)
+
+    assert (dest / "zapret-winws" / "winws2.exe").read_bytes() == b"exe"
+    assert (dest / "zapret-winws" / "lua" / "a.lua").exists()
+    assert not (dest / "cygwin").exists()
+
+
+def test_copy_winws_replaces_previous_copy(tmp_path):
+    src = tmp_path / "bundle"
+    (src / "zapret-winws").mkdir(parents=True)
+    (src / "zapret-winws" / "new.txt").write_text("new")
+    dest = tmp_path / "zapret-win-bundle"
+    (dest / "zapret-winws").mkdir(parents=True)
+    (dest / "zapret-winws" / "stale.txt").write_text("old")
+
+    fetch_bins.copy_winws(src, dest)
+
+    assert (dest / "zapret-winws" / "new.txt").exists()
+    assert not (dest / "zapret-winws" / "stale.txt").exists()
+
+
+def test_check_sha():
+    blob = b"sing-box"
+    fetch_bins.check_sha(blob, hashlib.sha256(blob).hexdigest())
+    with pytest.raises(RuntimeError, match="SHA256"):
+        fetch_bins.check_sha(blob, "0" * 64)
+
+
+def test_bundle_commit_is_full_hash():
+    assert len(fetch_bins.BUNDLE_COMMIT) == 40
+
+
+def test_write_versions_pins_bundle_commit(tmp_path, monkeypatch):
+    # версии тегов берутся из рабочей копии; бандл — пиннутый коммит, а не то, что лежит в bin/
+    monkeypatch.setattr(fetch_bins.upstream, "_current", lambda src: f"cur-{src['kind']}")
+    out = tmp_path / "versions.json"
+    fetch_bins.write_versions(out)
+    data = json.loads(out.read_text(encoding="utf-8"))
+    assert data["winws-бандл (bol-van)"] == fetch_bins.BUNDLE_COMMIT[:7]
+    assert data["Движок zapret2 (winws2)"] == "cur-tag"
+    assert "Python" not in data  # не git-источники в файл не пишутся
