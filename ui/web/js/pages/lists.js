@@ -186,11 +186,16 @@
       }
       const item = lists?.find(f => f.name === name);
       if (item && info) { item.count = info.count; updateSideCount(name, info.count); }
+      // список сохранён и применяется сам; если какой-то модуль не смог — говорим, какой
+      for (const err of info?.apply_errors || []) toast.error(`Список сохранён, но не применён: ${moduleTitle(err.module)}`, err.error);
     } catch (e) {
       dirty = true;  // не терять правки, если сохранить не вышло
       if (current === name) { errorMsg = e.message; setStatus("error"); }
     }
   }
+
+  const MODULE_TITLES = { winws: "стратегии", proxy: "прокси", hosts: "hosts" };
+  const moduleTitle = m => MODULE_TITLES[m] || m;
 
   async function createList() {
     const name = await promptDialog({ title: "Новый список", label: "Имя файла (без .txt)", placeholder: "например, discord" });
@@ -236,8 +241,9 @@
     });
     if (!ok) return;
     try {
-      await api("lists_delete", name);
+      const res = await api("lists_delete", name);
       toast.success(`Список ${name} удалён`);
+      for (const err of res?.apply_errors || []) toast.error(`Не удалось обновить: ${moduleTitle(err.module)}`, err.error);
       if (current === name) closeEditor();
       await loadLists();
     } catch (e) {

@@ -246,7 +246,7 @@ def fakes_state() -> dict:
 
 def set_fake(slot: str, name: str) -> dict:
     """Кладёт кандидата в слот. Применится при следующем запуске стратегии
-    (winws2 читает блоб один раз при старте — перезапуск делает UI)."""
+    (winws2 читает блоб один раз при старте — запущенную стратегию перезапускает Api.fake_set)."""
     if slot not in FAKE_SLOTS:
         raise ValueError("Слот фейка: %s" % " / ".join(FAKE_SLOTS))
     src = ASSETS_DIR / ("%s.bin" % name)

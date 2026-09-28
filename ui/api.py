@@ -434,23 +434,88 @@ class Api:
             return _err(e)
 
     def lists_save(self, name, content):
+        """Сохраняет список и сразу применяет его везде, где он подключён.
+        Ошибка применения (например, нет прав на hosts) не отменяет сохранение —
+        она приезжает рядом в apply_errors."""
         try:
-            return _ok(domains.save_raw(name, content))
+            data = domains.save_raw(name, content)
+            data["apply_errors"] = self._lists_changed(name)
+            return _ok(data)
         except Exception as e:
             return _err(e)
 
     def lists_create(self, name):
         try:
-            return _ok(domains.create_list(name))
+            return _ok(domains.create_list(name))  # новый список пока никуда не подключён
         except Exception as e:
             return _err(e)
 
     def lists_delete(self, name):
         try:
+            used_by_proxy = name in (self.proxy.config.get("lists") or [])
+            used_by_winws = name in (self.winws.config.get("lists") or [])
+            used_by_hosts = self._hosts_uses(name)
             domains.delete_list(name)
-            return _ok()
+            # удалённый список не должен оставаться в подключениях; set_lists сверяет
+            # имена с существующими файлами, поэтому достаточно переустановить те же
+            errors = []
+            if used_by_proxy:
+                self._apply_safely(errors, "proxy", lambda: self.proxy.set_lists(self.proxy.config["lists"]))
+            if used_by_winws:
+                self._apply_safely(errors, "winws", lambda: self.winws.set_lists(self.winws.config["lists"]))
+            if used_by_hosts:
+                patched = {}
+                for pid, lists in self.hosts.assignments().items():
+                    kept = [n for n in lists if n != name] if isinstance(lists, (list, tuple, set)) else lists
+                    if kept:
+                        patched[pid] = kept
+                self._apply_safely(errors, "hosts", lambda: self.hosts.set_assignments(patched))
+            return _ok({"apply_errors": errors})
         except Exception as e:
             return _err(e)
+
+    # --- применение изменений на лету ---------------------------------------
+    # Правка не должна требовать от пользователя ручных перезапусков: где модуль
+    # умеет подхватить изменение сам (файлы правил sing-box, hostlist winws2) — просто
+    # обновляем файлы; где без перезапуска нельзя (игровой фильтр, блоб, настройки
+    # ядра Telegram) — перезапускаем модуль сами, если он запущен.
+
+    @staticmethod
+    def _apply_safely(errors: list, module: str, fn) -> None:
+        try:
+            fn()
+        except Exception as e:
+            errors.append({"module": module, "error": str(e)})
+
+    def _hosts_uses(self, name) -> bool:
+        # у статического провайдера в привязке не список имён, а True
+        return any(isinstance(lists, (list, tuple, set)) and name in lists
+                   for lists in self.hosts.assignments().values())
+
+    def _lists_changed(self, name) -> list:
+        """Применяет изменившееся содержимое списка к тем, кто его использует.
+        Возвращает ошибки применения [{"module", "error"}] — сохранение они не ломают."""
+        errors = []
+        if name in (self.winws.config.get("lists") or []):
+            self._apply_safely(errors, "winws", self.winws.refresh_user_lists)
+        if name in (self.proxy.config.get("lists") or []):
+            self._apply_safely(errors, "proxy", self.proxy.reload_lists)
+        if self._hosts_uses(name):
+            self._apply_safely(errors, "hosts", self.hosts.resync)
+        return errors
+
+    def _restart_winws_if_running(self) -> None:
+        """Перезапускает текущую стратегию, если winws запущен: игровой фильтр и
+        блобы winws2 читает только при старте."""
+        sid = self.winws._current or self.winws.config.get("last_strategy")
+        if not (self.winws.running and sid):
+            return
+        if not self.winws._ours_alive:
+            # остался от прошлой сессии: какую стратегию он гоняет, мы не знаем
+            raise RuntimeError("winws2 запущен не этой Chimera — перезапустите стратегию вручную")
+        if not is_admin():
+            raise PermissionError("Нужны права администратора для перезапуска zapret2")
+        self.winws.start(sid)
 
     def lists_rename(self, old, new):
         """Переименовывает файл списка и переносит на новое имя все ссылки на
@@ -606,9 +671,7 @@ class Api:
 
     def winws_set_lists(self, names):
         try:
-            if self.winws.running and not is_admin():
-                raise PermissionError("Нужны права администратора для перезапуска zapret2")
-            return _ok(self.winws.set_lists(names))
+            return _ok(self.winws.set_lists(names))  # без перезапуска — права не нужны
         except Exception as e:
             return _err(e)
 
@@ -636,9 +699,21 @@ class Api:
             filters.set_game_mode(mode)
             if tcp is not None or udp is not None:
                 filters.set_game_ranges(tcp, udp)
-            return _ok(filters.state())
+            data = filters.state()
+            # порты игрового фильтра winws2 берёт при старте — запущенный перезапускаем сам
+            self._apply_and_report(data, self._restart_winws_if_running)
+            return _ok(data)
         except Exception as e:
             return _err(e)
+
+    @staticmethod
+    def _apply_and_report(data: dict, fn) -> None:
+        """Выполняет применение; сбой не отменяет сохранённую настройку, а кладётся
+        в data["apply_error"] — фронт покажет его рядом."""
+        try:
+            fn()
+        except Exception as e:
+            data["apply_error"] = str(e)
 
     def ipset_set(self, mode):
         try:
@@ -655,10 +730,13 @@ class Api:
             return _err(e)
 
     def fake_set(self, slot, name):
-        """Подставляет блоб в ACTIVE_*-слот (Discord UDP / GameFilter UDP)."""
+        """Подставляет блоб в ACTIVE_*-слот (Discord UDP / GameFilter UDP). Блоб winws2
+        читает при старте, поэтому запущенную стратегию перезапускаем сами."""
         try:
             from modules.winws import filters
-            return _ok(filters.set_fake(slot, name))
+            data = filters.set_fake(slot, name)
+            self._apply_and_report(data, self._restart_winws_if_running)
+            return _ok(data)
         except Exception as e:
             return _err(e)
 
@@ -696,9 +774,12 @@ class Api:
 
     def tg_set_advanced(self, options):
         """Продвинутые настройки ядра (CF-proxy/worker домены, Fake TLS, dc-ip, ...).
-        Применятся со следующего запуска прокси — см. TgProxy.set_advanced."""
+        Ядро читает их при старте, поэтому запущенный прокси перезапускается сам."""
         try:
-            return _ok(self.tg.set_advanced(options))
+            data = self.tg.set_advanced(options)
+            if data.pop("restart_required", False):
+                self._apply_and_report(data, self.tg.restart)
+            return _ok(data)
         except Exception as e:
             return _err(e)
 

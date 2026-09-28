@@ -232,23 +232,18 @@
       </div>`;
   }
 
-  async function maybeRestart(label) {
-    const st = Store.get("winws");
-    if (!st?.running) return;
-    if (st.external || !st.current) {
-      toast.info(`Перезапусти стратегию вручную, чтобы применить: ${label} (процесс внешний).`);
-      return;
-    }
-    try {
-      await optimistic("winws", null, () => api("winws_start", st.current), { errorTitle: "Не удалось перезапустить стратегию" });
-      toast.success(`${label} применён — стратегия перезапущена.`);
-    } catch { /* тост уже показан */ }
+  // Перезапуск запущенной стратегии после смены фильтра делает бэкенд (Api), чтобы то же
+  // самое получал CLI и агент; здесь только итог для пользователя.
+  function reportApply(label, res) {
+    if (res?.apply_error) { toast.error(`Не удалось применить: ${label}`, res.apply_error); return; }
+    if (Store.get("winws")?.running) toast.success(`${label} применён — стратегия перезапущена.`);
   }
 
   async function setGameMode(mode) {
-    try { await optimistic("filters", { game: mode }, () => api("game_filter_set", mode), { errorTitle: "Game-фильтр: не удалось изменить" }); }
+    let res;
+    try { res = await optimistic("filters", { game: mode }, () => api("game_filter_set", mode), { errorTitle: "Game-фильтр: не удалось изменить" }); }
     catch { return; }
-    await maybeRestart("Game-фильтр");
+    reportApply("Game-фильтр", res);
   }
 
   // Формат диапазона — зеркало modules/winws/filters.py:validate_game_range.
@@ -278,9 +273,10 @@
     if (value === (f.game_ranges?.[which] || "")) return;  // не менялось
     const localErr = validateGameRangeLocal(value);
     if (localErr) { gameRangeErr[which] = localErr; render(); return; }
+    let res;
     try {
       const args = which === "tcp" ? [f.game, value, undefined] : [f.game, undefined, value];
-      const res = await api("game_filter_set", ...args);
+      res = await api("game_filter_set", ...args);
       gameRangeErr[which] = null;
       Store.patch("filters", res);
       render();
@@ -289,25 +285,26 @@
       render();
       return;
     }
-    await maybeRestart(which === "tcp" ? "TCP-порты игр" : "UDP-порты игр");
+    reportApply(which === "tcp" ? "TCP-порты игр" : "UDP-порты игр", res);
   }
 
   async function resetGameRanges() {
     const f = Store.get("filters");
     if (!f) return;
+    let res;
     try {
-      const res = await api("game_filter_set", f.game, GAME_RANGE_DEFAULT, GAME_RANGE_DEFAULT);
+      res = await api("game_filter_set", f.game, GAME_RANGE_DEFAULT, GAME_RANGE_DEFAULT);
       gameRangeErr.tcp = null; gameRangeErr.udp = null;
       Store.patch("filters", res);
       render();
     } catch (e) { toast.error("Не удалось сбросить диапазоны", e.message); return; }
-    await maybeRestart("Диапазоны портов игр");
+    reportApply("Диапазоны портов игр", res);
   }
 
   async function setIpsetMode(mode) {
     try { await optimistic("filters", { ipset: mode }, () => api("ipset_set", mode), { errorTitle: "IPSet: не удалось изменить" }); }
     catch { return; }
-    await maybeRestart("IPSet");
+    // winws2 сам перечитывает ipset при изменении файла — перезапуск не нужен
   }
 
   async function updateIpset() {
@@ -316,16 +313,16 @@
       try {
         const r = await api("ipset_update");
         toast.success("Список IPSet обновлён", `${fmtNum(r.downloaded)} ${plural(r.downloaded, "подсеть", "подсети", "подсетей")} в запасе`);
-        if (r.state === "loaded") await maybeRestart("IPSet");
       } catch (e) { toast.error("Не удалось обновить список", e.message); }
     });
   }
 
   async function setFake(slot, name) {
     if (!name) { render(); return; }  // выбран псевдо-пункт «свой файл» — менять нечего, вернуть селект к факту
-    try { await optimistic("filters", null, () => api("fake_set", slot, name), { errorTitle: "Фейк: не удалось изменить" }); }
+    let res;
+    try { res = await optimistic("filters", null, () => api("fake_set", slot, name), { errorTitle: "Фейк: не удалось изменить" }); }
     catch { return; }
-    await maybeRestart("Фейк");
+    reportApply("Фейк", res);
   }
 
   // --- монтаж -----------------------------------------------------------------

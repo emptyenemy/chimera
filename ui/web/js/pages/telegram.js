@@ -94,8 +94,8 @@
   }
 
   // --- продвинутые настройки ядра (CF-proxy/worker домены, Fake TLS, dc-ip, ...) ---
-  // Ядро читает их только при старте — restart_required в ответе подсказывает, что
-  // нужен перезапуск; сама настройка запущенный прокси не трогает.
+  // Ядро читает их только при старте, поэтому запущенный прокси перезапускается сам (Api);
+  // сбой перезапуска приезжает в apply_error.
 
   function dcRows(st) {
     return dcDraft || Object.entries(st?.dc_redirects || {});
@@ -123,7 +123,7 @@
       const res = await api("tg_set_advanced", options);
       if (!res || typeof res !== "object") return false;   // бэкенд не подтвердил — черновик не трогаем
       Store.patch("tg", res);
-      if (res.restart_required) toast.info("Настройки сохранены", "Перезапустите прокси, чтобы они вступили в силу.");
+      if (res.apply_error) toast.error("Настройки сохранены, но прокси не перезапустился", res.apply_error);
       return true;
     } catch (e) {
       toast.error("Не удалось сохранить продвинутые настройки", e.message);
@@ -156,7 +156,7 @@
     try {
       await optimistic("tg", { [key]: target }, async () => {
         const res = await api("tg_set_advanced", { [key]: target });
-        if (res?.restart_required) toast.info("Настройки сохранены", "Перезапустите прокси, чтобы они вступили в силу.");
+        if (res?.apply_error) toast.error("Настройки сохранены, но прокси не перезапустился", res.apply_error);
         return res;
       }, { errorTitle: "Не удалось сохранить" });
     } catch { /* тост уже показан */ }
