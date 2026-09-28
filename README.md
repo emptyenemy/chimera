@@ -80,6 +80,12 @@ python main.py
 
 Приложение само запросит права администратора (UAC) — они нужны для записи в hosts, смены DNS, запуска winws2 и режима TUN у прокси. Режим PAC у прокси и Telegram-прокси работают и без админа.
 
+### Командная строка
+
+Собранная программа — заодно команда `chimera`: `chimera --help`, `chimera status`, `chimera winws start`, `chimera docs`. Всё, что есть в интерфейсе, делается командой; `--json` — для скриптов и агентов. Таблица «интерфейс → команда», коды возврата и формат вывода — в [docs/CLI.md](docs/CLI.md), документация именно вашей версии — `chimera docs`. Команды говорят с уже работающей Chimera (`chimera start` запустит её в трее); списки, настройки, проверки доменов и логи работают и без неё. Окно открывают `chimera --window` и `chimera --browser`; двойной клик по `Chimera.exe` открывает окно, как раньше. Чтобы писать `chimera` из любой папки: `Chimera.exe path add`.
+
+Для агентов: [AGENTS.md](AGENTS.md) — указатель, правила поведения — [skills/chimera](skills/chimera/SKILL.md). Оба лежат и в релизе рядом с программой.
+
 ### Бинарные зависимости (не в репозитории)
 
 Оба ставятся одной командой `python tools/fetch_bins.py` (пиннутые версии, sing-box — со сверкой SHA256).
@@ -117,6 +123,8 @@ pip install -r requirements-dev.txt
 python -m pytest -q      # тесты — только чистая логика, без сети и без GUI
 ruff check .              # линт (правила и исключения — в pyproject.toml)
 ```
+
+Изменили команды CLI — справка и документация внутри программы (`chimera docs`, `chimera agent-info`) обновляются сами, перегенерировать нужно только `docs/CLI.md`: `python tools/gen_cli_docs.py` (тест напомнит). Изменили правила поведения агентов — правьте `skills/chimera/SKILL.md`, повышайте его `version` и записывайте изменение в `skills/chimera/CHANGELOG.md`; скилл и версия протокола CLI сверяются тестом.
 
 ## Режимы запуска (`config.json` → `interface`)
 
