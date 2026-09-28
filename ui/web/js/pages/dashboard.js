@@ -10,7 +10,10 @@
   // Списки бывают и из доменов, и из IP/подсетей: для готовности прокси важна сумма.
   const proxyTargets = st => (st?.domains || 0) + (st?.ips || 0);
   function proxyScope(st) {
+    if (st?.mode === "tun") return "весь трафик";
     const parts = [];
+    const apps = st?.mode === "split" ? (st.apps || []).length : 0;
+    if (apps) parts.push(`${fmtNum(apps)} ${plural(apps, "приложение", "приложения", "приложений")}`);
     if (st?.domains) parts.push(`${fmtNum(st.domains)} ${plural(st.domains, "домен", "домена", "доменов")}`);
     if (st?.ips) parts.push(`${fmtNum(st.ips)} IP`);
     return parts.join(" · ") || "списки не выбраны";
@@ -48,12 +51,13 @@
         if (st.running) return "";
         if (!st.core?.present) return "Не скачано ядро sing-box";
         if (!st.parsed) return "Не задана ссылка";
-        if (!proxyTargets(st)) return "Не выбраны списки";
+        if (st.mode === "split" && !proxyTargets(st) && !(st.apps || []).length) return "Не выбраны приложения и списки";
+        if ((st.mode || "pac") === "pac" && !proxyTargets(st)) return "Не выбраны списки";
         return "";
       },
       meta(st) {
         if (!st) return "";
-        const mode = st.mode === "tun" ? "TUN" : "PAC";
+        const mode = { tun: "TUN", split: "TUN выборочно" }[st.mode] || "PAC";
         if (st.running) return `${esc(st.parsed?.server || "")} · ${mode}`;
         return st.parsed ? `${esc(st.parsed.server || "")} · режим ${mode}` : "sing-box · VLESS / Trojan / SS";
       },
