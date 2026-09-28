@@ -16,7 +16,7 @@ import threading
 import time
 from pathlib import Path
 
-from .. import paths
+from .. import paths, winproc
 
 ROOT = Path(__file__).parent.parent.parent
 STRATEGIES_DIR = ROOT / "strategies"
@@ -61,30 +61,45 @@ def _placeholders() -> dict[str, str]:
     }
 
 
+ZAPRET2_DIR = ROOT / "upstream" / "zapret2"
+
+
+def _git_head_stamp(worktree: Path) -> int | None:
+    """mtime_ns файла HEAD реального gitdir рабочей копии — меняется при любом
+    checkout/commit. Сабмодуль хранит в себе не .git-папку, а файл-указатель
+    ("gitdir: ../../.git/modules/..."), поэтому сначала разворачиваем его.
+    None — не удалось определить (нет git вовсе, битый сабмодуль): тогда
+    вызывающий код не кэширует по штампу, а держит значение до перезапуска.
+    """
+    git_file = worktree / ".git"
+    try:
+        if git_file.is_dir():
+            git_dir = git_file
+        elif git_file.is_file():
+            text = git_file.read_text(encoding="utf-8").strip()
+            if not text.startswith("gitdir:"):
+                return None
+            git_dir = (worktree / text.split(":", 1)[1].strip()).resolve()
+        else:
+            return None
+        return (git_dir / "HEAD").stat().st_mtime_ns
+    except OSError:
+        return None
+
+
 def _system_pids() -> list[int]:
     """PID всех живых winws2.exe в системе — включая запущенные ПРОШЛОЙ сессией.
 
     Менеджер держит только свой Popen, а winws2 от прошлого запуска приложения
     висит дальше и держит WinDivert. Чтобы честно показать состояние и уметь его
-    погасить, спрашиваем систему напрямую (tasklist прав админа не требует).
+    погасить, спрашиваем систему напрямую — ToolHelp32Snapshot (ctypes, не
+    требует прав админа), а не tasklist: тот же охват процессов, но без
+    подпроцесса cmd.exe на каждый опрос (хаб дёргает это каждые 2-3 c).
     """
-    name = WINWS_EXE.name
     try:
-        out = subprocess.run(
-            ["tasklist", "/FI", f"IMAGENAME eq {name}", "/FO", "CSV", "/NH"],
-            capture_output=True, text=True, creationflags=subprocess.CREATE_NO_WINDOW,
-        ).stdout
+        return winproc.pids_by_name(WINWS_EXE.name)
     except OSError:
         return []
-    pids = []
-    for line in out.splitlines():
-        cols = [c.strip('"') for c in line.split('","')]
-        if len(cols) >= 2 and cols[0].lower() == name.lower():
-            try:
-                pids.append(int(cols[1]))
-            except ValueError:
-                pass
-    return pids
 
 
 # WinDivert ставит драйвер ОТДЕЛЬНОЙ службой ядра в SCM. Убить winws2 мало —
@@ -95,9 +110,23 @@ _DIVERT_SERVICES = ("windivert", "windivert14")
 def _divert_status() -> str | None:
     """Статус службы WinDivert: 'RUNNING' / 'STOPPED' / None (не установлена).
 
-    Через Get-Service, а не `sc query`: на локализованной Windows sc печатает
-    «РАБОТАЕТ», а .Status у Get-Service — enum ('Running'/'Stopped'), без локали.
+    Прямой запрос в SCM (winproc.service_status, ctypes) вместо Get-Service —
+    хаб дёргает это на каждый опрос winws_state (раз в 2-3 c), а поднимать
+    powershell.exe ради одного поля того не стоит (~150-200 мс впустую).
+    Если хотя бы одна из служб (имя менялось по версиям WinDivert) жива и
+    RUNNING — статус RUNNING; если ни одна не установлена — None.
     """
+    try:
+        statuses = [winproc.service_status(n) for n in _DIVERT_SERVICES]
+    except OSError:
+        return _divert_status_ps()  # неожиданный сбой ctypes — не роняем опрос статуса
+    if all(s is None for s in statuses):
+        return None
+    return "RUNNING" if "RUNNING" in statuses else "STOPPED"
+
+
+def _divert_status_ps() -> str | None:
+    """Резервный путь через Get-Service — на случай, если WinAPI-запрос откажет."""
     names = ",".join(f"'{n}'" for n in _DIVERT_SERVICES)
     ps = (
         f"$s=Get-Service -Name {names} -ErrorAction SilentlyContinue;"
@@ -125,8 +154,9 @@ class WinwsManager:
         # авто-применение фильтров) наслаивают несколько winws2 и они бьются по wf-dup-check.
         self._lock = threading.RLock()
         self.config = self._load()
-        self._version_cache: str | None = None  # git-тег zapret2 в рантайме не меняется — кэшируем
+        self._version_cache: str | None = None
         self._version_cached = False
+        self._version_stamp: int | None = None  # mtime HEAD сабмодуля на момент кэширования
         # рантайм-файлы, не в git — досоздать на свежем клоне
         if not USER_HOSTLIST_PATH.exists() or not USER_IPSET_PATH.exists():
             self._regenerate_user_hostlist()
@@ -247,8 +277,9 @@ class WinwsManager:
 
         Сами игровые профили теперь в .txt каждой стратегии (per-strategy десинк,
         1:1 с Flowseal) — здесь только их включение/выключение и порты захвата.
-        {GAME_*_WF} -> ',1024-65535' в --wf-*-out (или пусто), блок с {GAME_*} в
-        --filter-* выкидывается целиком, если соответствующий режим выключен."""
+        {GAME_*_WF} -> ',<диапазон>' в --wf-*-out (или пусто), блок с {GAME_*} в
+        --filter-* выкидывается целиком, если соответствующий режим выключен.
+        Диапазоны настраиваются (filters.set_game_ranges), дефолт — 1024-65535."""
         from modules.winws import filters
         gp = filters.game_ports()  # {'tcp':ports|None,'udp':ports|None} или None
         tcp = gp["tcp"] if gp else None
@@ -435,19 +466,24 @@ class WinwsManager:
     def version(self) -> str | None:
         """Версия zapret2 из сабмодуля (git-тег). Для отображения в UI.
 
-        Кэшируем: тег в рантайме не меняется, а `git describe` на каждый опрос
-        дашборда (раз в 3 c) — лишний процесс и заметный вклад в лаги.
+        Кэшируем: `git describe` на каждый опрос дашборда (раз в 2-3 c) — лишний
+        процесс и заметный вклад в лаги, а тег меняется только через «Обновить»
+        в разделе версий (upstream.update_one -> git checkout нового тега).
+        Инвалидация — по mtime HEAD сабмодуля: checkout его трогает, обычный
+        опрос статуса — нет, так что кэш не протухает попусту.
         """
-        if self._version_cached:
+        stamp = _git_head_stamp(ZAPRET2_DIR)
+        if self._version_cached and (stamp is None or stamp == self._version_stamp):
             return self._version_cache
         try:
             out = subprocess.run(
-                ["git", "-C", str(ROOT / "upstream" / "zapret2"), "describe", "--tags"],
+                ["git", "-C", str(ZAPRET2_DIR), "describe", "--tags"],
                 capture_output=True, text=True, creationflags=subprocess.CREATE_NO_WINDOW,
             )
             self._version_cache = out.stdout.strip() or None
         except Exception:
             self._version_cache = None
+        self._version_stamp = stamp
         self._version_cached = True
         return self._version_cache
 

@@ -12,6 +12,11 @@ from pathlib import Path
 # рисует лог в обычный <pre>, который их не понимает: вместо цвета лезет "[36m" текстом.
 _ANSI_RE = re.compile(rb"\x1b\[[0-?]*[ -/]*[@-~]")
 
+# При reset читаем не файл целиком (winws2/sing-box за долгую сессию нагенерят
+# мегабайты), а хвост: пользователю всё равно интересны последние строки, а не
+# история с самого запуска.
+_TAIL_BYTES = 256 * 1024
+
 
 def read_from(path: Path, offset: int = 0) -> dict:
     offset = max(0, int(offset))
@@ -20,10 +25,17 @@ def read_from(path: Path, offset: int = 0) -> dict:
     try:
         size = path.stat().st_size
         reset = offset == 0 or offset > size  # первый запрос или файл усох → с начала
-        start = 0 if reset else offset
+        start = max(0, size - _TAIL_BYTES) if reset else offset
         with open(path, "rb") as f:
             f.seek(start)
             chunk = f.read()
+        if reset and start > 0:
+            # начали не с нуля файла — прыжок мог попасть в середину строки,
+            # обрывок отдавать не надо: докручиваем до ближайшего перевода строки
+            nl = chunk.find(b"\n")
+            if nl != -1:
+                start += nl + 1
+                chunk = chunk[nl + 1:]
     except OSError:
         return {"offset": offset, "data": "", "reset": False}
     return {"offset": start + len(chunk),

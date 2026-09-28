@@ -21,7 +21,7 @@ import winreg
 import zipfile
 from pathlib import Path
 
-from modules import domains, paths
+from modules import domains, paths, winproc
 from . import parser
 
 ROOT = Path(__file__).parent.parent.parent
@@ -397,22 +397,13 @@ class ProxyManager:
 
     @staticmethod
     def _system_pids() -> list[int]:
+        """PID всех живых sing-box.exe — ToolHelp32Snapshot вместо tasklist
+        (см. modules/winproc.py): тот же охват чужих/прошлосессионных процессов,
+        но без подпроцесса на каждый опрос хаба (раз в 2-3 c)."""
         try:
-            out = subprocess.run(
-                ["tasklist", "/FI", "IMAGENAME eq sing-box.exe", "/FO", "CSV", "/NH"],
-                capture_output=True, text=True, creationflags=_CREATE_NO_WINDOW,
-            ).stdout
+            return winproc.pids_by_name(SINGBOX_EXE.name)
         except OSError:
             return []
-        pids = []
-        for line in out.splitlines():
-            cols = [c.strip('"') for c in line.split('","')]
-            if len(cols) >= 2 and cols[0].lower() == "sing-box.exe":
-                try:
-                    pids.append(int(cols[1]))
-                except ValueError:
-                    pass
-        return pids
 
     def start(self) -> dict:
         with self._lock:

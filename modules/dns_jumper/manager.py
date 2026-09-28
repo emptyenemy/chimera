@@ -12,7 +12,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 from .. import appconfig, dns_providers
 from ..hosts.resolver import ping_dns
-from . import probe
+from . import netinfo, probe
 
 # тест-домены пробы возможностей (config.json -> ключ dns_probe), с дефолтами
 PROBE_DEFAULTS = {"bypass": ["chatgpt.com"], "ad": "doubleclick.net"}
@@ -61,7 +61,20 @@ class DnsJumper:
 
         Сортировка по полезности: физические подключённые -> виртуальные
         подключённые -> отключённые.
+
+        Раньше это было Get-NetAdapter + Get-DnsClientServerAddress +
+        Get-NetIPAddress — секунды на поднятие powershell.exe при каждом опросе
+        вкладки DNS. netinfo.adapters() даёт тот же формат через WinAPI
+        (GetAdaptersAddresses) без подпроцесса; известные мелкие расхождения
+        с Get-NetAdapter описаны в модуле modules/dns_jumper/netinfo.py.
+        Резерв на PowerShell — если WinAPI-путь неожиданно упал.
         """
+        try:
+            return netinfo.adapters()
+        except OSError:
+            return self._adapters_ps()
+
+    def _adapters_ps(self) -> list[dict]:
         adapters = _ps_json(
             "Get-NetAdapter | ForEach-Object { "
             "$d = Get-DnsClientServerAddress -InterfaceIndex $_.ifIndex -AddressFamily IPv4 "
