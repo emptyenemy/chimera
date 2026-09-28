@@ -10,7 +10,7 @@ import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
-from modules import appconfig, autostart, blockcheck, cheburcheck, domains, service, upstream, winproc
+from modules import appconfig, autostart, blockcheck, cheburcheck, domains, paths, service, upstream, winproc
 from modules import discord as discord_cache
 from modules.dns_jumper import DnsJumper
 from modules.hosts import HostsManager
@@ -114,7 +114,9 @@ class Api:
             pass
 
     def app_info(self):
-        return _ok({"admin": is_admin(), "version": VERSION, "service_running": service.is_running()})
+        # frozen — собранная программа: в ней нет pywebview и git, фронт прячет то, что там не работает
+        return _ok({"admin": is_admin(), "version": VERSION, "service_running": service.is_running(),
+                    "frozen": paths.IS_FROZEN})
 
     # --- обновление программы (ui/updater.py, modules/selfupdate.py) ----------
 

@@ -16,7 +16,8 @@
 
   const ENGINES = [
     { id: "pyside6", title: "Приложение" },
-    { id: "pywebview", title: "Лёгкое окно (WebView2)" },
+    // dev: в собранную программу pywebview не входит (build.bat) — там варианта нет
+    { id: "pywebview", title: "Лёгкое окно (WebView2)", dev: true },
     { id: "browser", title: "Вкладка браузера" },
   ];
 
@@ -204,7 +205,8 @@
           <div class="switch-row">
             <div class="set-row-label"><b>Окно программы</b><span>Применится после перезапуска.</span></div>
             <select class="select-native set-select" data-cfg="ui_backend"${cfgPending.ui_backend ? " disabled" : ""}>
-              ${ENGINES.map(en => `<option value="${en.id}"${opt(config.ui_backend, en.id)}>${esc(en.title)}</option>`).join("")}
+              ${ENGINES.filter(en => !(en.dev && Store.get("app")?.frozen))
+                .map(en => `<option value="${en.id}"${opt(config.ui_backend, en.id)}>${esc(en.title)}</option>`).join("")}
             </select>
           </div>
         </div>
