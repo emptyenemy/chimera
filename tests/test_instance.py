@@ -17,6 +17,19 @@ def name():
     return rf"Local\Chimera_Test_{uuid.uuid4().hex}"
 
 
+def test_event_name_can_be_overridden_by_env(monkeypatch):
+    # дымовой тест сборки (tools/smoke_build.py) запускает exe со своим именем, чтобы
+    # не упереться в открытую у пользователя программу
+    import importlib
+    monkeypatch.setenv("CHIMERA_INSTANCE_EVENT", r"Local\Chimera_Smoke")
+    mod = importlib.reload(instance)
+    try:
+        assert mod.EVENT_NAME == r"Local\Chimera_Smoke"
+    finally:
+        monkeypatch.delenv("CHIMERA_INSTANCE_EVENT")
+        importlib.reload(instance)
+
+
 def test_nothing_running_by_default(name):
     assert instance.is_running(name) is False
     assert instance.signal_existing(name) is False

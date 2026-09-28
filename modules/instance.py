@@ -14,11 +14,14 @@
 """
 
 import ctypes
+import os
 import sys
 import threading
 from ctypes import wintypes
 
-EVENT_NAME = r"Local\Chimera_UI_Show"
+# Переопределяется только для дымового теста сборки (tools/smoke_build.py): у него
+# своя копия программы, и открытая у пользователя Chimera не должна её «поймать».
+EVENT_NAME = os.environ.get("CHIMERA_INSTANCE_EVENT") or r"Local\Chimera_UI_Show"
 
 # Всем — полный доступ к событию; SACL: метка Low без записи снизу — чтобы
 # процесс любого уровня целостности мог взвести событие повышенной копии.
