@@ -253,6 +253,28 @@ def test_apply_script_updates_and_keeps_user_files(layout):
 
 
 @windows_only
+def test_apply_script_keeps_chosen_fake_in_slots(layout):
+    # слоты ACTIVE_*.bin приходят с релизом (значение по умолчанию), а какой фейк в них
+    # лежит — выбор пользователя под его провайдера: обновление его сбрасывать не должно
+    app, staged, upd = layout
+    slots = ("strategies/assets/ACTIVE_DISCORD_UDP.bin", "strategies/assets/ACTIVE_GAME_UDP.bin")
+    for rel in slots:
+        _write(app / rel, "слот по умолчанию")
+        _write(staged / rel, "слот по умолчанию из нового релиза")
+    selfupdate.write_manifest(app)
+    selfupdate.write_manifest(staged)
+    for rel in slots:
+        _write(app / rel, "фейк, выбранный пользователем")
+
+    r, log = _run_script(app, staged, upd)
+
+    assert r.returncode == 0, log
+    for rel in slots:
+        assert (app / rel).read_text(encoding="utf-8") == "фейк, выбранный пользователем"
+    assert (app / "Chimera.exe").read_text(encoding="utf-8") == "new exe"
+
+
+@windows_only
 def test_apply_script_keeps_unrelated_files_next_to_program(layout):
     # программу распаковали не в свою папку, а, скажем, на рабочий стол — чужие файлы
     # рядом не принадлежат Chimera и обновление не должно их трогать

@@ -59,6 +59,10 @@ KEEP_FILES = (
     "strategies/hostlists/ipset-user.txt",
     "strategies/hostlists/ipset-all.txt",
     "strategies/hostlists/ipset-all.txt.backup",
+    # слоты фейков: релиз приносит значение по умолчанию, а выбранный под провайдера
+    # блоб копируется прямо в файл слота (modules/winws/filters.py, set_fake)
+    "strategies/assets/ACTIVE_DISCORD_UDP.bin",
+    "strategies/assets/ACTIVE_GAME_UDP.bin",
 )
 # Папки, которые пользователь правит прямо в программе (списки сайтов). Из релиза
 # в них докладываются только новые файлы; уже лежащие не перезаписываются и не
