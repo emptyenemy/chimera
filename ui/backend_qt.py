@@ -1,15 +1,23 @@
-"""Бэкенд окна на PySide6/QWebEngineView (свой бандленный Chromium), мост — QWebChannel."""
+"""Бэкенд окна на PySide6/QWebEngineView (свой бандленный Chromium), мост — QWebChannel.
+
+Плюс значок в трее: закрытие окна прячет его туда, а модули продолжают работать;
+совсем программа закрывается через «Выход» в меню значка. С Windows (--tray)
+стартует сразу в трей, без окна. Что показывает и умеет меню — ui/tray_model.py.
+"""
 
 import json
 import sys
 from concurrent.futures import ThreadPoolExecutor
 
-from PySide6.QtCore import QObject, QUrl, Signal, Slot
+from PySide6.QtCore import QObject, Qt, QTimer, QUrl, Signal, Slot
 from PySide6.QtGui import QIcon
 from PySide6.QtWebChannel import QWebChannel
 from PySide6.QtWebEngineWidgets import QWebEngineView
-from PySide6.QtWidgets import QApplication, QMainWindow
+from PySide6.QtWidgets import QApplication, QMainWindow, QMenu, QSystemTrayIcon
 
+from modules import appconfig, instance
+
+from . import tray_model
 from .api import WEB_DIR, Api
 
 # Иконка окна и панели задач. У собранного exe она и так зашита в ресурсы
@@ -47,9 +55,134 @@ class Bridge(QObject):
         self.resolved.emit(call_id, self.api.dispatch(method, args_json))
 
 
+class MainWindow(QMainWindow):
+    """Окно, которое по крестику прячется в трей, если трей есть и так настроено."""
+
+    # показать окно — из любого потока (повторный запуск ловит поток modules/instance,
+    # а трогать виджеты можно только из потока UI: сигнал доставит туда сам)
+    show_requested = Signal()
+
+    def __init__(self):
+        super().__init__()
+        self.tray = None  # Tray, если значок в трее поднялся
+        self.show_requested.connect(self.bring_to_front)
+
+    def bring_to_front(self):
+        self.setWindowState((self.windowState() & ~Qt.WindowState.WindowMinimized) | Qt.WindowState.WindowActive)
+        self.show()
+        self.raise_()
+        self.activateWindow()
+
+    def closeEvent(self, event):
+        if self.tray and self.tray.hide_on_close():
+            event.ignore()
+            self.hide()
+            self.tray.hint_once()
+            return
+        super().closeEvent(event)
+        QApplication.quit()  # без трея (или по настройке) крестик — полный выход
+
+
+class Tray(QObject):
+    """Значок в трее: состояние защиты, переключатели модулей, «Открыть» и «Выход»."""
+
+    notified = Signal(str, str)    # (заголовок, текст) — из потоков пула команд
+    REFRESH_MS = 1500
+
+    def __init__(self, app, window, api, bridge):
+        super().__init__()
+        self.app, self.window, self.api, self.bridge = app, window, api, bridge
+        self.busy = set()  # модули, по которым команда ещё выполняется
+
+        self.icon = QSystemTrayIcon(QIcon(str(APP_ICON)), app)
+        menu = QMenu()
+        menu.addAction("Открыть Chimera").triggered.connect(window.bring_to_front)
+        menu.addSeparator()
+        self.status = menu.addAction("")
+        self.status.setEnabled(False)
+        menu.addSeparator()
+        self.toggles = {}
+        for key, label in tray_model.MODULES:
+            action = menu.addAction(label)
+            action.setCheckable(True)
+            # triggered (а не toggled) — только клик пользователя, не setChecked из refresh
+            action.triggered.connect(lambda checked, k=key: self.toggle(k, checked))
+            self.toggles[key] = action
+        menu.addSeparator()
+        menu.addAction("Выход").triggered.connect(self.quit)
+        menu.aboutToShow.connect(self.refresh)
+        self.menu = menu  # иначе меню соберёт сборщик мусора
+        self.icon.setContextMenu(menu)
+        self.icon.activated.connect(self._on_activated)
+
+        self.notified.connect(lambda title, text: self.icon.showMessage(
+            title, text, QSystemTrayIcon.MessageIcon.Warning, 6000))
+
+        self.timer = QTimer(self)
+        self.timer.timeout.connect(self.refresh)
+        self.timer.start(self.REFRESH_MS)
+        self.refresh()
+        self.icon.show()
+
+    # --- состояние ---------------------------------------------------------------
+
+    def refresh(self):
+        states = self.api.hub.snapshot()
+        self.icon.setToolTip(tray_model.tooltip(states))
+        self.status.setText(tray_model.summary(states)[2])
+        for key, action in self.toggles.items():
+            action.setChecked(tray_model.is_on(key, states.get(key)))
+            action.setEnabled(key not in self.busy)
+
+    def toggle(self, key, on):
+        try:
+            method, args = tray_model.toggle_command(key, self.api.hub.snapshot().get(key), on)
+        except ValueError as e:
+            self.notified.emit("Chimera", str(e))
+            self.refresh()
+            return
+        self.busy.add(key)
+        self.refresh()
+        self.bridge.pool.submit(self._run, key, method, args)
+
+    def _run(self, key, method, args):
+        # поток пула: старт winws/прокси — это секунды subprocess, UI не ждёт
+        try:
+            res = json.loads(self.api.dispatch(method, json.dumps(args)))
+            if not res.get("ok"):
+                label = dict(tray_model.MODULES)[key]
+                self.notified.emit(f"{label}: не получилось", res.get("error") or "неизвестная ошибка")
+        finally:
+            self.busy.discard(key)
+
+    # --- окно ----------------------------------------------------------------------
+
+    def _on_activated(self, reason):
+        if reason in (QSystemTrayIcon.ActivationReason.Trigger, QSystemTrayIcon.ActivationReason.DoubleClick):
+            self.window.bring_to_front()
+
+    def hide_on_close(self) -> bool:
+        return bool(appconfig.load().get("close_to_tray", True))
+
+    def hint_once(self):
+        # первое сворачивание — объяснить, куда делось окно; дальше не надоедаем
+        cfg = appconfig.load()
+        if cfg.get("tray_hint_shown"):
+            return
+        appconfig.set_value("tray_hint_shown", True)
+        self.icon.showMessage("Chimera работает в трее",
+                              "Модули продолжают работать. Закрыть программу — «Выход» в меню значка.",
+                              QSystemTrayIcon.MessageIcon.Information, 6000)
+
+    def quit(self):
+        self.icon.hide()
+        self.app.quit()
+
+
 def run():
     app = QApplication(sys.argv)
-    app.setApplicationName("CHIMERA")
+    app.setApplicationName("Chimera")
+    app.setQuitOnLastWindowClosed(False)  # закрытое окно ≠ выход: программа живёт в трее
     if APP_ICON.exists():
         app.setWindowIcon(QIcon(str(APP_ICON)))
 
@@ -63,18 +196,28 @@ def run():
     view.page().setBackgroundColor("#16161e")
     view.load(QUrl.fromLocalFile(str(WEB_DIR / "index.html")))
 
-    window = QMainWindow()
+    window = MainWindow()
     window.setWindowTitle("Chimera")
     window.setCentralWidget(view)
     window.resize(1080, 720)
     window.setMinimumSize(860, 560)
 
+    tray = Tray(app, window, api, bridge) if QSystemTrayIcon.isSystemTrayAvailable() else None
+    window.tray = tray
+    # повторный запуск exe показывает это окно (см. modules/instance.py и main.py)
+    listener = instance.listen(window.show_requested.emit)
+
     def _on_closing():
+        if listener:
+            listener.close()
         # невзятые вызовы отменяем и не ждём взятые: иначе висящий на выходе
         # запрос (проверка обновлений, скачивание ядра) держал бы процесс
         bridge.pool.shutdown(wait=False, cancel_futures=True)
         api.shutdown()
 
     app.aboutToQuit.connect(_on_closing)
-    window.show()
+    # с Windows (--tray) — только значок; без трея окно показываем всегда, иначе
+    # программу было бы не достать
+    if not (tray and "--tray" in sys.argv):
+        window.show()
     sys.exit(app.exec())

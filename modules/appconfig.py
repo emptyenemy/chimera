@@ -4,7 +4,8 @@ import json
 from pathlib import Path
 
 CONFIG_PATH = Path(__file__).parent.parent / "config.json"
-DEFAULTS = {"interface": "ui", "auto_elevate": True, "ui_backend": "pyside6"}
+# close_to_tray — крестик окна прячет его в трей (движок pyside6), а не закрывает программу
+DEFAULTS = {"interface": "ui", "auto_elevate": True, "ui_backend": "pyside6", "close_to_tray": True}
 
 
 def load() -> dict:
