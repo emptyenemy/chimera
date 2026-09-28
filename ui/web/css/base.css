@@ -128,7 +128,8 @@ input, textarea, .selectable, .log, code, .mono { user-select: text; }
 .sb-item[aria-current="page"] .icon { color: var(--sidebar-foreground); }
 .sb-item .sb-dot { margin-left: auto; }
 .sb-footer { padding: 8px; border-top: 1px solid var(--sidebar-border); }
-.sb-status { display: flex; align-items: center; gap: 8px; padding: 8px; font-size: 12px; line-height: 16px; color: var(--muted-foreground); }
+.sb-status { display: flex; flex-direction: column; gap: 2px; }
+.sb-status-row { display: flex; align-items: center; gap: 8px; padding: 6px 8px; font-size: 12px; line-height: 16px; color: var(--muted-foreground); }
 
 /* ── Страница ─────────────────────────────────────────────────────────────── */
 .page { max-width: 1080px; margin: 0 auto; padding: 28px 32px 48px; }
