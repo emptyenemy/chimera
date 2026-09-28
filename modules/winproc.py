@@ -66,6 +66,48 @@ def pids_by_name(image_name: str) -> list[int]:
     return pids
 
 
+_kernel32.ProcessIdToSessionId.argtypes = (wintypes.DWORD, ctypes.POINTER(wintypes.DWORD))
+_kernel32.ProcessIdToSessionId.restype = wintypes.BOOL
+_kernel32.GetCurrentProcessId.restype = wintypes.DWORD
+
+
+def user_apps() -> list[dict]:
+    """Запущенные программы текущей сессии пользователя: [{name, count}] по имени
+    образа, без учёта регистра, отсортировано по имени.
+
+    Службы и системные процессы живут в сессии 0 — их отсекаем: для выбора
+    «какие приложения гнать через прокси» нужен только то, что запустил человек.
+    Если сессию своего процесса узнать нельзя, фильтра по сессии нет.
+    """
+    own = wintypes.DWORD(0)
+    my_session = own.value if _kernel32.ProcessIdToSessionId(
+        _kernel32.GetCurrentProcessId(), ctypes.byref(own)) else None
+    if my_session == 0:
+        my_session = None  # запущены службой (SYSTEM) — сравнивать не с чем
+
+    snap = _kernel32.CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0)
+    if snap in (0, _INVALID_HANDLE_VALUE):
+        return []
+    found_by_key: dict[str, dict] = {}
+    try:
+        entry = _PROCESSENTRY32W()
+        entry.dwSize = ctypes.sizeof(_PROCESSENTRY32W)
+        found = _kernel32.Process32FirstW(snap, ctypes.byref(entry))
+        while found:
+            name = entry.szExeFile
+            sid = wintypes.DWORD(0)
+            ok = _kernel32.ProcessIdToSessionId(entry.th32ProcessID, ctypes.byref(sid))
+            in_session = (my_session is None and (not ok or sid.value != 0)) or \
+                         (my_session is not None and ok and sid.value == my_session)
+            if in_session and name.lower().endswith(".exe"):
+                item = found_by_key.setdefault(name.lower(), {"name": name, "count": 0})
+                item["count"] += 1
+            found = _kernel32.Process32NextW(snap, ctypes.byref(entry))
+    finally:
+        _kernel32.CloseHandle(snap)
+    return sorted(found_by_key.values(), key=lambda i: i["name"].lower())
+
+
 # --- статус службы SCM (Get-Service без PowerShell) --------------------------
 
 _advapi32 = ctypes.windll.advapi32

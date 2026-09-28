@@ -9,7 +9,7 @@ import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
-from modules import appconfig, autostart, blockcheck, cheburcheck, domains, service, upstream
+from modules import appconfig, autostart, blockcheck, cheburcheck, domains, service, upstream, winproc
 from modules import discord as discord_cache
 from modules.dns_jumper import DnsJumper
 from modules.hosts import HostsManager
@@ -705,6 +705,19 @@ class Api:
     def proxy_set_lists(self, names):
         try:
             return _ok(self.proxy.set_lists(names))
+        except Exception as e:
+            return _err(e)
+
+    def proxy_set_apps(self, names):
+        try:
+            return _ok(self.proxy.set_apps(names))
+        except Exception as e:
+            return _err(e)
+
+    def proxy_apps_snapshot(self):
+        """Запущенные программы сессии пользователя — для выбора в выборочный TUN."""
+        try:
+            return _ok(winproc.user_apps())
         except Exception as e:
             return _err(e)
 
