@@ -408,6 +408,164 @@
   }
 
 
+  // Обмен конфигом: поделиться частью настроек и применить чужой конфиг с предпросмотром.
+  // Разделы независимы; настройки обхода DPI по умолчанию выключены — у других провайдер другой.
+  const SHARE_SECTIONS = [
+    { id: "lists", title: "Списки доменов", desc: "Только те, на которые ссылаются выбранные разделы", on: true },
+    { id: "proxy", title: "Прокси", desc: "Режим, списки, приложения. Ссылка на сервер не входит", on: true },
+    { id: "hosts", title: "Hosts", desc: "Привязки списков и свои провайдеры", on: true },
+    { id: "dns", title: "DNS-провайдеры", desc: "Свои провайдеры", on: true },
+    { id: "telegram", title: "Telegram-прокси", desc: "Порт и продвинутые опции. Секрет не входит", on: true },
+    { id: "winws", title: "Обход DPI", desc: "Зависит от провайдера: у тех, у кого другая сеть, может навредить", on: false, warn: true },
+  ];
+
+  function shareCardHtml() {
+    return `
+      <div class="card compact">
+        <div class="card-header"><div class="card-title">${ic("send")}Обмен конфигом</div></div>
+        <div class="card-content stack">
+          <div class="switch-row">
+            <div class="set-row-label"><b>Поделиться настройками</b><span>Выберите разделы и скопируйте конфиг. Ссылка на ваш прокси-сервер и секреты в него не попадают.</span></div>
+            <button class="btn outline sm" data-act="share-export">${ic("upload")}Поделиться</button>
+          </div>
+          <div class="switch-row">
+            <div class="set-row-label"><b>Применить чужой конфиг</b><span>Перед применением покажем, что изменится. Перед изменением файлы копируются в data/backups.</span></div>
+            <button class="btn outline sm" data-act="share-import">${ic("download")}Применить…</button>
+          </div>
+        </div>
+      </div>`;
+  }
+
+  function openShareExport() {
+    const rows = SHARE_SECTIONS.map(s => `
+      <label class="check-row share-row">
+        <input type="checkbox" class="checkbox" value="${s.id}" ${s.on ? "checked" : ""}>
+        <span><b>${esc(s.title)}</b>${s.warn ? ` ${badgeHtml("зависит от провайдера", "outline")}` : ""}<br><span class="muted">${esc(s.desc)}</span></span>
+      </label>`).join("");
+    openDialog({
+      title: "Поделиться настройками",
+      description: "Какие разделы включить в конфиг.",
+      body: `<div class="stack-sm" data-share-body>${rows}</div>`,
+      footer: `<button class="btn outline" data-close>Закрыть</button><button class="btn" data-share-build>Собрать конфиг</button>`,
+      onMount: h => {
+        const body = h.el.querySelector("[data-share-body]");
+        const build = h.el.querySelector("[data-share-build]");
+        build.addEventListener("click", () => withBusy(build, async () => {
+          const chosen = [...body.querySelectorAll("input:checked")].map(i => i.value);
+          if (!chosen.length) return toast.warning("Выберите хотя бы один раздел");
+          try {
+            const text = await api("config_export", chosen);
+            body.innerHTML = `
+              <p class="muted">Скопируйте текст и отправьте его. Получатель вставит его в «Применить чужой конфиг».</p>
+              <textarea class="textarea mono share-text" readonly spellcheck="false">${esc(text)}</textarea>`;
+            build.textContent = "Скопировать";
+            build.onclick = () => copyText(text);
+            const ta = body.querySelector("textarea");
+            ta.focus(); ta.select();
+          } catch (e) {
+            toast.error("Не удалось собрать конфиг", e.message);
+          }
+        }));
+      },
+    });
+  }
+
+  function sharePreviewHtml(pv) {
+    if (!pv.ok) {
+      return `<div class="alert destructive">${ic("circle-alert")}<div class="alert-desc">${esc(pv.error || "Конфиг не подходит.")}</div></div>`;
+    }
+    const sections = pv.sections.map(s => `
+      <div class="share-sec" data-sec="${esc(s.id)}">
+        <label class="check-row">
+          <input type="checkbox" class="checkbox" value="${esc(s.id)}" ${s.provider_dependent ? "" : "checked"}>
+          <b>${esc(s.title)}</b>${s.provider_dependent ? ` ${badgeHtml("зависит от провайдера", "outline")}` : ""}
+        </label>
+        <ul class="share-list">
+          ${s.changes.map(c => `<li>${esc(c)}</li>`).join("")}
+          ${s.confirm.map(c => `<li class="share-warn">${ic("triangle-alert")}${esc(c)}</li>`).join("")}
+          ${s.skipped.map(c => `<li class="muted">Пропущено: ${esc(c)}</li>`).join("")}
+          ${!s.changes.length && !s.confirm.length && !s.skipped.length ? `<li class="muted">Без изменений</li>` : ""}
+        </ul>
+      </div>`).join("");
+    const notes = [];
+    if (pv.unknown_sections.length) notes.push(`Не поддерживается вашей версией: ${pv.unknown_sections.join(", ")}`);
+    const uf = Object.entries(pv.unknown_fields || {}).map(([k, v]) => `${k}: ${v.join(", ")}`);
+    if (uf.length) notes.push(`Неизвестные поля не применятся: ${uf.join("; ")}`);
+    if (pv.invalid.length) notes.push(`Отброшено как некорректное: ${pv.invalid.length}`);
+    return `
+      ${sections}
+      ${notes.map(n => `<p class="muted">${esc(n)}</p>`).join("")}
+      ${pv.needs_confirm ? `<label class="check-row share-confirm"><input type="checkbox" class="checkbox" data-share-confirm>
+        <span>Я доверяю автору конфига: разрешить чужие серверы DNS и hosts и домены-ретрансляторы Telegram (они подменяют ответы DNS и пропускают через себя трафик)</span></label>` : ""}`;
+  }
+
+  function openShareImport() {
+    openDialog({
+      title: "Применить чужой конфиг",
+      description: "Вставьте текст конфига или откройте файл. Сначала покажем, что изменится.",
+      wide: true,
+      body: `
+        <div class="stack-sm">
+          <textarea class="textarea mono share-text" data-share-text placeholder="Вставьте конфиг сюда" spellcheck="false"></textarea>
+          <div class="share-actions">
+            <button class="btn outline sm" data-share-open>${ic("folder-open")}Открыть файл…</button>
+            <input type="file" accept=".chimera,.json,application/json,text/plain" hidden data-share-file>
+            <button class="btn outline sm" data-share-check>${ic("scan-search")}Проверить</button>
+          </div>
+          <div class="stack-sm" data-share-preview></div>
+        </div>`,
+      footer: `<button class="btn outline" data-close>Закрыть</button><button class="btn" data-share-apply disabled>Применить</button>`,
+      onMount: h => {
+        const el = h.el;
+        const text = el.querySelector("[data-share-text]");
+        const box = el.querySelector("[data-share-preview]");
+        const apply = el.querySelector("[data-share-apply]");
+        const check = el.querySelector("[data-share-check]");
+        const refreshApply = () => {
+          const any = [...box.querySelectorAll(".share-sec input:checked")].length > 0;
+          const needConfirm = box.querySelector("[data-share-confirm]");
+          apply.disabled = !any;
+          apply.dataset.needConfirm = needConfirm ? "1" : "";
+        };
+        const runCheck = () => withBusy(check, async () => {
+          apply.disabled = true;
+          try {
+            const pv = await api("config_import_preview", text.value);
+            box.innerHTML = sharePreviewHtml(pv);
+            if (window.icons) window.icons(box);
+            if (pv.ok) refreshApply();
+          } catch (e) {
+            box.innerHTML = `<div class="alert destructive">${ic("circle-alert")}<div class="alert-desc">${esc(e.message)}</div></div>`;
+          }
+        });
+        check.addEventListener("click", runCheck);
+        box.addEventListener("change", refreshApply);
+        const file = el.querySelector("[data-share-file]");
+        el.querySelector("[data-share-open]").addEventListener("click", () => file.click());
+        file.addEventListener("change", () => {
+          const f = file.files?.[0];
+          if (!f) return;
+          const r = new FileReader();
+          r.onload = () => { text.value = String(r.result || ""); runCheck(); };
+          r.readAsText(f);
+        });
+        apply.addEventListener("click", () => withBusy(apply, async () => {
+          const chosen = [...box.querySelectorAll(".share-sec input:checked")].map(i => i.value);
+          const confirmed = !!box.querySelector("[data-share-confirm]:checked");
+          try {
+            const res = await api("config_import_apply", text.value, chosen, confirmed);
+            const skipped = Object.values(res.skipped || {}).flat().length;
+            if (res.errors?.length) toast.warning("Применено с ошибками", res.errors.join("\n"));
+            else toast.success("Конфиг применён", skipped ? `Пропущено: ${skipped}` : (res.backup ? "Прежние файлы сохранены в data/backups." : ""));
+            h.close();
+          } catch (e) {
+            toast.error("Не удалось применить", e.message);
+          }
+        }));
+      },
+    });
+  }
+
   // Диагностика: проверки «почему обход может не работать» и отчёт для issue
   let doctor = null;   // результат последнего запуска: { checks, summary }
 
@@ -468,6 +626,7 @@
       ${generalCardHtml()}
       ${appUpdateCardHtml()}
       ${sourcesCardHtml()}
+      ${shareCardHtml()}
       ${doctorCardHtml()}
       ${maintenanceCardHtml()}`);
   }
@@ -497,6 +656,9 @@
 
     const dc = e.target.closest('[data-act="discord-cache"]');
     if (dc) return clearDiscordCache(dc);
+
+    if (e.target.closest('[data-act="share-export"]')) return openShareExport();
+    if (e.target.closest('[data-act="share-import"]')) return openShareImport();
 
     const dr = e.target.closest('[data-act="doctor-run"]');
     if (dr) return runDoctor(dr);

@@ -10,7 +10,7 @@ import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
-from modules import appconfig, applog, autostart, blockcheck, cheburcheck, control, doctor, domains, paths, service, upstream, winproc
+from modules import appconfig, applog, autostart, blockcheck, cheburcheck, control, doctor, domains, paths, service, shareconfig, upstream, winproc
 from modules import discord as discord_cache
 from modules.dns_jumper import DnsJumper
 from modules.hosts import HostsManager
@@ -20,6 +20,7 @@ from modules.version import VERSION
 from modules.winws import WinwsManager
 from modules.hosts.manager import is_admin
 from ui.hub import StateHub
+from ui.shareops import ShareOps
 from ui.updater import Updater
 
 WEB_DIR = Path(__file__).parent / "web"
@@ -198,6 +199,35 @@ class Api:
         except Exception as e:
             return _err(e)
 
+    # --- обмен конфигом ---------------------------------------------------------
+
+    def config_export(self, sections=None, list_names=None):
+        """Конфиг для отправки: JSON-текст выбранных разделов (по умолчанию — переносимые,
+        без настроек обхода DPI). Ссылки прокси и секретов в нём нет."""
+        try:
+            sections = [s for s in (sections or shareconfig.DEFAULT_SECTIONS) if s in shareconfig.SECTIONS]
+            doc = shareconfig.build_export(ShareOps(self).snapshot(), sections, VERSION, list_names)
+            return _ok(json.dumps(doc, ensure_ascii=False, indent=2))
+        except Exception as e:
+            return _err(e)
+
+    def config_import_preview(self, text):
+        """Что изменит чужой конфиг: по разделам — применится / пропущено / нужно подтверждение."""
+        try:
+            return _ok(shareconfig.preview(shareconfig.parse(text, VERSION), ShareOps(self).snapshot()))
+        except Exception as e:
+            return _err(e)
+
+    def config_import_apply(self, text, sections, confirmed=False):
+        """Применяет выбранные разделы чужого конфига. Перед этим копирует затрагиваемые файлы
+        в data/backups/<время>-import/. Чужие серверы DNS/hosts и домены-ретрансляторы Telegram
+        ставятся только при confirmed=True."""
+        try:
+            ops = ShareOps(self)
+            return _ok(shareconfig.apply(shareconfig.parse(text, VERSION), sections or [], bool(confirmed), ops))
+        except Exception as e:
+            return _err(e)
+
     def app_info(self):
         # frozen — собранная программа: в ней нет pywebview и git, фронт прячет то, что там не работает
         return _ok({"admin": is_admin(), "version": VERSION, "service_running": service.is_running(),
@@ -315,7 +345,7 @@ class Api:
         (("dns_",), ("dns",)),
         (("lists_",), ("proxy", "hosts", "winws")),  # счётчики доменов в выбранных списках
         (("selfupdate_",), ("selfupdate",)),
-        (("panic_",), ("winws", "proxy", "tg", "hosts", "dns", "filters")),
+        (("panic_", "config_import_"), ("winws", "proxy", "tg", "hosts", "dns", "filters")),
     )
     # чтения ничего не меняют — после них хаб не дёргаем
     _READ_SUFFIXES = ("_state", "_log", "_stats", "_overview", "_read", "_all", "_status",
@@ -328,7 +358,8 @@ class Api:
                               "enabled", "install", "uninstall", "apply", "reset", "panic"})
 
     # сверка с апстримом — только сеть, хотя в имени и есть «update»
-    _READ_NAMES = frozenset({"tg_check_update", "upstream_check_updates", "doctor_run", "doctor_report"})
+    _READ_NAMES = frozenset({"tg_check_update", "upstream_check_updates", "doctor_run", "doctor_report",
+                             "config_export", "config_import_preview"})
 
     @classmethod
     def is_read(cls, method: str) -> bool:

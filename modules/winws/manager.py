@@ -195,6 +195,15 @@ class WinwsManager:
         self.refresh_user_lists()
         return self.state()
 
+    def select_strategy(self, strategy_id: str) -> dict:
+        """Запоминает стратегию как последнюю, ничего не запуская и не перезапуская
+        (например, при импорте чужого конфига: запуск — решение пользователя)."""
+        if not (STRATEGIES_DIR / f"{strategy_id}.txt").exists():
+            raise FileNotFoundError(f"Нет стратегии «{strategy_id}»")
+        self.config["last_strategy"] = strategy_id
+        self._save()
+        return self.state()
+
     def refresh_user_lists(self) -> None:
         """Перекладывает текущие списки в файлы winws2 (когда изменилось содержимое
         списка, а не их набор). Запущенный winws2 подхватит файлы сам."""

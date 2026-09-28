@@ -36,6 +36,24 @@ def test_set_lists_regenerates_files_without_restarting_running_strategy(wm, mon
     assert manager.USER_IPSET_PATH.read_text(encoding="utf-8") == "10.0.0.0/24\n"
 
 
+def test_select_strategy_remembers_it_without_starting_or_restarting(wm, tmp_path, monkeypatch):
+    (tmp_path / "alt2.txt").write_text("--filter-tcp=443\n", encoding="utf-8")
+    monkeypatch.setattr(manager, "STRATEGIES_DIR", tmp_path)
+    monkeypatch.setattr(wm, "start", lambda sid: pytest.fail("выбор стратегии её не запускает"))
+
+    wm.select_strategy("alt2")
+
+    assert wm.config["last_strategy"] == "alt2"
+    assert '"alt2"' in manager.STATE_PATH.read_text(encoding="utf-8")
+
+
+def test_select_unknown_strategy_is_an_error(wm, tmp_path, monkeypatch):
+    monkeypatch.setattr(manager, "STRATEGIES_DIR", tmp_path)
+    with pytest.raises(FileNotFoundError):
+        wm.select_strategy("no-such")
+    assert wm.config["last_strategy"] == "general"
+
+
 def test_refresh_user_lists_rewrites_files_from_current_config(wm):
     wm.config["lists"] = ["somelist"]
 

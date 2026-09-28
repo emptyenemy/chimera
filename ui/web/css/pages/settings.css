@@ -15,6 +15,17 @@
 [data-key="app-update"] .item-desc .btn.link { font-size: inherit; vertical-align: baseline; }
 .set-app-progress { margin-top: 8px; }
 
+/* Обмен конфигом */
+.share-row { align-items: flex-start; }
+.share-text { min-height: 180px; width: 100%; }
+.share-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.share-sec { padding: 8px 0; border-top: 1px solid var(--border); }
+.share-sec:first-child { border-top: 0; }
+.share-list { margin: 4px 0 0 28px; padding: 0; list-style: none; font-size: 12.5px; color: var(--muted-foreground); }
+.share-list li { padding: 1px 0; }
+.share-warn { color: var(--warning); display: flex; gap: 6px; align-items: flex-start; }
+.share-confirm { align-items: flex-start; padding-top: 8px; border-top: 1px solid var(--border); }
+
 /* Диагностика */
 .doc-list { display: flex; flex-direction: column; gap: 12px; padding-top: 4px; }
 .doc-row { display: flex; align-items: flex-start; gap: 10px; }
