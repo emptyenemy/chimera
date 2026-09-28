@@ -11,6 +11,9 @@
 //   { "shot": "имя.png" }           — скриншот видимой области в out_dir
 //   { "full": "имя.png" }           — скриншот всей страницы (высота контента)
 //   { "size": [1280, 800] }         — размер окна
+//   { "mouse": [x, y] }             — навести настоящий курсор (для :hover и подсказок)
+//   { "drag": [x0, y0, x1, y1] }    — протащить мышью с зажатой левой кнопкой
+//   { "dblclick": [x, y] }          — двойной клик мышью
 // Без сценария: обойти все страницы и снять каждую ({id}.png).
 // Ошибки JS и console.error печатаются с пометкой [ошибка страницы].
 
@@ -72,6 +75,24 @@ const evaluate = async expr => {
   if (r.exceptionDetails) throw new Error(r.exceptionDetails.exception?.description || r.exceptionDetails.text);
   return r.result.value;
 };
+// Настоящие события мыши через CDP — в отличие от el.click() доходят до pointer capture и :hover.
+const mouse = (type, x, y, extra = {}) =>
+  send("Input.dispatchMouseEvent", { type, x, y, button: "left", pointerType: "mouse", ...extra });
+const drag = async (x0, y0, x1, y1, steps = 12) => {
+  await mouse("mouseMoved", x0, y0, { button: "none" });
+  await mouse("mousePressed", x0, y0, { buttons: 1, clickCount: 1 });
+  for (let i = 1; i <= steps; i++) {
+    await mouse("mouseMoved", x0 + (x1 - x0) * i / steps, y0 + (y1 - y0) * i / steps, { buttons: 1 });
+    await sleep(20);
+  }
+  await mouse("mouseReleased", x1, y1, { buttons: 0, clickCount: 1 });
+};
+const dblclick = async (x, y) => {
+  for (const clickCount of [1, 2]) {
+    await mouse("mousePressed", x, y, { buttons: 1, clickCount });
+    await mouse("mouseReleased", x, y, { buttons: 0, clickCount });
+  }
+};
 const shot = async (name, full = false) => {
   let clip;
   if (full) {
@@ -107,6 +128,9 @@ try {
     else if (s.shot) await shot(s.shot);
     else if (s.full) await shot(s.full, true);
     else if (s.size) await send("Emulation.setDeviceMetricsOverride", { width: s.size[0], height: s.size[1], deviceScaleFactor: 1, mobile: false });
+    else if (s.mouse) await mouse("mouseMoved", s.mouse[0], s.mouse[1], { button: "none" });
+    else if (s.drag) await drag(...s.drag);
+    else if (s.dblclick) await dblclick(...s.dblclick);
   }
   console.log(errors ? `ошибок страницы: ${errors}` : "ошибок страницы нет");
 } catch (e) {
