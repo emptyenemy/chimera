@@ -52,17 +52,16 @@
 
 ## GitHub Actions
 
-`release.yml` — только на пуш тега `v*`, `windows-latest`:
+`release.yml` — на пуш тега `v*` (и вручную, пробно), `windows-latest`. `pytest` в нём нет — он уже прошёл в `ci.yml` на том же коммите; `PYTHONUTF8=1` — консоль раннера в cp1252:
 
 1. checkout с сабмодулями;
 2. Python 3.14, `pip install -r requirements-dev.txt`;
-3. `pytest`;
-4. версия из тега → `modules/version.py`;
-5. `python tools/fetch_bins.py`;
-6. `build.bat` (кэш Nuitka между сборками — `actions/cache`);
-7. дымовой тест сборки `tools/smoke_build.py` (см. ниже) — сломанная сборка в релиз не уходит;
-8. zip `Chimera-<версия>-win64.zip` через `shutil.make_archive`, внутри папка `Chimera/` (у `Compress-Archive` из Windows PowerShell 5.1 обратные слеши в именах записей);
-9. `gh release create` с архивом; тег с дефисом — `--prerelease`.
+3. версия из тега → `modules/version.py`;
+4. `python tools/fetch_bins.py`;
+5. `build.bat` (кэш Nuitka между сборками — `actions/cache`);
+6. дымовой тест сборки `tools/smoke_build.py` (см. ниже) — сломанная сборка в релиз не уходит;
+7. zip `Chimera-<версия>-win64.zip` через `shutil.make_archive`, внутри папка `Chimera/` (у `Compress-Archive` из Windows PowerShell 5.1 обратные слеши в именах записей);
+8. `gh release create` с архивом; тег с дефисом — `--prerelease`.
 
 `ci.yml` — на pull request и пуш в `main`: `ruff check .` и `pytest` на `windows-latest`, без сборки. Нужен, чтобы чужие PR проверялись до мержа.
 

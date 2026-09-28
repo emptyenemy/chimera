@@ -38,10 +38,7 @@ jobs:
       - name: Зависимости
         run: python -m pip install -r requirements-dev.txt
 
-      - name: Тесты
-        env:
-          QT_QPA_PLATFORM: offscreen
-        run: python -m pytest -q
+      # pytest здесь не гоняется: он уже прошёл в ci.yml на этом коммите main
 
       - name: Версия из тега
         id: ver
