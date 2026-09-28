@@ -344,6 +344,7 @@ function morph(el, html) {
   const tpl = document.createElement("template");
   tpl.innerHTML = html;
   if (window.icons) window.icons(tpl.content);  // <i data-icon> -> <svg> до сравнения
+  if (window.logo) window.logo(tpl.content);    // <i data-logo> — знак программы (js/logo.js)
   _morphChildren(el, tpl.content);
 }
 

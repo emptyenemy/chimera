@@ -293,6 +293,107 @@
       </div>`;
   }
 
+  // --- обновление самой программы (хаб: selfupdate, см. ui/updater.py) -----------
+
+  let appCheckBusy = false;
+
+  async function checkApp() {
+    if (appCheckBusy) return;
+    appCheckBusy = true;
+    render();
+    try {
+      const s = await api("selfupdate_check");
+      if (s?.error) toast.error("Не удалось проверить обновления", s.error);
+      else if (s?.update) toast.info(`Доступна Chimera ${fmtVersion(s.latest)}`);
+      else toast.success("Установлена последняя версия");
+    } catch (e) {
+      toast.error("Не удалось проверить обновления", e.message);
+    } finally {
+      appCheckBusy = false;
+      render();
+    }
+  }
+
+  async function installApp() {
+    const s = Store.get("selfupdate");
+    if (!s?.installable) return;
+    const ok = await confirmDialog({
+      title: `Обновить Chimera до ${fmtVersion(s.latest)}?`,
+      description: "Программа скачает новую версию, закроется, обновится и запустится снова. Модули перезапустятся, "
+        + "настройки и выбранные списки останутся. Если что-то пойдёт не так, вернётся текущая версия.",
+      confirmText: "Обновить",
+    });
+    if (!ok) return;
+    try {
+      await api("selfupdate_install");
+    } catch (e) {
+      toast.error("Не удалось обновить", e.message);
+    }
+  }
+
+  function appUpdateStatus(s) {
+    if (appCheckBusy || s.checking) return { text: "Проверяю…", badge: badgeHtml("проверка", "info", "loader-circle") };
+    if (s.stage === "downloading") return { text: `Скачиваю ${fmtVersion(s.latest)} · ${Math.round((s.progress || 0) * 100)}%`, badge: "" };
+    if (s.stage === "installing") return { text: "Устанавливаю — программа сейчас перезапустится", badge: badgeHtml("установка", "info", "loader-circle") };
+    if (s.error) return { text: s.error, badge: badgeHtml("ошибка", "danger", "circle-alert") };
+    if (s.update) return { text: `Доступна ${fmtVersion(s.latest)}`, badge: badgeHtml("есть обновление", "warning", "arrow-up-right") };
+    if (s.checked_at) {
+      const t = new Date(s.checked_at * 1000).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
+      return { text: `Последняя версия · проверено в ${t}`, badge: badgeHtml("актуально", "success", "circle-check") };
+    }
+    return { text: "Ещё не проверялось", badge: badgeHtml("не проверено", "outline") };
+  }
+
+  function appInstallButton(s) {
+    if (!s.update || s.stage === "downloading" || s.stage === "installing") return "";
+    const label = `${ic("download")}Обновить до ${esc(fmtVersion(s.latest))}`;
+    if (s.installable) return `<button class="btn xs" data-act="app-install">${label}</button>`;
+    const why = !s.frozen ? "Запуск из исходников — обновляется через git"
+      : "У релиза нет контрольной суммы — скачай архив со страницы релиза вручную";
+    return `<button class="btn xs outline" disabled data-tip="${esc(why)}">${label}</button>`;
+  }
+
+  function appUpdateCardHtml() {
+    const s = Store.get("selfupdate");
+    if (!s || !config) return cardSkeleton("Обновление Chimera", "download");
+    const st = appUpdateStatus(s);
+    const busy = appCheckBusy || s.checking || s.stage === "downloading" || s.stage === "installing";
+    const channel = config.update_channel || "stable";
+    return `
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title">${ic("download")}Обновление Chimera</div>
+          <div class="card-description">Новые версии выходят на GitHub. Ставятся только по кнопке — программа сама ничего не перезапускает.</div>
+        </div>
+        <div class="card-content stack">
+          <div class="item" data-key="app-update">
+            <div class="item-media"><i data-logo></i></div>
+            <div class="item-body">
+              <div class="item-title">Chimera ${esc(fmtVersion(s.current))}</div>
+              <div class="item-desc"${s.error ? ` data-tip="${esc(s.error)}"` : ""}>${esc(st.text)}${s.update && s.url ? ` · <button type="button" class="btn link" data-url="${esc(s.url)}">что нового</button>` : ""}</div>
+              ${s.stage === "downloading" ? `<div class="progress set-app-progress"><i style="transform:scaleX(${s.progress || 0})"></i></div>` : ""}
+            </div>
+            <div class="item-actions">
+              ${st.badge}
+              <button class="btn xs outline" data-act="app-check"${busy ? " disabled" : ""}>${ic("refresh-cw")}Проверить</button>
+              ${appInstallButton(s)}
+            </div>
+          </div>
+          <div class="switch-row">
+            <div class="set-row-label"><b>Канал обновлений</b><span>Бета — пре-релизы: новое раньше, но может быть сыровато.</span></div>
+            <select class="select-native set-select" data-cfg="update_channel"${cfgPending.update_channel ? " disabled" : ""}>
+              <option value="stable"${opt(channel, "stable")}>Стабильный</option>
+              <option value="beta"${opt(channel, "beta")}>Бета</option>
+            </select>
+          </div>
+          <div class="switch-row">
+            <div class="set-row-label"><b>Проверять обновления</b><span>При запуске и раз в 6 часов. Найденную версию только покажет — ставить или нет, решаешь сам.</span></div>
+            ${switchHtml(config.update_check !== false, 'data-cfg-switch="update_check"', { pending: !!cfgPending.update_check })}
+          </div>
+        </div>
+      </div>`;
+  }
+
   // Обслуживание: то, что у Flowseal живёт в меню service.bat
   function maintenanceCardHtml() {
     return `
@@ -335,6 +436,7 @@
     morph(root.querySelector("[data-slot=body]"), `
       ${interfaceCardHtml()}
       ${launchCardHtml()}
+      ${appUpdateCardHtml()}
       ${sourcesCardHtml()}
       ${maintenanceCardHtml()}
       ${appVersionHtml()}`);
@@ -368,6 +470,9 @@
 
     const dc = e.target.closest('[data-act="discord-cache"]');
     if (dc) return clearDiscordCache(dc);
+
+    if (e.target.closest('[data-act="app-check"]')) return checkApp();
+    if (e.target.closest('[data-act="app-install"]')) return installApp();
   }
 
   function onChange(e) {
@@ -392,7 +497,7 @@
       render();
     },
     show(ctx) {
-      ctx.on(["app"], render);
+      ctx.on(["app", "selfupdate"], render);
       render();
       refreshConfig();
       refreshAutostart();

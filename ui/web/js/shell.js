@@ -21,8 +21,15 @@ const Status = {
     const guard = Status.guard();
     const n = Status.count();
     const app = Store.get("app") || {};
+    const upd = Store.get("selfupdate");
     const ver = $("#sb-ver");
-    if (ver) ver.textContent = fmtVersion(app.version);
+    if (ver) {
+      // вышла новая версия — отметка у номера, клик ведёт в настройки к кнопке обновления
+      const tip = upd?.update ? `Доступна ${fmtVersion(upd.latest)} — обновить в настройках` : "";
+      morph(ver, esc(fmtVersion(app.version)) + (tip ? ` <span class="dot warn sb-upd" data-tip="${esc(tip)}"></span>` : ""));
+      ver.classList.toggle("has-update", !!tip);
+    }
+    notifyUpdate(upd);
 
     for (const [page, key] of Object.entries(dots)) {
       const el = document.querySelector(`[data-nav-dot="${page}"]`);
@@ -48,7 +55,21 @@ const Status = {
       : "");
   }
 
-  Store.on(["winws", "proxy", "tg", "hosts", "app"], render);
+  // Уведомление о новой версии — один раз за сессию на каждую версию. В настройках
+  // своё сообщение от кнопки «Проверить», там не дублируем.
+  let notified = null;
+  function notifyUpdate(upd) {
+    if (!upd?.update || upd.latest === notified) return;
+    notified = upd.latest;
+    if (Pages.current?.id === "settings") return;
+    toast.info(`Вышла Chimera ${fmtVersion(upd.latest)}`, "Обновить можно в «Настройки → Обновление Chimera».");
+  }
+
+  document.addEventListener("click", e => {
+    if (e.target.closest("#sb-ver.has-update")) Pages.go("settings");
+  });
+
+  Store.on(["winws", "proxy", "tg", "hosts", "app", "selfupdate"], render);
 })();
 
 // --- Сворачивание и ширина сайдбара ---------------------------------------------------

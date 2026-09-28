@@ -119,6 +119,10 @@ input, textarea, .selectable, .log, code, .mono { user-select: text; }
 .sb-brand { display: flex; flex-direction: column; min-width: 0; margin-right: 32px; white-space: nowrap; transition: opacity .15s ease; }
 .sb-brand b { font-size: 14px; line-height: 18px; font-weight: 600; letter-spacing: .02em; }
 .sb-brand span { font-size: 12px; line-height: 16px; color: var(--muted-foreground); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* вышла новая версия: отметка у номера (js/shell.js), клик — в настройки */
+#sb-ver.has-update { cursor: pointer; overflow: visible; }
+#sb-ver.has-update:hover { color: var(--foreground); }
+#sb-ver .sb-upd { width: 6px; height: 6px; margin-left: 4px; vertical-align: 1px; overflow: visible; }
 /* Кнопка свернуть/развернуть привязана к правому краю: при анимации ширины едет вместе
    с ним, а в свёрнутой полосе ложится ровно поверх знака и проявляется по наведению. */
 .sb-toggle {

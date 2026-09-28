@@ -15,4 +15,9 @@
 .set-src-name:hover { color: var(--foreground); text-decoration: underline; text-underline-offset: 3px; }
 .set-src-name .icon { font-size: 13px; color: var(--muted-foreground); }
 
+/* Обновление Chimera: знак вместо иконки, прогресс скачивания под строкой статуса */
+[data-key="app-update"] .item-media .logo { width: 20px; height: 20px; }
+[data-key="app-update"] .item-desc .btn.link { font-size: inherit; vertical-align: baseline; }
+.set-app-progress { margin-top: 8px; }
+
 .set-appver { padding-top: 4px; text-align: center; color: var(--muted-foreground); font-size: 12.5px; }
