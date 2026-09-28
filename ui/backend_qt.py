@@ -103,6 +103,7 @@ class Tray(QObject):
         self.busy = set()  # модули, по которым команда ещё выполняется
 
         self.icon = QSystemTrayIcon(QIcon(str(APP_ICON)), app)
+        self.icon.setToolTip("Chimera")  # только имя: состояние — в меню, не в подсказке
         menu = QMenu()
         menu.addAction("Открыть Chimera").triggered.connect(window.bring_to_front)
         menu.addSeparator()
@@ -136,7 +137,6 @@ class Tray(QObject):
 
     def refresh(self):
         states = self.api.hub.snapshot()
-        self.icon.setToolTip(tray_model.tooltip(states))
         self.status.setText(tray_model.summary(states)[2])
         for key, action in self.toggles.items():
             action.setChecked(tray_model.is_on(key, states.get(key)))

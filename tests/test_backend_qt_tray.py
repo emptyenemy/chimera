@@ -74,7 +74,8 @@ def test_menu_reflects_module_states(app, config):
     assert tray.toggles["winws"].isChecked()
     assert tray.toggles["hosts"].isChecked()
     assert not tray.toggles["proxy"].isChecked()
-    assert tray.icon.toolTip() == "Chimera — защита активна · 2 из 4"
+    # подсказка при наведении — только имя программы, состояние живёт в меню
+    assert tray.icon.toolTip() == "Chimera"
 
 
 def test_toggle_runs_same_command_as_dashboard(app, config):

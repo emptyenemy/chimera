@@ -24,10 +24,6 @@ def test_hosts_on_means_applied_not_enabled():
     assert tm.is_on("hosts", {"applied": True}) is True
 
 
-def test_tooltip():
-    assert tm.tooltip({}) == "Chimera"
-    assert tm.tooltip({"proxy": {"running": True}}) == "Chimera — защита активна · 1 из 4"
-
 
 def test_winws_start_uses_current_then_last_then_first():
     strategies = [{"id": "a"}, {"id": "b"}]

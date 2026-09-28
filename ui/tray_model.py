@@ -32,10 +32,6 @@ def summary(states: dict) -> tuple[bool, int, str]:
     return guard, n, text
 
 
-def tooltip(states: dict) -> str:
-    return f"Chimera — {summary(states)[2].lower()}" if states else "Chimera"
-
-
 def winws_strategy(data: dict | None) -> str | None:
     """Какую стратегию запускать из трея: текущую, последнюю или первую в списке."""
     if not data:
