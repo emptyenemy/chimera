@@ -18,9 +18,11 @@
 .tg-row-label { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .tg-row-label b { font-weight: 500; }
 .tg-row-label span { font-size: 12.5px; color: var(--muted-foreground); }
-.tg-field { width: 260px; flex: none; }
-.tg-secret-group { width: 320px; flex: none; }
-.tg-secret-group .input { padding-right: 72px; }
+/* Одна колонка полей на всю карточку. Ширина — от секрета: 32 hex моноширинным (~240px)
+   + две кнопки внутри поля (72px) + отступ, — чтобы раскрытый секрет влезал целиком. */
+.tg-field { width: 340px; flex: none; }
+.tg-secret-group { width: 340px; flex: none; }
+.tg-secret-group .input { width: 100%; padding-right: 72px; }
 
 .tg-stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
 @media (max-width: 1100px) { .tg-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
