@@ -195,13 +195,6 @@
 
   // --- рендер ----------------------------------------------------------------------
 
-  function adminAlertHtml() {
-    if (Store.get("app")?.admin !== false) return "";
-    return `<div class="alert warning" data-key="admin-alert">${ic("triangle-alert")}
-      <div class="alert-title">Нет прав администратора</div>
-      <div class="alert-desc">Смена системного DNS потребует прав администратора.</div></div>`;
-  }
-
   function adapterCardHtml() {
     const st = dnsState();
     if (!st) return skeletonHtml(2, 36);
@@ -216,7 +209,6 @@
     return `
       <div class="row">
         <div class="field">
-          <label class="label">Сетевой адаптер</label>
           <select class="select-native" data-adapter>
             ${list.map(x => `<option value="${x.index}" ${x.index === a?.index ? "selected" : ""}>${esc(adapterOptionLabel(x))}</option>`).join("")}
           </select>
@@ -226,24 +218,22 @@
       <div class="muted dns-current">${esc(info)}</div>`;
   }
 
+  // только то, зачем провайдера выбирают: обходит блокировки или режет рекламу/угрозы
   function providerBadges(p) {
     const b = [];
-    if (p.servers?.length) b.push(badgeHtml("IPv4", "outline"));
-    if (p.ipv6?.length) b.push(badgeHtml("IPv6", "outline"));
-    if (p.doh) b.push(badgeHtml("DoH", "info"));
-    if (p.dot) b.push(badgeHtml("DoT", "info"));
     if (p.unblock) b.push(badgeHtml("обход", "warning"));
     if (p.filter) b.push(badgeHtml("защита", "success"));
     return b.join("");
   }
 
+  // один пинг — лучший из серверов провайдера (по нему же и сортировка)
   function pingCellHtml(id) {
     const r = pingResults[id];
     if (!r) return `<span class="muted">…</span>`;
-    return (r.servers || []).map(s => s.ok
-      ? `<span class="dns-ping-item"><span class="dot ${s.ms < 60 ? "on" : s.ms < 200 ? "warn" : "err"}"></span>${fmtNum(s.ms)} мс</span>`
-      : `<span class="dns-ping-item"><span class="dot err"></span>—</span>`
-    ).join("");
+    const ok = (r.servers || []).filter(s => s.ok).map(s => s.ms);
+    if (!ok.length) return `<span class="dns-ping-item"><span class="dot err"></span>нет ответа</span>`;
+    const ms = Math.min(...ok);
+    return `<span class="dns-ping-item"><span class="dot ${ms < 60 ? "on" : ms < 200 ? "warn" : "err"}"></span>${fmtNum(ms)} мс</span>`;
   }
 
   function probeMark(v) {
@@ -269,22 +259,24 @@
   function providerRowHtml(p) {
     const a = currentAdapter();
     const active = a && isActiveProvider(p, a);
-    const servers = [...(p.servers || []), ...(p.ipv6 || [])].join(" · ");
-    const endpoints = [p.doh ? `DoH ${p.doh}` : "", p.dot ? `DoT ${p.dot}` : ""].filter(Boolean).join(" · ");
+    // все адреса (IPv6, DoH, DoT) — в подсказке: в строке хватает основного
+    const all = [...(p.servers || []), ...(p.ipv6 || []), p.doh ? `DoH ${p.doh}` : "", p.dot ? `DoT ${p.dot}` : ""]
+      .filter(Boolean).join("\n");
+    const main = (p.servers || []).slice(0, 2).join(" · ") || p.doh || p.dot || "";
+    const noAdmin = Store.get("app")?.admin === false;
     return `
     <div class="item dns-row" data-key="dns-${esc(p.id)}" ${active ? 'aria-selected="true"' : ""}>
-      <div class="item-media">${ic(p.unblock ? "shield-check" : "globe")}</div>
       <div class="item-body">
-        <div class="dns-row-title">${esc(p.name)}${active ? badgeHtml("активен", "success", "check") : ""}${providerBadges(p)}</div>
-        <div class="item-desc">${esc(servers)}${endpoints ? ` · ${esc(endpoints)}` : ""}</div>
+        <div class="dns-row-title">${esc(p.name)}${providerBadges(p)}</div>
+        <div class="item-desc" data-tip="${esc(all)}">${esc(main)}</div>
         ${probeHtml(p.id)}
       </div>
       <div class="dns-ping">${pingCellHtml(p.id)}</div>
       <div class="item-actions">
-        <button class="btn ghost xs" data-probe="${esc(p.id)}" ${probing[p.id] ? "disabled" : ""}>${probing[p.id] ? ic("loader-circle", "spin") : ic("scan-search")}Проба</button>
+        <button class="btn ghost xs icon-btn" data-probe="${esc(p.id)}" data-tip="Проверить: обход, DNSSEC, реклама" ${probing[p.id] ? "disabled" : ""}>${probing[p.id] ? ic("loader-circle", "spin") : ic("scan-search")}</button>
         ${active
           ? `<button class="btn secondary sm" disabled>${ic("check")}Активен</button>`
-          : `<button class="btn outline sm" data-use="${esc(p.id)}" ${applying[p.id] ? "disabled" : ""}>${applying[p.id] ? ic("loader-circle", "spin") : ""}Применить</button>`}
+          : `<button class="btn outline sm" data-use="${esc(p.id)}" ${applying[p.id] || noAdmin ? "disabled" : ""}${noAdmin ? ' data-tip="Нужны права администратора"' : ""}>${applying[p.id] ? ic("loader-circle", "spin") : ""}Применить</button>`}
         ${!p.builtin ? `<button class="btn ghost xs icon-btn" data-del="${esc(p.id)}" data-tip="Удалить">${ic("trash-2")}</button>` : ""}
       </div>
     </div>`;
@@ -304,7 +296,7 @@
       <div class="field">
         <label class="label">Домены для проверки обхода</label>
         <input class="input mono" data-probe-bypass value="${esc((probeConfig.bypass || []).join(" "))}" placeholder="rutracker.org">
-        <p class="hint">Указывай реально заблокированные у тебя домены — гео-блок (напр. chatgpt.com) для этой пробы не годится.</p>
+        <p class="hint">Реально заблокированные у тебя сайты, не гео-блок.</p>
       </div>
       <div class="field">
         <label class="label">Домен-маркер рекламы</label>
@@ -314,29 +306,18 @@
 
   function render() {
     morph(root.querySelector("[data-slot=body]"), `
-      ${adminAlertHtml()}
       <div class="card compact" data-key="card-adapter">
-        <div class="card-header">
-          <div class="card-title">${ic("wifi")}Адаптер</div>
-          <div class="card-description">Куда применяется DNS-провайдер</div>
-        </div>
+        <div class="card-header"><div class="card-title">${ic("wifi")}Адаптер</div></div>
         <div class="card-content stack-sm">${adapterCardHtml()}</div>
       </div>
       <div class="card compact" data-key="card-providers">
         <div class="card-header">
-          <div class="card-title">${ic("network")}DNS-провайдеры</div>
-          <div class="card-description">Список отсортирован по скорости ответа</div>
+          <div class="card-title">${ic("network")}DNS-серверы</div>
           <div class="card-action"><button class="btn ghost sm" data-add-provider>${ic("plus")}Добавить</button></div>
         </div>
         <div class="card-content">${providersListHtml()}</div>
-      </div>
-      <div class="card compact" data-key="card-probe">
-        <div class="card-header">
-          <div class="card-title">${ic("scan-search")}Проба возможностей</div>
-          <div class="card-description">Тест-домены для кнопки «Проба» у каждого провайдера (DNSSEC, обход, реклама)</div>
-        </div>
-        <div class="card-content stack-sm">${probeConfigHtml()}</div>
       </div>`);
+    morph(root.querySelector("[data-slot=probe]"), probeConfigHtml());
   }
 
   Pages.define({
@@ -349,7 +330,10 @@
             <h1 class="page-title">DNS</h1>
           </div>
         </div>
-        <div class="stack" data-slot="body"></div>`;
+        <div class="stack">
+          <div class="stack" data-slot="body"></div>
+          ${foldHtml("sliders-horizontal", "Дополнительно", '<div class="stack-sm" data-slot="probe"></div>')}
+        </div>`;
 
       el.addEventListener("click", e => {
         if (e.target.closest("[data-add-provider]")) return openAddProvider();

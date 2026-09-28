@@ -220,7 +220,7 @@ input, textarea, .selectable, .log, code, .mono { user-select: text; }
 .card-description { grid-column: 1; font-size: 14px; line-height: 20px; color: var(--muted-foreground); }
 .card-action { grid-column: 2; grid-row: 1 / span 2; align-self: start; justify-self: end; display: flex; align-items: center; gap: 8px; }
 /* заголовок без описания — одна строка: название и действие (поиск, кнопка) по центру */
-.card-header:not(:has(.card-description)) { align-items: center; }
+.card-header:not(:has(.card-description)) { align-items: center; grid-template-rows: auto; row-gap: 0; }
 .card-content { padding: 0 24px; min-width: 0; }
 .card-footer { display: flex; align-items: center; gap: 8px; padding: 0 24px; }
 .card-footer.bordered { border-top: 1px solid var(--border); padding-top: 16px; margin-top: -8px; }
@@ -538,4 +538,5 @@ input, textarea, .selectable, .log, code, .mono { user-select: text; }
   position: fixed; z-index: 80; max-width: 280px; padding: 6px 12px; pointer-events: none;
   border-radius: calc(var(--radius) - 2px); background: var(--foreground); color: var(--background);
   font-size: 12px; line-height: 16px; animation: fade-in .1s ease-out;
+  white-space: pre-line; overflow-wrap: anywhere;  /* \n в data-tip — перенос строки (список адресов и т.п.) */
 }
