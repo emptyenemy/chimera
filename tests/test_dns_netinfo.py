@@ -48,7 +48,7 @@ def test_adapters_returns_expected_shape():
     result = netinfo.adapters()
     assert isinstance(result, list)
     for a in result:
-        assert set(a) == {"index", "name", "desc", "status", "physical", "mac", "speed", "ipv4", "dns"}
+        assert set(a) == {"index", "name", "desc", "status", "physical", "mac", "speed", "ipv4", "dns", "guid"}
         assert isinstance(a["index"], int)
         assert isinstance(a["name"], str)
         assert isinstance(a["status"], str)

@@ -422,9 +422,13 @@ class Api:
 
     def dns_state(self):
         try:
+            trials = self.dns.trials()
             return _ok({
                 "adapters": self.dns.adapters(),
                 "providers": self.dns.list_providers(),
+                # пробное применение в ожидании «Оставить / Вернуть»: одно (последнее) и все
+                "trial": trials[-1] if trials else None,
+                "trials": trials,
             })
         except Exception as e:
             return _err(e)
@@ -477,6 +481,33 @@ class Api:
             if not is_admin():
                 raise PermissionError("Нужны права администратора для смены DNS")
             return _ok(self.dns.set_dns(adapter_index, provider_id))
+        except Exception as e:
+            return _err(e)
+
+    def dns_set_trial(self, adapter_index, provider_id, seconds=15):
+        """Как dns_set, но с автооткатом: если за `seconds` секунд DNS не подтвердили
+        (dns_trial_confirm), адаптер возвращается к прежним настройкам. Откат идёт в
+        бэкенде и не зависит от окна."""
+        try:
+            if not is_admin():
+                raise PermissionError("Нужны права администратора для смены DNS")
+            return _ok(self.dns.set_dns_trial(adapter_index, provider_id, seconds))
+        except Exception as e:
+            return _err(e)
+
+    def dns_trial_confirm(self, adapter_index=None):
+        """Оставить DNS после пробного применения (без аргумента — все ожидающие)."""
+        try:
+            return _ok(self.dns.trial_confirm(adapter_index))
+        except Exception as e:
+            return _err(e)
+
+    def dns_trial_revert(self, adapter_index=None):
+        """Не ждать таймера: вернуть прежний DNS сразу."""
+        try:
+            if not is_admin():
+                raise PermissionError("Нужны права администратора для смены DNS")
+            return _ok(self.dns.trial_revert(adapter_index))
         except Exception as e:
             return _err(e)
 

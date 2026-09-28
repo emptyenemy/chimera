@@ -15,3 +15,6 @@
 .dns-probe-ok { color: var(--success); }
 .dns-probe-fail { color: var(--destructive); }
 .dns-probe .icon { font-size: 13px; }
+
+/* Пробное применение: кнопки «Оставить / Вернуть сейчас» под текстом плашки */
+.dns-trial-actions { display: flex; gap: 8px; margin-top: 8px; }

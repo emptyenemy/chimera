@@ -8,9 +8,11 @@ PowerShell-командлеты DnsClient (нужны права админис�
 import json
 import re
 import subprocess
+import threading
+import time
 from concurrent.futures import ThreadPoolExecutor
 
-from .. import appconfig, dns_providers, paths
+from .. import appconfig, applog, dns_providers, paths
 from ..hosts.resolver import ping_dns
 from . import netinfo, probe
 
@@ -20,6 +22,9 @@ PROBE_DEFAULTS = {"bypass": ["chatgpt.com"], "ad": "doubleclick.net"}
 # индексы адаптеров, где DNS поставили мы: «Выключить всё» сбрасывает только их и не
 # трогает адаптеры, у которых DNS выставлен пользователем или провайдером
 CHANGED_PATH = paths.data_path("dns_changed.json")
+
+# пробное применение DNS: сколько секунд даём на «оставить» до автоматического отката
+TRIAL_DEFAULT, TRIAL_MIN, TRIAL_MAX = 15, 5, 120
 
 
 def _ps(cmd: str) -> str:
@@ -43,6 +48,10 @@ def _ps_json(cmd: str):
 
 
 class DnsJumper:
+    def __init__(self):
+        self._trials: dict[int, dict] = {}   # индекс адаптера -> пробное применение в ожидании ответа
+        self._trial_lock = threading.RLock()
+
     def list_providers(self) -> list[dict]:
         """Только провайдеры с IP-серверами (IPv4/IPv6) — их можно поставить
         системным DNS. Чисто DoH/DoT-провайдеры без IP тут не показываем:
@@ -88,7 +97,7 @@ class DnsJumper:
             "[pscustomobject]@{ index = $_.ifIndex; name = $_.Name; "
             "desc = $_.InterfaceDescription; status = [string]$_.Status; "
             "physical = -not $_.Virtual; mac = $_.MacAddress; speed = $_.LinkSpeed; "
-            "ipv4 = @($ip.IPAddress); dns = @($d.ServerAddresses) } "
+            "ipv4 = @($ip.IPAddress); dns = @($d.ServerAddresses); guid = $_.InterfaceGuid } "
             "} | ConvertTo-Json -Depth 3"
         )
         adapters.sort(key=lambda a: (a["status"] != "Up", not a["physical"], a["name"]))
@@ -133,6 +142,110 @@ class DnsJumper:
             f"-ResetServerAddresses; Clear-DnsClientCache"
         )
         self._remember(int(adapter_index), False)
+
+    # --- пробное применение с автооткатом --------------------------------------
+    # Смена DNS может оставить без интернета, и тогда «Оставить» некому нажать. Поэтому
+    # прежнее состояние адаптера запоминается, а таймер в бэкенде (он работает, даже
+    # если окно закрыли) сам вернёт его, если за N секунд DNS не подтвердили.
+
+    _now = staticmethod(time.time)
+
+    def _schedule(self, seconds, fn):
+        t = threading.Timer(seconds, fn)
+        t.daemon = True
+        t.start()
+        return t
+
+    @staticmethod
+    def _is_static(guid) -> bool | None:
+        """Заданы ли DNS-серверы адаптера вручную (True) или приходят по DHCP (False).
+        None — узнать не удалось. Смотрим реестр: значение NameServer у интерфейса
+        пусто при DHCP."""
+        if not guid:
+            return None
+        import winreg
+        path = rf"SYSTEM\CurrentControlSet\Services\Tcpip\Parameters\Interfaces\{guid}"
+        try:
+            with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, path, 0, winreg.KEY_READ) as k:
+                try:
+                    value, _ = winreg.QueryValueEx(k, "NameServer")
+                except FileNotFoundError:
+                    return False
+        except OSError:
+            return None
+        return bool(str(value).strip())
+
+    def _snapshot(self, idx: int) -> dict:
+        for a in self.adapters():
+            if a.get("index") == idx:
+                return {"dns": list(a.get("dns") or []), "static": self._is_static(a.get("guid"))}
+        return {"dns": [], "static": None}
+
+    def _public_trial(self, t: dict) -> dict:
+        return {"adapter": t["adapter"], "provider": t["provider"], "deadline": t["deadline"],
+                "seconds_left": max(0, int(round(t["deadline"] - self._now()))),
+                "previous": t["previous"]}
+
+    def set_dns_trial(self, adapter_index: int, provider_id: str, seconds: int = TRIAL_DEFAULT) -> dict:
+        """set_dns + таймер отката. Повторная проба на том же адаптере не теряет исходное
+        состояние: откат вернёт то, что было до первой пробы."""
+        idx = int(adapter_index)
+        seconds = max(TRIAL_MIN, min(TRIAL_MAX, int(seconds)))
+        with self._trial_lock:
+            existing = self._trials.get(idx)
+            previous = existing["previous"] if existing else self._snapshot(idx)
+            was_ours = existing["was_ours"] if existing else idx in self.changed_adapters()
+            p = self.set_dns(idx, provider_id)   # не вышло — исключение, таймер не взводится
+            if existing:
+                existing["timer"].cancel()
+            trial = {"adapter": idx, "provider": provider_id, "previous": previous,
+                     "was_ours": was_ours, "deadline": self._now() + seconds}
+            trial["timer"] = self._schedule(seconds, lambda i=idx: self._expire(i))
+            self._trials[idx] = trial
+            return {**p, "trial": self._public_trial(trial)}
+
+    def _expire(self, idx: int) -> None:
+        try:
+            self.trial_revert(idx)
+        except Exception as e:  # поток таймера: сбой отката виден в журнале, а не теряется
+            applog.write(f"Автооткат DNS на адаптере {idx} не удался: {e}")
+
+    def trials(self) -> list[dict]:
+        with self._trial_lock:
+            return [self._public_trial(t) for t in self._trials.values()]
+
+    def trial_confirm(self, adapter_index=None) -> dict:
+        """Оставить новый DNS: таймер отменяется, откат не произойдёт."""
+        with self._trial_lock:
+            keys = [int(adapter_index)] if adapter_index is not None else list(self._trials)
+            confirmed = []
+            for idx in keys:
+                t = self._trials.pop(idx, None)
+                if t:
+                    t["timer"].cancel()
+                    confirmed.append(idx)
+        return {"confirmed": confirmed}
+
+    def trial_revert(self, adapter_index=None) -> dict:
+        """Вернуть прежнее состояние адаптера: DHCP или прежние статические серверы."""
+        with self._trial_lock:
+            keys = [int(adapter_index)] if adapter_index is not None else list(self._trials)
+            reverted = []
+            for idx in keys:
+                t = self._trials.pop(idx, None)
+                if not t:
+                    continue
+                t["timer"].cancel()
+                prev = t["previous"]
+                if prev.get("static") and prev.get("dns"):
+                    servers = ",".join(f"'{ip}'" for ip in prev["dns"])
+                    _ps(f"Set-DnsClientServerAddress -InterfaceIndex {idx} -ServerAddresses {servers}; "
+                        f"Clear-DnsClientCache")
+                    self._remember(idx, t["was_ours"])
+                else:
+                    self.reset_dns(idx)   # DHCP, а если статус неизвестен — тоже DHCP: безопаснее всего
+                reverted.append(idx)
+        return {"reverted": reverted}
 
     # --- адаптеры, где DNS поставили мы ---------------------------------------
 

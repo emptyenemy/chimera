@@ -227,6 +227,7 @@ def adapters() -> list[dict]:
             "speed": _format_speed(a.TransmitLinkSpeed),
             "ipv4": ipv4,
             "dns": dns,
+            "guid": guid,
         })
         cur = a.Next
 

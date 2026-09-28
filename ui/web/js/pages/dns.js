@@ -15,6 +15,8 @@
   let probeResults = {};        // provider id -> результат пробы | {error}
   let probeConfig = null;
   let probeConfigTimer = 0;
+  const TRIAL_SECONDS = 15;     // сколько даём на «Оставить» после смены DNS
+  const trialNotified = new Set();   // deadline'ы, о которых уже сказали «DNS возвращён»
 
   function dnsState() { return Store.get("dns"); }
   function adapters() { return dnsState()?.adapters || []; }
@@ -91,8 +93,11 @@
     applying[id] = true;
     render();
     try {
-      const p = await api("dns_set", a.index, id);
-      toast.success(`DNS → ${p?.name || id}`, p?.encrypted ? "Шифрование DoH включено, кэш сброшен." : "Кэш сброшен.");
+      // с автооткатом: если интернет пропал после смены, «Оставить» нажать некому — через
+      // TRIAL_SECONDS бэкенд сам вернёт прежний DNS
+      const p = await api("dns_set_trial", a.index, id, TRIAL_SECONDS);
+      toast.success(`DNS → ${p?.name || id}`,
+        `${p?.encrypted ? "Шифрование DoH включено. " : ""}Нажмите «Оставить», если интернет работает: иначе через ${TRIAL_SECONDS} с вернётся прежний DNS.`);
     } catch (e) {
       toast.error("Не удалось применить", e.message);
     } finally {
@@ -305,8 +310,54 @@
       </div>`;
   }
 
+  // Пробное применение: плашка с обратным отсчётом. Откат делает бэкенд по таймеру, эта
+  // плашка только показывает, сколько осталось, и даёт решить раньше.
+  function trialHtml() {
+    const t = dnsState()?.trial;
+    if (!t) return "";
+    const prov = (dnsState().providers || []).find(x => x.id === t.provider);
+    const ad = adapters().find(x => x.index === t.adapter);
+    return `
+      <div class="alert warning" data-key="dns-trial">${ic("clock")}
+        <div class="alert-desc">
+          <b>Проверка DNS «${esc(prov?.name || t.provider)}» на «${esc(ad?.name || t.adapter)}».</b>
+          Если интернет работает, нажмите «Оставить». Иначе ничего не делайте: через
+          <b data-trial-left>${t.seconds_left}</b> с вернётся прежний DNS.
+          <div class="dns-trial-actions">
+            <button class="btn sm" data-trial-keep="${t.adapter}">Оставить</button>
+            <button class="btn outline sm" data-trial-revert="${t.adapter}">Вернуть сейчас</button>
+          </div>
+        </div>
+      </div>`;
+  }
+
+  function tickTrial() {
+    const t = dnsState()?.trial;
+    if (!t) return;
+    const left = Math.max(0, Math.ceil(t.deadline - Date.now() / 1000));
+    const el = root.querySelector("[data-trial-left]");
+    if (el) el.textContent = left;
+    if (left === 0 && !trialNotified.has(t.deadline)) {
+      trialNotified.add(t.deadline);   // сервер откатит сам; здесь только освежаем состояние
+      toast.info("DNS возвращён", "Проверка не подтверждена — прежние настройки восстановлены.");
+      setTimeout(() => api("hub_refresh", ["dns"]).catch(() => {}), 1500);
+    }
+  }
+
+  async function onTrial(adapter, keep) {
+    try {
+      await api(keep ? "dns_trial_confirm" : "dns_trial_revert", Number(adapter));
+      toast.success(keep ? "DNS оставлен" : "Прежний DNS возвращён");
+    } catch (e) {
+      toast.error(keep ? "Не удалось подтвердить" : "Не удалось вернуть", e.message);
+    } finally {
+      api("hub_refresh", ["dns"]).catch(() => {});
+    }
+  }
+
   function render() {
     morph(root.querySelector("[data-slot=body]"), `
+      ${trialHtml()}
       <div class="card compact" data-key="card-adapter">
         <div class="card-header"><div class="card-title">${ic("wifi")}Адаптер</div></div>
         <div class="card-content stack-sm">${adapterCardHtml()}</div>
@@ -337,6 +388,10 @@
         </div>`;
 
       el.addEventListener("click", e => {
+        const keep = e.target.closest("[data-trial-keep]");
+        if (keep) return onTrial(keep.dataset.trialKeep, true);
+        const rev = e.target.closest("[data-trial-revert]");
+        if (rev) return onTrial(rev.dataset.trialRevert, false);
         if (e.target.closest("[data-add-provider]")) return openAddProvider();
         if (e.target.closest("[data-reset]")) return onReset();
         const use = e.target.closest("[data-use]");
@@ -363,6 +418,7 @@
       ctx.on(["dns", "app"], render);
       render();
       ctx.every(2500, pingAll);
+      ctx.every(500, tickTrial, { immediate: false });
     },
   });
 })();
