@@ -44,5 +44,8 @@ def test_every_runtime_file_nuitka_skips_has_explicit_rule():
 
 
 def test_intermediate_build_dir_is_removed():
-    # build\main.build — сгенерированный C-код и объектники; после сборки не нужен
+    # build\main.build — сгенерированный C-код и объектники; после сборки не нужен.
+    # Nuitka убирает его сама (--remove-output), а build.bat добивает остаток, если
+    # папка осталась от прежних сборок без этого флага
     assert "--remove-output" in BUILD_BAT
+    assert re.search(r'rmdir /S /Q "?build\\main\.build"?', BUILD_BAT)

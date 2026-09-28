@@ -124,6 +124,9 @@ if errorlevel 1 (
     exit /b 1
 )
 
+REM Intermediate C sources and objects - dead weight once the build succeeded
+if exist "build\main.build" rmdir /S /Q "build\main.build"
+
 echo.
 echo Done: %OUT_DIR%\Chimera.exe
 endlocal
