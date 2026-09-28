@@ -120,6 +120,8 @@ def loggable(act, argv: list[str]) -> str:
 def record_change(act, argv: list[str], ok: bool) -> None:
     if act.level == READ:
         return
+    if act.group == "service" and (len(argv) < 2 or argv[1] in ("status", "run")):
+        return  # `service run` зовёт планировщик при старте системы: это не правка пользователя
     try:
         with open(CHANGES_LOG, "a", encoding="utf-8") as f:
             f.write(f"{datetime.now():%Y-%m-%d %H:%M:%S}\tcli\t{loggable(act, argv)}\t{'ok' if ok else 'error'}\n")

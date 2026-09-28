@@ -189,9 +189,12 @@ def _watchdog(server, api: Api, hub: _Hub, stop: threading.Event) -> None:
 def run():
     from modules import appconfig
 
+    from modules import control
+
     api = Api()
     hub = _Hub()
     api.push = hub.push
+    control.start_for(api)  # канал для `chimera ...` (modules/control.py)
 
     port = int(appconfig.load().get("ui_port") or DEFAULT_PORT)
     server = ThreadingHTTPServer((HOST, port), _Handler)

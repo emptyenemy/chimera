@@ -19,10 +19,11 @@ def _load(name: str):
     return importlib.import_module(BACKENDS[name][0])
 
 
-def run():
+def run(backend_name: str | None = None):
+    """backend_name — движок, заданный флагом запуска (--browser); иначе из config.json."""
     from modules import appconfig
 
-    name = str(appconfig.load().get("ui_backend") or DEFAULT_BACKEND).lower()
+    name = str(backend_name or appconfig.load().get("ui_backend") or DEFAULT_BACKEND).lower()
     if name not in BACKENDS:
         print(f"Неизвестный движок окна: {name!r}. Доступно: {', '.join(BACKENDS)}. "
               f"Беру {DEFAULT_BACKEND}.")

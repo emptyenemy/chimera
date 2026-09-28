@@ -10,7 +10,7 @@ import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
-from modules import appconfig, autostart, blockcheck, cheburcheck, domains, paths, service, upstream, winproc
+from modules import appconfig, autostart, blockcheck, cheburcheck, control, domains, paths, service, upstream, winproc
 from modules import discord as discord_cache
 from modules.dns_jumper import DnsJumper
 from modules.hosts import HostsManager
@@ -99,6 +99,7 @@ class Api:
         Если рядом работает фоновая служба — она единственный владелец процессов
         (иначе закрытие окна погасило бы то, что служба должна держать поднятым);
         UI просто перестаёт опрашивать состояние и выходит."""
+        control.stop_current()  # `chimera ...` больше не должна видеть закрывающуюся программу
         self.hub.stop()
         self._bg_stop.set()
         if service.is_running():

@@ -15,7 +15,7 @@ from PySide6.QtWebChannel import QWebChannel
 from PySide6.QtWebEngineWidgets import QWebEngineView
 from PySide6.QtWidgets import QApplication, QMainWindow, QMenu, QSystemTrayIcon
 
-from modules import appconfig, instance
+from modules import appconfig, control, instance
 
 from . import tray_model
 from .api import WEB_DIR, Api
@@ -219,6 +219,7 @@ def run():
     # повторный запуск exe показывает это окно (см. modules/instance.py и main.py)
     listener = instance.listen(window.show_requested.emit)
     api.request_quit = window.quit_requested.emit  # обновление закрывает программу через поток UI
+    control.start_for(api)  # канал для `chimera ...` (modules/control.py); quit/restart идут тем же выходом
 
     def _on_closing():
         if listener:

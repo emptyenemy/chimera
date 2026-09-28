@@ -327,7 +327,15 @@ def start_for(api) -> ControlServer | None:
         return _server
     try:
         _server = ControlServer(api).start()
-    except OSError:
-        return None  # порт занять не вышло — программа работает и без командной строки
+    except Exception:  # noqa: BLE001 — канал вспомогательный: не вышел, программа работает и без командной строки
+        return None
     atexit.register(_server.stop)
     return _server
+
+
+def stop_current() -> None:
+    """Закрывает канал и убирает файл со связью (при выходе программы)."""
+    global _server
+    server, _server = _server, None
+    if server is not None:
+        server.stop()

@@ -27,7 +27,10 @@ class JsApi:
 
 
 def run():
+    from modules import control
+
     api = Api()
+    control.start_for(api)  # канал для `chimera ...` (modules/control.py)
     window = webview.create_window(
         "Chimera",
         str(WEB_DIR / "index.html"),

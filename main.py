@@ -6,7 +6,7 @@ import sys
 import threading
 from pathlib import Path
 
-from modules import appconfig
+from modules import appconfig, paths
 
 ROOT = Path(__file__).parent
 
@@ -41,15 +41,18 @@ def relaunch_as_admin() -> bool:
 
 
 def main() -> int:
-    # `service install|uninstall|start|stop|status|run` — управление фоновым режимом
-    # напрямую из командной строки, независимо от "interface" в config.json (им
-    # ставится/снимается задача в Планировщике, а не читается конфиг).
-    if len(sys.argv) > 1 and sys.argv[1] == "service":
-        from modules import service
-        return service.cli(sys.argv[2:])
+    # Командная строка — путь по умолчанию: `chimera status`, `chimera service run` и так далее
+    # (modules/cli). Окно открывают --window/--browser, автозапуск (--tray), а также двойной
+    # клик по exe без аргументов и без консоли (modules/cli/entry.py). Права администратора
+    # для команд не запрашиваем: они говорят с уже работающей Chimera по каналу управления.
+    from modules.cli import entry
+    argv = sys.argv[1:]
+    if entry.route(argv, frozen=paths.IS_FROZEN, console=entry.has_console()) == "cli":
+        from modules.cli.app import main as cli_main
+        return cli_main(argv)
 
     config = load_config()
-    mode = config.get("interface", "ui")
+    mode = "ui" if entry.forces_window(argv) else config.get("interface", "ui")
 
     # Окно уже открыто (или свёрнуто в трей) — показываем его, вторую копию не
     # поднимаем. До UAC: иначе повторный запуск сначала спросил бы права, а потом
@@ -71,7 +74,7 @@ def main() -> int:
 
     if mode == "ui":
         from ui.app import run
-        run()
+        run(entry.backend_override(argv))
         # Окно закрыто, процессы погашены (Api.shutdown). Интерпретатор на выходе
         # ждёт пулы потоков, а там может дорабатывать сетевой таймаут фоновой
         # проверки — закрытая программа не должна висеть в памяти ради этого.
