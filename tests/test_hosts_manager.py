@@ -169,3 +169,33 @@ def test_sync_raises_when_nothing_resolves(hm, monkeypatch):
     monkeypatch.setattr(hosts_manager, "split_lists", lambda names: (["example.com"], []))
     with pytest.raises(ValueError):
         hm.set_assignments({"xbox": ["discord"]})
+
+
+def test_resync_picks_up_changed_list_content(hm, monkeypatch):
+    # правка самого списка (не привязки) должна доехать до hosts без ручного переключения
+    monkeypatch.setattr(hosts_manager, "is_admin", lambda: True)
+    monkeypatch.setattr(
+        hosts_manager, "resolve_domains",
+        lambda domains_, doh, servers: [{"ip": "9.9.9.9", "host": d} for d in domains_],
+    )
+    monkeypatch.setattr(hm, "get_provider", lambda pid: {"id": pid, "name": pid.upper(),
+                                                         "doh": None, "servers": []})
+    monkeypatch.setattr(hosts_manager, "split_lists", lambda names: (["old.example"], []))
+    hm.set_assignments({"xbox": ["discord"]})
+
+    monkeypatch.setattr(hosts_manager, "split_lists", lambda names: (["old.example", "new.example"], []))
+    st = hm.resync()
+
+    text = hm.hosts_path.read_text(encoding="utf-8")
+    assert "9.9.9.9 new.example" in text
+    assert st["count"] == 2
+
+
+def test_resync_without_assignments_is_a_noop(hm, monkeypatch):
+    # привязок нет — админ не нужен, hosts не трогаем
+    monkeypatch.setattr(hosts_manager, "is_admin", lambda: False)
+    before = hm.hosts_path.read_text(encoding="utf-8")
+
+    hm.resync()
+
+    assert hm.hosts_path.read_text(encoding="utf-8") == before
