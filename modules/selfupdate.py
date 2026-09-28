@@ -296,7 +296,8 @@ def write_script(app_dir: Path, staged: Path, pid: int, restart_service: bool, r
     if restart_service:
         lines.append(f'schtasks /Run /TN "{SERVICE_TASK}" >>"%LOG%" 2>&1')
     if relaunch:
-        lines.append(f'start "" {_q(Path(app) / EXE_NAME)}')
+        # --window: без аргументов exe из консоли печатает справку (modules/cli/entry.py)
+        lines.append(f'start "" {_q(Path(app) / EXE_NAME)} --window')
     lines.append("exit /b %RESULT%")
 
     script.parent.mkdir(parents=True, exist_ok=True)

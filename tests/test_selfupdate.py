@@ -382,3 +382,13 @@ def test_write_manifest_lists_all_files_relative(tmp_path):
     files = selfupdate.write_manifest(tmp_path)
     assert files == ["Chimera.exe", "bin/sing-box/sing-box.exe"]
     assert selfupdate.read_manifest(tmp_path) == set(files)
+
+
+def test_update_script_relaunches_the_window_not_a_bare_exe(layout):
+    # без аргументов exe из консоли печатает справку (modules/cli/entry.py), поэтому окно зовём явно
+    app, staged, upd = layout
+    script = selfupdate.write_script(app, staged, _finished_pid(), restart_service=False, relaunch=True,
+                                     script=upd / "apply.cmd", log=upd / "update.log",
+                                     rollback=upd / "rollback")
+    line = [ln for ln in script.read_text(encoding="utf-8", errors="replace").splitlines() if ln.startswith('start ""')]
+    assert line and line[0].endswith("Chimera.exe\" --window")

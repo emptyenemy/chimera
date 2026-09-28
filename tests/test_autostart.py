@@ -12,7 +12,7 @@ def test_launch_target_frozen_runs_exe_directly(monkeypatch):
     monkeypatch.setattr(paths, "IS_FROZEN", True)
     command, arguments = autostart._launch_target()
     assert command == sys.executable
-    assert arguments == autostart.TRAY_ARG
+    assert arguments == autostart.LAUNCH_ARGS
 
 
 def test_launch_target_from_sources_runs_main_py(monkeypatch):
@@ -21,7 +21,7 @@ def test_launch_target_from_sources_runs_main_py(monkeypatch):
     assert command.lower().endswith(("pythonw.exe", "python.exe"))
     assert str(autostart.MAIN_PY) in arguments
     # с Windows — сразу в трей, без окна
-    assert arguments.endswith(autostart.TRAY_ARG)
+    assert arguments.endswith(autostart.LAUNCH_ARGS)
 
 
 def _task_query_xml(command: str, arguments: str) -> bytes:
@@ -62,7 +62,7 @@ def test_refresh_recreates_task_with_old_arguments(monkeypatch):
 
 def test_refresh_keeps_up_to_date_task(monkeypatch):
     monkeypatch.setattr(paths, "IS_FROZEN", True)
-    run = _Run(_task_query_xml(sys.executable, autostart.TRAY_ARG))
+    run = _Run(_task_query_xml(sys.executable, autostart.LAUNCH_ARGS))
     monkeypatch.setattr(autostart.subprocess, "run", run)
     assert autostart.refresh() is False
     assert not run.created

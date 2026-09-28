@@ -27,8 +27,13 @@ from modules import paths
 ROOT = Path(__file__).parent.parent
 MAIN_PY = ROOT / "main.py"
 TASK_NAME = "CHIMERA"
-# С Windows программа стартует сразу в трей, без окна (см. ui/backend_qt.py).
+# С Windows программа стартует сразу в трей, без окна (см. ui/backend_qt.py). --window нужен
+# с тех пор, как chimera по умолчанию командная строка (modules/cli/entry.py): без него
+# запуск из консоли печатал бы справку. Задачи со старым аргументом одним --tray по-прежнему
+# открывают окно, а refresh() приводит их к новому виду.
 TRAY_ARG = "--tray"
+WINDOW_ARG = "--window"
+LAUNCH_ARGS = f"{WINDOW_ARG} {TRAY_ARG}"
 
 _NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 
@@ -48,14 +53,14 @@ def _launch_target() -> tuple[str, str]:
     """(команда, аргументы) для запуска приложения.
 
     Собранный .exe запускаем напрямую; из исходников — через pythonw.exe
-    (без консольного окна), передавая путь к main.py. В обоих случаях с --tray.
+    (без консольного окна), передавая путь к main.py. В обоих случаях с --window --tray.
     """
     if paths.IS_FROZEN:
-        return sys.executable, TRAY_ARG
+        return sys.executable, LAUNCH_ARGS
     exe = Path(sys.executable)
     pyw = exe.with_name("pythonw.exe")  # оконный интерпретатор — без чёрной консоли
     command = str(pyw if pyw.exists() else exe)
-    return command, f'"{MAIN_PY}" {TRAY_ARG}'
+    return command, f'"{MAIN_PY}" {LAUNCH_ARGS}'
 
 
 def _task_xml() -> str:
