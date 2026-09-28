@@ -44,6 +44,18 @@ paths.migrate(Path(__file__).parent / "proxy.log", LOG_PATH)
 PAC_PATH = paths.data_path("proxy.pac")
 paths.migrate(Path(__file__).parent / "proxy.pac", PAC_PATH)
 
+# Домены и подсети из выбранных списков лежат не в конфиге, а в локальных файлах правил
+# sing-box: ядро следит за ними и подхватывает правку без перезапуска (проверено на
+# 1.14.2 — за доли секунды, в том числе при замене файла целиком).
+DOMAINS_RULESET_PATH = paths.data_path("singbox-domains.json")
+IPS_RULESET_PATH = paths.data_path("singbox-ips.json")
+DOMAINS_TAG = "chimera-domains"
+IPS_TAG = "chimera-ips"
+# Пустое условие в правиле — ошибка или «подходит всё», поэтому пустые списки пишем
+# заглушками, которые не совпадут ни с чем (TEST-NET-3 и зарезервированный .invalid).
+DOMAIN_PLACEHOLDER = "chimera.invalid"
+IP_PLACEHOLDER = "203.0.113.113/32"
+
 # ветка реестра WinINet: туда пишем AutoConfigURL, чтобы браузеры подхватили PAC
 _INET_SETTINGS = r"Software\Microsoft\Windows\CurrentVersion\Internet Settings"
 
@@ -128,9 +140,40 @@ class ProxyManager:
         valid = {i["name"] for i in domains.list_info()}
         self.config["lists"] = [n for n in (names or []) if n in valid]
         self._save()
-        if self.running:
-            self.restart()
+        self.reload_lists()  # без перезапуска: ядро перечитает файлы правил само
         return self.state()
+
+    def reload_lists(self) -> None:
+        """Применяет текущие списки к работающему прокси: переписывает файлы правил
+        (ядро подхватит их само), а в PAC-режиме ещё PAC и уведомляет браузеры.
+        Остановленному прокси ничего не нужно — файлы допишет start()."""
+        with self._lock:
+            if not self.running:
+                return
+            self._write_rulesets()
+            if self._pac_mode:
+                self._write_pac()
+                self._wininet_refresh()
+
+    def _write_rulesets(self) -> None:
+        """Пишет домены и подсети выбранных списков в файлы правил sing-box.
+        Замена файла атомарная (tmp + os.replace): ядро не должно прочесть половину."""
+        dom, nets = self._split()
+        for path, key, items, placeholder in (
+            (DOMAINS_RULESET_PATH, "domain_suffix", dom, DOMAIN_PLACEHOLDER),
+            (IPS_RULESET_PATH, "ip_cidr", nets, IP_PLACEHOLDER),
+        ):
+            body = {"version": 3, "rules": [{key: list(items) or [placeholder]}]}
+            tmp = path.with_name(path.name + ".tmp")
+            tmp.write_text(json.dumps(body, ensure_ascii=False, indent=2), encoding="utf-8")
+            os.replace(tmp, path)
+
+    @staticmethod
+    def _ruleset_refs() -> list[dict]:
+        return [
+            {"type": "local", "tag": DOMAINS_TAG, "format": "source", "path": str(DOMAINS_RULESET_PATH)},
+            {"type": "local", "tag": IPS_TAG, "format": "source", "path": str(IPS_RULESET_PATH)},
+        ]
 
     def set_autostart(self, value: bool) -> dict:
         self.config["autostart"] = bool(value)
@@ -287,11 +330,12 @@ class ProxyManager:
         if self._pac_mode:
             # PAC: выборочно — через прокси идут ТОЛЬКО записи из выбранных списков,
             # остальной трафик ядро вообще не видит (PAC отправляет в SOCKS лишь их).
-            dom, nets = self._split()
+            # правила ссылаются на файлы всегда, даже при пустых списках: домен,
+            # добавленный позже, ляжет в файл и подхватится без перезапуска ядра
             dns = {
                 "servers": dns_servers,
                 # IP в DNS-правилах не нужны — их резолвить нечего
-                "rules": ([{"domain_suffix": dom, "server": "dns-proxy"}] if dom else []),
+                "rules": [{"rule_set": [DOMAINS_TAG], "server": "dns-proxy"}],
                 "final": "dns-direct",
                 "strategy": "prefer_ipv4",
             }
@@ -299,12 +343,13 @@ class ProxyManager:
                 "type": "mixed", "tag": "mixed-in",
                 "listen": "127.0.0.1", "listen_port": int(self.config["socks_port"]),
             }
-            route_rules = [{"action": "sniff"}]
-            if dom:
-                route_rules.append({"domain_suffix": dom, "outbound": "proxy"})
-            if nets:
-                route_rules.append({"ip_cidr": nets, "outbound": "proxy"})
+            route_rules = [
+                {"action": "sniff"},
+                {"rule_set": [DOMAINS_TAG], "outbound": "proxy"},
+                {"rule_set": [IPS_TAG], "outbound": "proxy"},
+            ]
             route = {
+                "rule_set": self._ruleset_refs(),
                 "rules": route_rules,
                 "final": "direct",  # не-наши домены (если влезут) — мимо
                 "default_domain_resolver": {"server": "dns-direct"},
@@ -355,14 +400,12 @@ class ProxyManager:
         process_name в DNS-правилах ловит лишь тех, кто резолвит сам (async DNS у
         Chrome); остальной DNS приложений — напрямую, что не мешает: их соединения
         всё равно уходят в прокси по имени процесса."""
-        dom, nets = self._split()
         apps = list(self.config.get("apps") or [])
 
         dns_rules = []
         if apps:
             dns_rules.append({"process_name": apps, "server": "dns-proxy"})
-        if dom:
-            dns_rules.append({"domain_suffix": dom, "server": "dns-proxy"})
+        dns_rules.append({"rule_set": [DOMAINS_TAG], "server": "dns-proxy"})
         dns = {
             "servers": dns_servers,
             "rules": dns_rules,
@@ -379,11 +422,10 @@ class ProxyManager:
         ]
         if apps:
             rules.append({"process_name": apps, "outbound": "proxy"})
-        if dom:
-            rules.append({"domain_suffix": dom, "outbound": "proxy"})
-        if nets:
-            rules.append({"ip_cidr": nets, "outbound": "proxy"})
+        rules.append({"rule_set": [DOMAINS_TAG], "outbound": "proxy"})
+        rules.append({"rule_set": [IPS_TAG], "outbound": "proxy"})
         route = {
+            "rule_set": self._ruleset_refs(),
             "rules": rules,
             "final": "direct",
             "find_process": True,
@@ -503,6 +545,7 @@ class ProxyManager:
                     "sing-box не установлен. Нажми «Скачать sing-box»."
                 )
             cfg = self.build_config()
+            self._write_rulesets()  # конфиг ссылается на эти файлы — они должны быть до старта ядра
             CONFIG_PATH.write_text(json.dumps(cfg, ensure_ascii=False, indent=2), encoding="utf-8")
             if self._pac_mode:
                 self._write_pac()

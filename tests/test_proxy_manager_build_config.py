@@ -10,7 +10,19 @@ STATE_PATH уже изолирован conftest.py (CHIMERA_DATA -> времен
 import pytest
 
 from modules.proxy import manager as proxy_manager
-from modules.proxy.manager import ProxyManager
+from modules.proxy.manager import (
+    DOMAINS_RULESET_PATH, DOMAINS_TAG, IPS_RULESET_PATH, IPS_TAG, ProxyManager,
+)
+
+# домены и подсети из списков в конфиге — не списком, а ссылкой на файл правил:
+# sing-box сам перечитывает такой файл, поэтому правка списка не требует рестарта
+DOM_ROUTE = {"rule_set": [DOMAINS_TAG], "outbound": "proxy"}
+IP_ROUTE = {"rule_set": [IPS_TAG], "outbound": "proxy"}
+DOM_DNS = {"rule_set": [DOMAINS_TAG], "server": "dns-proxy"}
+RULE_SETS = [
+    {"type": "local", "tag": DOMAINS_TAG, "format": "source", "path": str(DOMAINS_RULESET_PATH)},
+    {"type": "local", "tag": IPS_TAG, "format": "source", "path": str(IPS_RULESET_PATH)},
+]
 
 VLESS_LINK = "vless://uuid-1@1.2.3.4:443?security=none&type=tcp#test"
 
@@ -48,32 +60,29 @@ def test_build_config_pac_mode_routes_domains_and_ips_separately(pm, monkeypatch
     assert cfg["inbounds"][0]["type"] == "mixed"
     assert cfg["inbounds"][0]["listen_port"] == 2080
 
-    dom_rule = _route_rule(cfg["route"], "domain_suffix")
-    ip_rule = _route_rule(cfg["route"], "ip_cidr")
-    assert dom_rule["domain_suffix"] == ["example.com", "foo.example"]
-    assert dom_rule["outbound"] == "proxy"
-    assert ip_rule["ip_cidr"] == ["10.0.0.0/24"]
-    assert ip_rule["outbound"] == "proxy"
+    assert cfg["route"]["rule_set"] == RULE_SETS
+    assert cfg["route"]["rules"] == [{"action": "sniff"}, DOM_ROUTE, IP_ROUTE]
     assert cfg["route"]["final"] == "direct"
 
     # DNS: наши домены идут через прокси-DNS, IP в DNS-правилах не нужны
-    assert cfg["dns"]["rules"] == [{"domain_suffix": ["example.com", "foo.example"],
-                                     "server": "dns-proxy"}]
+    assert cfg["dns"]["rules"] == [DOM_DNS]
 
     assert cfg["outbounds"][0]["type"] == "vless"
     assert cfg["outbounds"][0]["tag"] == "proxy"
     assert cfg["outbounds"][1] == {"type": "direct", "tag": "direct"}
 
 
-def test_build_config_pac_mode_without_lists_has_no_route_rules_beyond_sniff(pm, monkeypatch):
+def test_build_config_pac_mode_without_lists_still_references_rule_sets(pm, monkeypatch):
+    # правила ссылаются на файлы всегда, даже пока списки пусты: домен, добавленный
+    # позже, попадёт в файл и подхватится без перезапуска ядра
     monkeypatch.setattr(proxy_manager.domains, "split_lists", lambda names: ([], []))
     pm.config["link"] = VLESS_LINK
     pm.config["lists"] = []
     pm.config["mode"] = "pac"
 
     cfg = pm.build_config()
-    assert cfg["route"]["rules"] == [{"action": "sniff"}]
-    assert cfg["dns"]["rules"] == []
+    assert cfg["route"]["rules"] == [{"action": "sniff"}, DOM_ROUTE, IP_ROUTE]
+    assert cfg["dns"]["rules"] == [DOM_DNS]
 
 
 def test_build_config_tun_mode_ignores_lists_and_routes_everything_to_proxy(pm, monkeypatch):
@@ -92,6 +101,7 @@ def test_build_config_tun_mode_ignores_lists_and_routes_everything_to_proxy(pm, 
     # список игнорируется в TUN — domain_suffix/ip_cidr правил по спискам нет
     assert _route_rule(cfg["route"], "domain_suffix") is None
     assert _route_rule(cfg["route"], "ip_cidr") is None
+    assert "rule_set" not in cfg["route"]
     private_rule = _route_rule(cfg["route"], "ip_is_private")
     assert private_rule == {"ip_is_private": True, "outbound": "direct"}
     dns_rule = _route_rule(cfg["route"], "protocol")
@@ -144,15 +154,16 @@ def test_build_config_split_mode_routes_apps_domains_and_ips_to_proxy(pm, monkey
     assert app_rule == {"process_name": ["Discord.exe", "chrome.exe"], "outbound": "proxy"}
     assert private < rules.index(app_rule)
 
-    assert _route_rule(cfg["route"], "domain_suffix") == {"domain_suffix": ["example.com"], "outbound": "proxy"}
-    assert _route_rule(cfg["route"], "ip_cidr") == {"ip_cidr": ["10.0.0.0/24"], "outbound": "proxy"}
+    assert cfg["route"]["rule_set"] == RULE_SETS
+    assert DOM_ROUTE in rules
+    assert IP_ROUTE in rules
 
 
 def test_build_config_split_mode_dns_proxy_only_for_lists_and_apps(pm, monkeypatch):
     cfg = _split_cfg(pm, monkeypatch, ["chrome.exe"])
 
     assert cfg["dns"]["final"] == "dns-direct"
-    assert {"domain_suffix": ["example.com"], "server": "dns-proxy"} in cfg["dns"]["rules"]
+    assert DOM_DNS in cfg["dns"]["rules"]
     # собственный DNS приложения (async DNS у Chrome) — тоже через прокси
     assert {"process_name": ["chrome.exe"], "server": "dns-proxy"} in cfg["dns"]["rules"]
     assert cfg["route"]["default_domain_resolver"] == {"server": "dns-direct"}
@@ -163,14 +174,14 @@ def test_build_config_split_mode_without_apps_has_no_process_rules(pm, monkeypat
 
     assert _route_rule(cfg["route"], "process_name") is None
     assert all("process_name" not in r for r in cfg["dns"]["rules"])
-    assert _route_rule(cfg["route"], "domain_suffix") is not None
+    assert DOM_ROUTE in cfg["route"]["rules"]
 
 
 def test_build_config_split_mode_without_lists_routes_only_apps(pm, monkeypatch):
     cfg = _split_cfg(pm, monkeypatch, ["WhatsApp.exe"], dom=(), nets=())
 
-    assert _route_rule(cfg["route"], "domain_suffix") is None
-    assert _route_rule(cfg["route"], "ip_cidr") is None
+    # списки пусты, но ссылки на файлы правил на месте — добавленный домен подхватится сам
+    assert DOM_ROUTE in cfg["route"]["rules"]
     assert _route_rule(cfg["route"], "process_name")["process_name"] == ["WhatsApp.exe"]
 
 
@@ -208,3 +219,93 @@ def test_set_apps_dedupes_case_insensitively_and_keeps_names(pm):
 def test_set_apps_rejects_paths_and_non_exe(pm):
     st = pm.set_apps([r"C:\Program Files\app.exe", "notepad", "ok.exe", "../x.exe"])
     assert st["apps"] == ["ok.exe"]
+
+
+# --- списки применяются на лету: файлы правил, а не рестарт ---------------------------
+
+@pytest.fixture
+def rs_paths(tmp_path, monkeypatch):
+    dom, ips = tmp_path / "domains.json", tmp_path / "ips.json"
+    monkeypatch.setattr(proxy_manager, "DOMAINS_RULESET_PATH", dom)
+    monkeypatch.setattr(proxy_manager, "IPS_RULESET_PATH", ips)
+    return dom, ips
+
+
+def test_write_rulesets_puts_domains_and_subnets_into_source_files(pm, monkeypatch, rs_paths):
+    import json
+    monkeypatch.setattr(proxy_manager.domains, "split_lists",
+                        lambda names: (["example.com", "foo.example"], ["10.0.0.0/24"]))
+    pm.config["lists"] = ["somelist"]
+    pm._write_rulesets()
+
+    dom, ips = rs_paths
+    assert json.loads(dom.read_text(encoding="utf-8")) == {
+        "version": 3, "rules": [{"domain_suffix": ["example.com", "foo.example"]}]}
+    assert json.loads(ips.read_text(encoding="utf-8")) == {
+        "version": 3, "rules": [{"ip_cidr": ["10.0.0.0/24"]}]}
+
+
+def test_write_rulesets_empty_lists_use_placeholders_that_match_nothing(pm, monkeypatch, rs_paths):
+    # пустое условие в sing-box либо ошибка, либо «подходит всё» — нужна заглушка
+    import json
+    monkeypatch.setattr(proxy_manager.domains, "split_lists", lambda names: ([], []))
+    pm._write_rulesets()
+
+    dom, ips = rs_paths
+    assert json.loads(dom.read_text(encoding="utf-8"))["rules"] == [
+        {"domain_suffix": [proxy_manager.DOMAIN_PLACEHOLDER]}]
+    assert json.loads(ips.read_text(encoding="utf-8"))["rules"] == [
+        {"ip_cidr": [proxy_manager.IP_PLACEHOLDER]}]
+
+
+def test_write_rulesets_replaces_files_atomically(pm, monkeypatch, rs_paths):
+    # ядро следит за файлом: писать надо целиком и разом, без .tmp-хвостов рядом
+    pm.config["lists"] = ["somelist"]
+    monkeypatch.setattr(proxy_manager.domains, "split_lists", lambda names: (["a.example"], []))
+    pm._write_rulesets()
+    monkeypatch.setattr(proxy_manager.domains, "split_lists", lambda names: (["b.example"], []))
+    pm._write_rulesets()
+
+    dom, _ = rs_paths
+    assert "b.example" in dom.read_text(encoding="utf-8")
+    assert sorted(p.name for p in dom.parent.iterdir()) == ["domains.json", "ips.json"]
+
+
+def _running(monkeypatch, pm):
+    monkeypatch.setattr(ProxyManager, "running", property(lambda self: True))
+    monkeypatch.setattr(pm, "restart", lambda: pytest.fail("рестарт не нужен — ядро перечитает файлы"))
+
+
+def test_set_lists_applies_without_restarting_running_proxy(pm, monkeypatch, rs_paths):
+    monkeypatch.setattr(proxy_manager.domains, "list_info", lambda: [{"name": "somelist"}])
+    monkeypatch.setattr(proxy_manager.domains, "split_lists", lambda names: (["example.com"], []))
+    _running(monkeypatch, pm)
+    pm.config["mode"] = "tun"  # PAC тут не нужен
+
+    pm.set_lists(["somelist"])
+
+    dom, _ = rs_paths
+    assert "example.com" in dom.read_text(encoding="utf-8")
+
+
+def test_reload_lists_in_pac_mode_rewrites_pac_and_refreshes_browsers(pm, monkeypatch, rs_paths):
+    monkeypatch.setattr(proxy_manager.domains, "split_lists", lambda names: (["example.com"], []))
+    _running(monkeypatch, pm)
+    calls = []
+    monkeypatch.setattr(pm, "_write_pac", lambda: calls.append("pac"))
+    monkeypatch.setattr(ProxyManager, "_wininet_refresh", staticmethod(lambda: calls.append("refresh")))
+    pm.config["mode"] = "pac"
+
+    pm.reload_lists()
+
+    assert calls == ["pac", "refresh"]
+
+
+def test_reload_lists_does_nothing_when_proxy_is_stopped(pm, monkeypatch, rs_paths):
+    # остановленному прокси файлы допишет start() — трогать диск зря не надо
+    monkeypatch.setattr(proxy_manager.domains, "split_lists", lambda names: (["example.com"], []))
+
+    pm.reload_lists()
+
+    dom, ips = rs_paths
+    assert not dom.exists() and not ips.exists()

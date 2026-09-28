@@ -34,6 +34,8 @@ def test_generated_config_passes_singbox_check(tmp_path, monkeypatch, mode):
     pm.config["mode"] = mode
 
     cfg = pm.build_config()
+    # конфиг ссылается на файлы правил — check открывает их и сверяет схему
+    pm._write_rulesets()
     cfg_path = tmp_path / "singbox-config.json"
     cfg_path.write_text(json.dumps(cfg, ensure_ascii=False, indent=2), encoding="utf-8")
 
