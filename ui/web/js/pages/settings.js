@@ -222,7 +222,11 @@
             ${switchHtml(config.auto_elevate !== false, 'data-cfg-switch="auto_elevate"', { pending: !!cfgPending.auto_elevate })}
           </div>
           <div class="switch-row">
-            <div class="set-row-label"><b>Запускать вместе с Windows</b><span>Задача в планировщике — сразу с правами администратора, без окна UAC.</span></div>
+            <div class="set-row-label"><b>Сворачивать в трей при закрытии</b><span>Крестик прячет окно, модули продолжают работать. Совсем закрыть — «Выход» в меню значка в трее. Только для окна на PySide6.</span></div>
+            ${switchHtml(config.close_to_tray !== false, 'data-cfg-switch="close_to_tray"', { pending: !!cfgPending.close_to_tray })}
+          </div>
+          <div class="switch-row">
+            <div class="set-row-label"><b>Запускать вместе с Windows</b><span>Задача в планировщике — сразу с правами администратора, без окна UAC. Стартует свёрнутой в трей.</span></div>
             ${autostart
               ? switchHtml(!!autostart.enabled, `data-act="autostart"${autostart.supported ? "" : ' data-tip="Не поддерживается на этой системе"'}`,
                   { disabled: !autostart.supported || autostartPending, pending: autostartPending })
