@@ -97,6 +97,29 @@ def fetch_bundle(force: bool = False) -> None:
     print("zapret-winws: готово")
 
 
+QT_RUNTIME = ("msvcp140.dll", "msvcp140_1.dll", "msvcp140_2.dll")
+
+
+def use_qt_runtime(build_dir: Path, qt_dir: Path | None = None) -> list[str]:
+    """Кладёт в сборку msvcp140*.dll из PySide6 поверх тех, что положила Nuitka.
+
+    Nuitka берёт C++-рантайм из своего компилятора (у VS2019 это 14.29), а Qt 6.11
+    собран новее и требует 14.44+: на старой msvcp140 рендерер QtWebEngine падает
+    с 0xC0000005, и окно программы остаётся пустым. DLL из рядом с exe грузится
+    раньше системной, поэтому класть надо именно ту, с которой поставляется Qt.
+    """
+    if qt_dir is None:
+        import PySide6
+        qt_dir = Path(PySide6.__file__).parent
+    copied = []
+    for name in QT_RUNTIME:
+        src = qt_dir / name
+        if src.exists():
+            shutil.copy2(src, build_dir / name)
+            copied.append(name)
+    return copied
+
+
 def write_versions(out: Path) -> dict:
     """Версии git-источников на момент сборки — для «Источников» в собранной программе."""
     data = {}
@@ -115,7 +138,11 @@ def main(argv=None) -> int:
     ap.add_argument("--force", action="store_true", help="перекачать, даже если уже есть")
     ap.add_argument("--versions", type=Path, help="записать versions.json и выйти")
     ap.add_argument("--manifest", type=Path, help="записать manifest.txt в папку сборки и выйти")
+    ap.add_argument("--qt-runtime", type=Path, help="положить в папку сборки msvcp140*.dll из PySide6 и выйти")
     args = ap.parse_args(argv)
+    if args.qt_runtime:
+        print("C++-рантайм из PySide6:", ", ".join(use_qt_runtime(args.qt_runtime)) or "не найден")
+        return 0
     if args.versions:
         for name, ver in write_versions(args.versions).items():
             print(f"{name}: {ver}")

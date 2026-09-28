@@ -116,6 +116,15 @@ if errorlevel 1 (
     exit /b 1
 )
 
+REM Nuitka ships msvcp140 from its own compiler (VS2019 = 14.29); Qt 6.11 needs a
+REM newer one - with the old DLL the QtWebEngine renderer crashes (0xC0000005) and
+REM the window stays blank. Use the copies PySide6 itself ships with.
+python tools\fetch_bins.py --qt-runtime "%OUT_DIR%" >nul
+if errorlevel 1 (
+    echo [!] Could not put the Qt C++ runtime into %OUT_DIR%.
+    exit /b 1
+)
+
 REM Last: the list of every file in the build. Self-update touches only files
 REM from this list, so anything else next to the exe is never deleted.
 python tools\fetch_bins.py --manifest "%OUT_DIR%" >nul
