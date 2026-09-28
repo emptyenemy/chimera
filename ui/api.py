@@ -7,10 +7,11 @@
 import json
 import os
 import threading
+import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
-from modules import appconfig, applog, autostart, blockcheck, cheburcheck, control, doctor, domains, paths, service, shareconfig, upstream, winproc
+from modules import appconfig, applog, autostart, blockcheck, cheburcheck, control, doctor, domainrec, domains, paths, service, shareconfig, upstream, winproc
 from modules import discord as discord_cache
 from modules.dns_jumper import DnsJumper
 from modules.hosts import HostsManager
@@ -196,6 +197,36 @@ class Api:
         try:
             res = doctor.evaluate(doctor.gather(self))
             return _ok(doctor.to_markdown(res) if markdown else res)
+        except Exception as e:
+            return _err(e)
+
+    # --- запись доменов сайта -------------------------------------------------
+
+    def dns_record_start(self, flush=True):
+        """Начинает запись: запоминает имена в кэше DNS Windows. Открытый после этого сайт
+        оставит в кэше имена, которые ему нужны (dns_record_stop вернёт разницу). Кэш перед
+        записью сбрасывается (нужны права администратора), иначе домены, уже бывшие в нём,
+        не покажутся."""
+        try:
+            flushed = False
+            if flush and is_admin():
+                domainrec.flush()
+                flushed = True
+            self._domain_rec = {"before": domainrec.read_cache(), "started": time.time(), "flushed": flushed}
+            return _ok({"started": True, "flushed": flushed, "admin": is_admin()})
+        except Exception as e:
+            return _err(e)
+
+    def dns_record_stop(self):
+        """Заканчивает запись: домены, появившиеся в кэше DNS с начала, по основным доменам."""
+        try:
+            rec = getattr(self, "_domain_rec", None)
+            if not rec:
+                raise RuntimeError("Запись не начата")
+            after = domainrec.read_cache()
+            self._domain_rec = None
+            return _ok({"domains": domainrec.suggest(rec["before"], after), "flushed": rec["flushed"],
+                        "seconds": round(time.time() - rec["started"])})
         except Exception as e:
             return _err(e)
 

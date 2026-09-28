@@ -274,6 +274,7 @@
 
   function onClick(e) {
     if (e.target.closest("[data-new]")) return createList();
+    if (e.target.closest('[data-act="record"]')) return openRecordDialog();
     const item = e.target.closest(".lst-item[data-name]");
     if (item) openList(item.dataset.name);
   }
@@ -313,6 +314,99 @@
     ]);
   }
 
+  // --- запись доменов сайта -------------------------------------------------
+  // Открываешь сайт, пока идёт запись, — Chimera показывает, какие домены ему понадобились
+  // (разница кэша DNS Windows), и добавляет выбранные в список одним нажатием.
+
+  function openRecordDialog() {
+    let timer = null, seconds = 0;
+    const stopTimer = () => { clearInterval(timer); timer = null; };
+    openDialog({
+      title: "Записать домены сайта",
+      description: "Какие домены нужны сайту (картинки, скрипты, API), чтобы не искать их вручную.",
+      body: `<div class="stack-sm" data-rec-body></div>`,
+      onClose: stopTimer,
+      onMount: h => {
+        const box = h.el.querySelector("[data-rec-body]");
+        const paint = html => { box.innerHTML = html; if (window.icons) window.icons(box); };
+        const intro = () => paint(`
+          <p>Нажмите «Начать», откройте в браузере сайт, который не открывается, дождитесь загрузки и вернитесь сюда нажать «Стоп».</p>
+          <p class="muted">Перед записью сбросим кэш DNS (это безопасно). Видны только домены, которые прошли через DNS Windows: если в браузере включён защищённый DNS (DNS через HTTPS), часть доменов не покажется. Отключите его на время записи.</p>
+          <div class="dialog-footer"><button class="btn outline" data-close>Закрыть</button><button class="btn" data-rec-start>${ic("play")}Начать</button></div>`);
+        const result = res => {
+          const groups = res.domains || [];
+          if (!groups.length) {
+            return paint(`
+              <p>Новых доменов не появилось.</p>
+              <p class="muted">Проверьте, что сайт открывался во время записи. Если в браузере включён защищённый DNS, отключите его на время записи.${res.flushed ? "" : " Кэш DNS не сбросили (нет прав администратора): домены, уже бывшие в нём, не показываются."}</p>
+              <div class="dialog-footer"><button class="btn outline" data-close>Закрыть</button><button class="btn" data-rec-start>${ic("play")}Повторить</button></div>`);
+          }
+          const rows = groups.map(g => `
+            <label class="check-row rec-row">
+              <input type="checkbox" class="checkbox" value="${esc(g.domain)}" ${g.tracker ? "" : "checked"}>
+              <span><b>${esc(g.domain)}</b>${g.tracker ? ` ${badgeHtml("возможно трекер", "outline")}` : ""}
+                <br><span class="muted">${esc(g.hosts.slice(0, 3).join(", "))}${g.hosts.length > 3 ? ` и ещё ${g.hosts.length - 3}` : ""}</span></span>
+            </label>`).join("");
+          const opts = (lists || []).map(f => `<option value="${esc(f.name)}">${esc(f.name)}</option>`).join("");
+          paint(`
+            <p class="muted">Записано за ${res.seconds} с. Отметьте домены, которые нужно добавить.</p>
+            <div class="stack-sm rec-list">${rows}</div>
+            <div class="field"><label class="label">Добавить в список</label><select class="select-native" data-rec-target>${opts}</select></div>
+            <div class="dialog-footer"><button class="btn outline" data-close>Закрыть</button><button class="btn" data-rec-add>Добавить</button></div>`);
+        };
+        h.el.addEventListener("click", async e => {
+          const start = e.target.closest("[data-rec-start]");
+          if (start) {
+            return withBusy(start, async () => {
+              try {
+                await api("dns_record_start");
+              } catch (err) { return toast.error("Не удалось начать запись", err.message); }
+              seconds = 0;
+              paint(`
+                <p><b>Идёт запись…</b> Откройте сайт в браузере, дождитесь загрузки и вернитесь сюда.</p>
+                <p class="muted">Прошло <span data-rec-sec>0</span> с</p>
+                <div class="dialog-footer"><button class="btn" data-rec-stop>${ic("square")}Стоп</button></div>`);
+              timer = setInterval(() => { seconds++; const el = box.querySelector("[data-rec-sec]"); if (el) el.textContent = seconds; }, 1000);
+            });
+          }
+          const stop = e.target.closest("[data-rec-stop]");
+          if (stop) {
+            stopTimer();
+            return withBusy(stop, async () => {
+              try { result(await api("dns_record_stop")); }
+              catch (err) { toast.error("Не удалось остановить запись", err.message); intro(); }
+            });
+          }
+          const add = e.target.closest("[data-rec-add]");
+          if (add) {
+            const chosen = [...box.querySelectorAll(".rec-list input:checked")].map(i => i.value);
+            const target = box.querySelector("[data-rec-target]")?.value;
+            if (!chosen.length) return toast.warning("Отметьте хотя бы один домен");
+            if (!target) return toast.warning("Нет списка, куда добавлять", "Сначала создайте список.");
+            return withBusy(add, async () => {
+              try {
+                const text = await api("lists_read", target);
+                const have = new Set(text.split(/\r?\n/).map(s => s.trim()));
+                const fresh = chosen.filter(d => !have.has(d));
+                if (!fresh.length) { toast.info("Всё уже есть в списке"); return h.close(); }
+                const info = await api("lists_save", target, text.replace(/\s*$/, "") + "\n" + fresh.join("\n") + "\n");
+                const item = lists?.find(f => f.name === target);
+                if (item && info) item.count = info.count;
+                for (const err of info?.apply_errors || []) toast.error(`Список сохранён, но не применён: ${moduleTitle(err.module)}`, err.error);
+                toast.success(`Добавлено в «${target}»: ${fresh.length}`);
+                if (current === target) { current = null; await openList(target); } else render();
+                h.close();
+              } catch (err) {
+                toast.error("Не удалось добавить", err.message);
+              }
+            });
+          }
+        });
+        intro();
+      },
+    });
+  }
+
   Pages.define({
     id: "lists", title: "Списки", icon: "list", group: "Данные",
     mount(el) {
@@ -322,6 +416,7 @@
           <div>
             <h1 class="page-title">Списки</h1>
           </div>
+          <button class="btn outline sm" data-act="record">${ic("radar")}Записать домены сайта</button>
         </div>
         <div data-slot="body"></div>`;
       body = root.querySelector("[data-slot=body]");

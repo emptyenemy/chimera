@@ -16,3 +16,7 @@
 .lst-editor-card { min-width: 0; }
 .lst-editor-wrap { display: flex; }
 .lst-editor { flex: 1; min-height: 480px; }
+
+/* Запись доменов сайта */
+.rec-list { max-height: 280px; overflow-y: auto; }
+.rec-row { align-items: flex-start; }
