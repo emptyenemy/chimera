@@ -15,9 +15,9 @@
   let autostartPending = false;
 
   const ENGINES = [
-    { id: "pyside6", icon: "layout-dashboard", title: "PySide6 (окно)", desc: "Своё окно со встроенным Chromium." },
-    { id: "pywebview", icon: "square", title: "pywebview (окно)", desc: "Окно на системном WebView2 — легче и стартует быстрее." },
-    { id: "browser", icon: "globe", title: "Браузер (вкладка)", desc: "Без своего окна — вкладка в браузере по умолчанию, не лезет поверх игры." },
+    { id: "pyside6", title: "Приложение" },
+    { id: "pywebview", title: "Лёгкое окно (WebView2)" },
+    { id: "browser", title: "Вкладка браузера" },
   ];
 
   // --- сеть / бэкенд ------------------------------------------------------------
@@ -178,59 +178,34 @@
 
   function opt(cur, v) { return cur === v ? " selected" : ""; }
 
-  function interfaceCardHtml() {
-    if (!config) return cardSkeleton("Интерфейс", "sliders-horizontal");
+  // Общее: как программа запускается, закрывается и в чём показывается. Режимы
+  // ui/tui/service — инструмент разработчика, остаются в config.json, а не здесь.
+  function generalCardHtml() {
+    if (!config) return cardSkeleton("Общее", "settings");
     return `
-      <div class="card">
-        <div class="card-header">
-          <div class="card-title">${ic("sliders-horizontal")}Интерфейс</div>
-          <div class="card-description">Сохраняется сразу; режим интерфейса и движок применятся после перезапуска программы.</div>
-        </div>
+      <div class="card compact">
+        <div class="card-header"><div class="card-title">${ic("settings")}Общее</div></div>
         <div class="card-content stack">
           <div class="switch-row">
-            <div class="set-row-label"><b>Режим интерфейса</b><span>ui — окно · tui — меню в терминале · service — фоновая служба без окна (ставится командой <code>main.py service install</code>)</span></div>
-            <select class="select-native set-select" data-cfg="interface"${cfgPending.interface ? " disabled" : ""}>
-              <option value="ui"${opt(config.interface, "ui")}>ui</option>
-              <option value="tui"${opt(config.interface, "tui")}>tui</option>
-              <option value="service"${opt(config.interface, "service")}>service</option>
-            </select>
-          </div>
-          <div class="set-engine-list">
-            ${ENGINES.map(en => `
-              <button type="button" class="item interactive set-engine-item" data-cfg="ui_backend" data-value="${en.id}"
-                aria-selected="${config.ui_backend === en.id}"${cfgPending.ui_backend ? " disabled" : ""}>
-                <div class="item-media">${ic(en.icon)}</div>
-                <div class="item-body">
-                  <div class="item-title">${esc(en.title)}</div>
-                  <div class="item-desc">${esc(en.desc)}</div>
-                </div>
-                <div class="item-actions">${config.ui_backend === en.id ? ic("check") : ""}</div>
-              </button>`).join("")}
-          </div>
-        </div>
-      </div>`;
-  }
-
-  function launchCardHtml() {
-    if (!config) return cardSkeleton("Запуск", "power");
-    return `
-      <div class="card">
-        <div class="card-header"><div class="card-title">${ic("power")}Запуск</div></div>
-        <div class="card-content stack">
-          <div class="switch-row">
-            <div class="set-row-label"><b>Авто-повышение прав (UAC)</b><span>Перезапускать от имени администратора, если запущено без прав.</span></div>
-            ${switchHtml(config.auto_elevate !== false, 'data-cfg-switch="auto_elevate"', { pending: !!cfgPending.auto_elevate })}
-          </div>
-          <div class="switch-row">
-            <div class="set-row-label"><b>Сворачивать в трей при закрытии</b><span>Крестик прячет окно, модули продолжают работать. Совсем закрыть — «Выход» в меню значка в трее. Только для окна на PySide6.</span></div>
-            ${switchHtml(config.close_to_tray !== false, 'data-cfg-switch="close_to_tray"', { pending: !!cfgPending.close_to_tray })}
-          </div>
-          <div class="switch-row">
-            <div class="set-row-label"><b>Запускать вместе с Windows</b><span>Задача в планировщике — сразу с правами администратора, без окна UAC. Стартует свёрнутой в трей.</span></div>
+            <div class="set-row-label"><b>Запускать вместе с Windows</b><span>Сразу свёрнутой в трей, без запроса прав.</span></div>
             ${autostart
               ? switchHtml(!!autostart.enabled, `data-act="autostart"${autostart.supported ? "" : ' data-tip="Не поддерживается на этой системе"'}`,
                   { disabled: !autostart.supported || autostartPending, pending: autostartPending })
               : skeletonHtml(1, 20)}
+          </div>
+          <div class="switch-row">
+            <div class="set-row-label"><b>Сворачивать в трей при закрытии</b><span>Совсем закрыть — «Выход» в меню значка.</span></div>
+            ${switchHtml(config.close_to_tray !== false, 'data-cfg-switch="close_to_tray"', { pending: !!cfgPending.close_to_tray })}
+          </div>
+          <div class="switch-row">
+            <div class="set-row-label"><b>Запрашивать права администратора</b><span>Без них не работают обход DPI, hosts и смена DNS.</span></div>
+            ${switchHtml(config.auto_elevate !== false, 'data-cfg-switch="auto_elevate"', { pending: !!cfgPending.auto_elevate })}
+          </div>
+          <div class="switch-row">
+            <div class="set-row-label"><b>Окно программы</b><span>Применится после перезапуска.</span></div>
+            <select class="select-native set-select" data-cfg="ui_backend"${cfgPending.ui_backend ? " disabled" : ""}>
+              ${ENGINES.map(en => `<option value="${en.id}"${opt(config.ui_backend, en.id)}>${esc(en.title)}</option>`).join("")}
+            </select>
           </div>
         </div>
       </div>`;
@@ -245,7 +220,7 @@
     if (busy) return badgeHtml(busy === "update" ? "Обновляю…" : "Проверяю…", "info", "loader-circle");
     if (s.error) return `<span data-tip="${esc(s.error)}">${badgeHtml("ошибка", "danger", "circle-alert")}</span>`;
     if (s.kind === "service") return `<span data-tip="${esc(s.note || "")}">${badgeHtml("сервис", "info", "server")}</span>`;
-    if (s.latest === undefined) return badgeHtml("не проверено", "outline");
+    if (s.latest === undefined) return "";  // не проверяли — рядом и так кнопка «Проверить»
     if (s.kind === "pin") return `<span data-tip="Версия пиннута в коде — обновляется правкой исходников">${badgeHtml("пин в коде", "outline", "lock")}</span>`;
     if (s.update) return `<span data-tip="доступна ${esc(s.latest)}">${badgeHtml("есть обновление", "warning", "arrow-up-right")}</span>`;
     return badgeHtml("актуально", "success", "circle-check");
@@ -274,12 +249,16 @@
       </div>`;
   }
 
+  // Компоненты (стратегии Flowseal, zapret2, tg-ws-proxy, бандл winws) обновляются
+  // через git — это есть только при запуске из исходников; в сборке карточки нет.
+  // Пиннутые версии, Python, шрифты и онлайн-сервис — не то, что пользователь обновляет сам.
   function sourcesCardHtml() {
+    if (Store.get("selfupdate")?.frozen) return "";
+    const rows = (sources || []).filter(s => s.kind === "tag" || s.kind === "commit");
     return `
-      <div class="card">
+      <div class="card compact">
         <div class="card-header">
-          <div class="card-title">${ic("package")}Источники и обновления</div>
-          <div class="card-description">Версии внешних компонентов проекта. «Проверить» сверяет один источник с GitHub, «Обновить» — подтягивает свежую версию.</div>
+          <div class="card-title">${ic("package")}Компоненты</div>
           <div class="card-action">
             <button class="btn outline sm" data-act="check-all">${ic("refresh-cw")}Проверить всё</button>
             <button class="btn sm" data-act="update-all">${ic("download")}Обновить всё</button>
@@ -287,8 +266,8 @@
         </div>
         <div class="card-content set-src-list">
           ${sources
-            ? (sources.length ? sources.map(sourceRowHtml).join("") : emptyHtml({ icon: "package", title: "Источников нет" }))
-            : skeletonHtml(6, 60)}
+            ? (rows.length ? rows.map(sourceRowHtml).join("") : emptyHtml({ icon: "package", title: "Компонентов нет" }))
+            : skeletonHtml(4, 60)}
         </div>
       </div>`;
   }
@@ -341,7 +320,7 @@
       const t = new Date(s.checked_at * 1000).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
       return { text: `Последняя версия · проверено в ${t}`, badge: badgeHtml("актуально", "success", "circle-check") };
     }
-    return { text: "Ещё не проверялось", badge: badgeHtml("не проверено", "outline") };
+    return { text: "Ещё не проверялось", badge: "" };
   }
 
   function appInstallButton(s) {
@@ -360,10 +339,9 @@
     const busy = appCheckBusy || s.checking || s.stage === "downloading" || s.stage === "installing";
     const channel = config.update_channel || "stable";
     return `
-      <div class="card">
+      <div class="card compact">
         <div class="card-header">
           <div class="card-title">${ic("download")}Обновление Chimera</div>
-          <div class="card-description">Новые версии выходят на GitHub. Ставятся только по кнопке — программа сама ничего не перезапускает.</div>
         </div>
         <div class="card-content stack">
           <div class="item" data-key="app-update">
@@ -380,14 +358,14 @@
             </div>
           </div>
           <div class="switch-row">
-            <div class="set-row-label"><b>Канал обновлений</b><span>Бета — пре-релизы: новое раньше, но может быть сыровато.</span></div>
+            <div class="set-row-label"><b>Канал обновлений</b><span>Бета — новое раньше, но может быть сыровато.</span></div>
             <select class="select-native set-select" data-cfg="update_channel"${cfgPending.update_channel ? " disabled" : ""}>
               <option value="stable"${opt(channel, "stable")}>Стабильный</option>
               <option value="beta"${opt(channel, "beta")}>Бета</option>
             </select>
           </div>
           <div class="switch-row">
-            <div class="set-row-label"><b>Проверять обновления</b><span>При запуске и раз в 6 часов. Найденную версию только покажет — ставить или нет, решаешь сам.</span></div>
+            <div class="set-row-label"><b>Проверять обновления</b><span>Только покажет новую версию — ставить или нет, решаешь сам.</span></div>
             ${switchHtml(config.update_check !== false, 'data-cfg-switch="update_check"', { pending: !!cfgPending.update_check })}
           </div>
         </div>
@@ -397,11 +375,11 @@
   // Обслуживание: то, что у Flowseal живёт в меню service.bat
   function maintenanceCardHtml() {
     return `
-      <div class="card">
+      <div class="card compact">
         <div class="card-header"><div class="card-title">${ic("sparkles")}Обслуживание</div></div>
         <div class="card-content stack">
           <div class="switch-row">
-            <div class="set-row-label"><b>Очистить кэш Discord</b><span>Cache, Code Cache и GPUCache у Discord, PTB и Canary — помогает, когда после смены стратегии Discord не подключается. Discord нужно закрыть.</span></div>
+            <div class="set-row-label"><b>Очистить кэш Discord</b><span>Если Discord не подключается после смены стратегии. Закрой его перед очисткой.</span></div>
             <button class="btn outline sm" data-act="discord-cache">${ic("trash-2")}Очистить</button>
           </div>
         </div>
@@ -427,19 +405,13 @@
     });
   }
 
-  function appVersionHtml() {
-    const v = Store.get("app")?.version;
-    return `<div class="set-appver">${v ? `Chimera ${esc(fmtVersion(v))}` : ""}</div>`;
-  }
 
   function render() {
     morph(root.querySelector("[data-slot=body]"), `
-      ${interfaceCardHtml()}
-      ${launchCardHtml()}
+      ${generalCardHtml()}
       ${appUpdateCardHtml()}
       ${sourcesCardHtml()}
-      ${maintenanceCardHtml()}
-      ${appVersionHtml()}`);
+      ${maintenanceCardHtml()}`);
   }
 
   // --- события ----------------------------------------------------------------
@@ -447,9 +419,6 @@
   function onClick(e) {
     const url = e.target.closest("[data-url]");
     if (url) { api("open_url", url.dataset.url).catch(() => {}); return; }
-
-    const eng = e.target.closest(".set-engine-item[data-cfg]");
-    if (eng && !eng.disabled) return setConfig(eng.dataset.cfg, eng.dataset.value);
 
     const sw = e.target.closest("[data-cfg-switch]");
     if (sw && !sw.disabled) return setConfig(sw.dataset.cfgSwitch, !config[sw.dataset.cfgSwitch]);
