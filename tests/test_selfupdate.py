@@ -264,6 +264,29 @@ def test_apply_script_keeps_unrelated_files_next_to_program(layout):
     assert (app / "Фото" / "отпуск.jpg").exists()
 
 
+@windows_only
+def test_apply_script_keeps_user_edits_in_lists(tmp_path):
+    # списки правят прямо в программе: обновление добавляет новые, но не трогает лежащие
+    app, staged, upd = tmp_path / "app", tmp_path / "update" / "staged" / "Chimera", tmp_path / "update"
+    _write(app / "Chimera.exe", "old")
+    _write(app / "lists" / "google-gemini.txt", "как в релизе 1.0")
+    _write(app / "lists" / "removed.txt", "убран из следующего релиза")
+    selfupdate.write_manifest(app)
+    _write(app / "lists" / "google-gemini.txt", "поправлено пользователем")
+    _write(app / "lists" / "mine.txt", "свой список")
+    _write(staged / "Chimera.exe", "new")
+    _write(staged / "lists" / "google-gemini.txt", "как в релизе 1.1")
+    _write(staged / "lists" / "fresh.txt", "новый список релиза")
+    selfupdate.write_manifest(staged)
+    r, log = _run_script(app, staged, upd)
+    assert r.returncode == 0, log
+    assert (app / "Chimera.exe").read_text(encoding="utf-8") == "new"
+    assert (app / "lists" / "google-gemini.txt").read_text(encoding="utf-8") == "поправлено пользователем"
+    assert (app / "lists" / "fresh.txt").exists()
+    assert (app / "lists" / "mine.txt").exists()
+    assert (app / "lists" / "removed.txt").exists()
+
+
 def _lock(path, share):
     """Открывает файл с заданным режимом общего доступа: 0 — никому, 1 — только чтение."""
     k32 = ctypes.WinDLL("kernel32", use_last_error=True)

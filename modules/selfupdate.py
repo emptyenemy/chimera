@@ -60,6 +60,14 @@ KEEP_FILES = (
     "strategies/hostlists/ipset-all.txt",
     "strategies/hostlists/ipset-all.txt.backup",
 )
+# Папки, которые пользователь правит прямо в программе (списки сайтов). Из релиза
+# в них докладываются только новые файлы; уже лежащие не перезаписываются и не
+# удаляются, даже если в релизе файл поменялся или исчез.
+USER_DIRS = ("lists",)
+
+
+def _in_user_dir(rel: str) -> bool:
+    return any(rel == d or rel.startswith(d + "/") for d in USER_DIRS)
 
 _HTTP_TIMEOUT = 15
 _CHUNK = 256 * 1024
@@ -233,16 +241,22 @@ def write_script(app_dir: Path, staged: Path, pid: int, restart_service: bool, r
                            "обновление поверх не ставится; скачай архив релиза вручную")
     keep = set(KEEP_FILES) | {MANIFEST}
     new = set(_files(staged))
-    stale = sorted(old - new - keep)           # были в прошлой версии, в новой нет
-    added = sorted(new - old - keep)           # появятся с новой — при откате их убрать
+    # в пользовательских папках ничего не удаляем — ни при обновлении, ни при откате
+    stale = sorted(f for f in old - new - keep if not _in_user_dir(f))  # были в прошлой версии, в новой нет
+    added = sorted(f for f in new - old - keep if not _in_user_dir(f))  # появятся с новой — при откате убрать
     _backup(app_dir, old, rollback)
 
     app, st, rb, lg = (str(Path(p)) for p in (app_dir, staged, rollback, log))
     # настройки пользователя не перезаписывать, даже если релиз вдруг принёс файл с тем же путём
     xf = " ".join(_q(_win(st, f)) for f in KEEP_FILES)
+    xd = " ".join(_q(_win(st, d)) for d in USER_DIRS)
     # /E без /MIR — копировать, ничего не удаляя; /R:2 /W:1 — занятый файл не ждать
     # по умолчанию «миллион раз по 30 с»; /NP /NJH /NJS — лог короче
     rc = "/E /R:2 /W:1 /NP /NJH /NJS"
+    # пользовательские папки — отдельным проходом: /XC /XN /XO пропускают всё, что уже
+    # лежит у пользователя, и копируют только новые файлы релиза
+    user_dirs = [f'robocopy {_q(_win(st, d))} {_q(_win(app, d))} /XC /XN /XO {rc} >>"%LOG%"' + "\r\n"
+                 + "if errorlevel 8 goto rollback" for d in USER_DIRS if (Path(st) / d).is_dir()]
     lines = [
         "@echo off",
         "chcp 65001 >nul",  # пути с кириллицей — дальше файл читается как UTF-8
@@ -261,8 +275,9 @@ def write_script(app_dir: Path, staged: Path, pid: int, restart_service: bool, r
         "goto wait",
         ":gone",
         'echo [%date% %time%] программа закрыта, ставлю новую версию>>"%LOG%"',
-        f'robocopy {_q(st)} {_q(app)} /XF {xf} {rc} >>"%LOG%"',
+        f'robocopy {_q(st)} {_q(app)} /XF {xf} /XD {xd} {rc} >>"%LOG%"',
         "if errorlevel 8 goto rollback",
+        *user_dirs,
         *(f'del /F /Q {_q(_win(app, rel))} >nul 2>&1' for rel in stale),
         'echo [%date% %time%] готово>>"%LOG%"',
         f'rmdir /S /Q {_q(Path(st).parent)} >nul 2>&1',
