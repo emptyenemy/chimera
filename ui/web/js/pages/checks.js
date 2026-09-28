@@ -104,7 +104,7 @@
 
   function listOptionsHtml() {
     if (listNames == null) return `<option value="">Загрузка…</option>`;
-    return `<option value="" selected>Проверить список…</option>` + listNames.map(l =>
+    return `<option value="" selected hidden>Проверить список…</option>` + listNames.map(l =>
       `<option value="${esc(l.name)}">${esc(l.name)} · ${fmtNum(l.count)}</option>`).join("");
   }
 

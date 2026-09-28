@@ -37,8 +37,9 @@
   }
 
   function adapterOptionLabel(a) {
-    const dot = a.status === "Up" ? "●" : "○";
-    return `${dot} ${a.name} — ${a.desc}${a.physical ? "" : " · вирт."}`;
+    const desc = a.desc && a.desc !== a.name ? ` — ${a.desc}` : "";
+    const tags = [a.physical ? "" : "вирт.", a.status === "Up" ? "" : "отключён"].filter(Boolean);
+    return a.name + desc + tags.map(t => ` · ${t}`).join("");
   }
 
   // --- сортировка провайдеров по скорости ---------------------------------------

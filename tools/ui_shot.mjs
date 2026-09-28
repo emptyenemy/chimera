@@ -14,6 +14,7 @@
 //   { "mouse": [x, y] }             — навести настоящий курсор (для :hover и подсказок)
 //   { "drag": [x0, y0, x1, y1] }    — протащить мышью с зажатой левой кнопкой
 //   { "dblclick": [x, y] }          — двойной клик мышью
+//   { "tap": "css-селектор" }       — настоящий клик мышью в центр элемента (открывает select)
 // Без сценария: обойти все страницы и снять каждую ({id}.png).
 // Ошибки JS и console.error печатаются с пометкой [ошибка страницы].
 
@@ -131,6 +132,12 @@ try {
     else if (s.mouse) await mouse("mouseMoved", s.mouse[0], s.mouse[1], { button: "none" });
     else if (s.drag) await drag(...s.drag);
     else if (s.dblclick) await dblclick(...s.dblclick);
+    else if (s.tap) {
+      const [x, y] = await evaluate(`(() => { const el = document.querySelector(${JSON.stringify(s.tap)}); if (!el) throw new Error("нет элемента: " + ${JSON.stringify(s.tap)}); const r = el.getBoundingClientRect(); return [r.x + r.width / 2, r.y + r.height / 2]; })()`);
+      await mouse("mouseMoved", x, y, { button: "none" });
+      await mouse("mousePressed", x, y, { buttons: 1, clickCount: 1 });
+      await mouse("mouseReleased", x, y, { buttons: 0, clickCount: 1 });
+    }
   }
   console.log(errors ? `ошибок страницы: ${errors}` : "ошибок страницы нет");
 } catch (e) {

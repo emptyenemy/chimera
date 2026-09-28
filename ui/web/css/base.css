@@ -338,6 +338,54 @@ input, textarea, .selectable, .log, code, .mono { user-select: text; }
 .select-native option { background: var(--popover); color: var(--popover-foreground); }
 .select-native.sm { height: 32px; font-size: 13px; }
 
+/* Список опций как shadcn SelectContent: customizable select (Chromium 135+, есть и в
+   QtWebEngine 6.11, и в WebView2) рисует его страницей, а не системным окном. Разметка
+   и события — те же <select>/<option>; в старом движке остаётся вид выше. */
+@supports (appearance: base-select) {
+  .select-native, .select-native::picker(select) { appearance: base-select; }
+  .select-native {
+    display: flex; align-items: center; gap: 8px; padding-right: 10px;
+    background-image: none; white-space: nowrap;
+  }
+  .select-native:hover:not(:disabled) { background-color: color-mix(in oklch, var(--input) 50%, transparent); }
+  .select-native:open { border-color: var(--ring); box-shadow: var(--focus-ring); }
+  .select-native > selectedcontent { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  .select-native::picker-icon {
+    content: ""; flex: none; width: 16px; height: 16px; margin-left: auto;
+    background: var(--muted-foreground);
+    mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E") center / 16px no-repeat;
+    transition: rotate .15s ease;
+  }
+  .select-native:open::picker-icon { rotate: 180deg; }
+
+  .select-native::picker(select) {
+    min-width: anchor-size(width); max-height: min(320px, 60vh); margin: 4px 0; padding: 4px;
+    border: 1px solid var(--border); border-radius: calc(var(--radius) - 2px);
+    background: var(--popover); color: var(--popover-foreground); box-shadow: var(--shadow-md);
+    scrollbar-width: thin; scrollbar-color: var(--border) transparent;
+    opacity: 0; translate: 0 -4px;
+    transition: opacity .12s ease-out, translate .12s ease-out, overlay .12s allow-discrete, display .12s allow-discrete;
+  }
+  .select-native:open::picker(select) { opacity: 1; translate: 0 0; }
+  @starting-style { .select-native:open::picker(select) { opacity: 0; translate: 0 -4px; } }
+
+  .select-native option {
+    display: flex; align-items: center; gap: 8px; min-height: 32px; padding: 6px 8px;
+    border-radius: calc(var(--radius) - 4px); background: transparent; color: inherit;
+    font-size: 14px; line-height: 20px; white-space: nowrap; cursor: default; outline: none;
+  }
+  .select-native.sm option { font-size: 13px; }
+  .select-native option:hover, .select-native option:focus-visible { background: var(--accent); color: var(--accent-foreground); }
+  .select-native option:disabled { opacity: .5; }
+  .select-native option[hidden] { display: none; }
+  .select-native option::checkmark {
+    content: ""; order: 1; flex: none; width: 16px; height: 16px; margin-left: auto;
+    background: currentColor;
+    mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20 6 9 17l-5-5'/%3E%3C/svg%3E") center / 16px no-repeat;
+  }
+  .select-native option:not(:checked)::checkmark { visibility: hidden; }
+}
+
 /* ── Switch (shadcn v4: h-[1.15rem] w-8 rounded-full) — <button role="switch" class="switch" aria-checked> ── */
 .switch {
   position: relative; flex: none; width: 32px; height: 18.4px; padding: 0;

@@ -23,6 +23,11 @@
     need(document.querySelector(".sb-logo svg"), "нет логотипа");
     need(document.querySelectorAll("svg.icon").length > 5, "не отрисовались иконки");
   });
+  // выпадающие списки оформлены через customizable select (base.css); без него движок
+  // молча рисует системный список — ловим, если в сборку попал старый Chromium
+  await step("выпадающие списки: base-select", async () => {
+    need(CSS.supports("appearance", "base-select"), "движок не поддерживает appearance: base-select");
+  });
   await step("app_info", async () => (await api("app_info")).version);
   await step("hub_snapshot", async () => Object.keys(await api("hub_snapshot")).join(","));
 
