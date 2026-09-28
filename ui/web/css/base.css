@@ -347,9 +347,13 @@ input, textarea, .selectable, .log, code, .mono { user-select: text; }
   background: color-mix(in oklch, var(--input) 30%, transparent); box-shadow: var(--shadow-xs); cursor: pointer; outline: none;
 }
 .checkbox:checked { background: var(--primary); border-color: var(--primary); }
+/* Галочка — lucide check размером 14px по центру, как CheckIcon size-3.5 у shadcn.
+   Маской из data:-URI: повёрнутая рамка с дробными отступами ложилась мимо центра
+   и мылилась, а внешний svg в маске из file:// не грузится (см. js/logo.js). */
 .checkbox:checked::after {
-  content: ""; position: absolute; left: 4.5px; top: 1.5px; width: 5px; height: 9px;
-  border: solid var(--primary-foreground); border-width: 0 2px 2px 0; transform: rotate(45deg);
+  content: ""; position: absolute; inset: 0; background: var(--primary-foreground);
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20 6 9 17l-5-5'/%3E%3C/svg%3E") center / 14px no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20 6 9 17l-5-5'/%3E%3C/svg%3E") center / 14px no-repeat;
 }
 .checkbox:focus-visible { box-shadow: var(--focus-ring); }
 .check-row { display: flex; align-items: center; gap: 8px; cursor: pointer; }
