@@ -27,7 +27,15 @@ def hm(tmp_path, monkeypatch):
 
 def test_state_defaults_when_no_state_file(hm):
     st = hm.state()
-    assert st == {"applied": False, "enabled": True, "assignments": {}, "count": 0}
+    assert st == {
+        "applied": False, "enabled": True, "assignments": {}, "count": 0,
+        "health": None, "last_switch": None,
+        "background": {
+            "refresh_enabled": True, "refresh_interval": 6 * 3600,
+            "check_enabled": True, "check_interval": 15 * 60,
+            "autoswitch_enabled": False, "provider_order": [],
+        },
+    }
 
 
 def test_write_block_inserts_marked_section(hm):

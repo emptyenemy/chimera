@@ -19,6 +19,9 @@ from pathlib import Path
 
 from .. import dns_providers, paths
 from ..domains import split_lists
+from . import static_providers
+from .background import DEFAULT_OPTIONS as BACKGROUND_DEFAULTS
+from .background import HostsBackground
 from .resolver import resolve_domains, timed_resolve
 
 STATE_PATH = paths.data_path("hosts.json")
@@ -43,18 +46,42 @@ def is_admin() -> bool:
         return False
 
 
+
+def _wall_stamped(rec, key):
+    """Запись с unix-меткой времени или None. Ранние версии фона писали сюда
+    time.monotonic() — это секунды с загрузки ОС, и UI показывал «20 000 дней назад»."""
+    if not isinstance(rec, dict) or not isinstance(rec.get(key), (int, float)) or rec[key] < 1e9:
+        return None
+    return rec
+
 class HostsManager:
     def __init__(self, state_path: Path = STATE_PATH, hosts_path: Path = HOSTS_PATH):
         self.state_path = state_path
         self.hosts_path = hosts_path
+        # один фоновый поток на автообновление/чекер/автопереключение — см. background.py.
+        # Api стартует его в __init__ и гасит в shutdown(); сам по себе он не крутится.
+        self.background = HostsBackground(self)
 
-    # --- провайдеры (только умеющие обходить блокировки) --------------------
+    def start_background(self) -> None:
+        self.background.start()
+
+    def stop_background(self) -> None:
+        self.background.stop()
+
+    # --- провайдеры -----------------------------------------------------------
+    # dns — резолвит домены из списков на лету; static — готовый список записей
+    # из файла (см. static_providers.py). Оба типа умеют обходить блокировки,
+    # поэтому вкладка Hosts показывает их вместе, отличая по полю "type".
 
     def providers(self) -> list[dict]:
-        return [p for p in dns_providers.load_all() if p.get("unblock")]
+        dns = [{**p, "type": "dns"} for p in dns_providers.load_all() if p.get("unblock")]
+        return dns + static_providers.providers()
 
     def get_provider(self, provider_id: str) -> dict:
-        return dns_providers.get(provider_id)
+        try:
+            return {**dns_providers.get(provider_id), "type": "dns"}
+        except KeyError:
+            return {**static_providers.get(provider_id), "type": "static"}
 
     def add_provider(self, name: str, doh: str, servers) -> dict:
         # из вкладки Hosts добавляют только «обходные» провайдеры → unblock=True
@@ -72,8 +99,20 @@ class HostsManager:
 
     def ping_one(self, provider_id: str) -> dict:
         """Один замер одного провайдера. Фронт пингует каждого независимо,
-        поэтому медленный провайдер не тормозит обновление остальных."""
+        поэтому медленный провайдер не тормозит обновление остальных.
+
+        static-провайдеру резолвить нечего — «доступен» значит «файл сабмодуля
+        на месте и парсится», без сети."""
         provider = self.get_provider(provider_id)
+        if provider.get("type") == "static":
+            try:
+                entries = static_providers.read_entries(provider_id)
+                return {"id": provider["id"], "name": provider["name"],
+                        "ok": bool(entries), "ms": None, "ip": None}
+            except FileNotFoundError as e:
+                return {"id": provider["id"], "name": provider["name"],
+                        "ok": False, "ms": None, "ip": None, "reason": str(e)}
+
         ips, ms = timed_resolve(
             PING_TEST_DOMAIN, provider.get("doh"), provider.get("servers"), timeout=PING_TIMEOUT
         )
@@ -111,13 +150,18 @@ class HostsManager:
         return self._sync()  # сразу применяем: галочка = работает, снял = выключилось
 
     def state(self) -> dict:
-        """Текущее состояние: привязки, число применённых записей, флаги applied/enabled."""
+        """Текущее состояние: привязки, число применённых записей, флаги applied/enabled,
+        плюс то, что копит фоновый поток (background.py) — health чекера и последнее
+        автопереключение, если оно случалось."""
         st = self._load_state()
         return {
             "applied": self._is_applied(),
             "enabled": st.get("enabled", True),
             "assignments": st.get("assignments", {}),
             "count": len(st.get("entries", [])),
+            "health": st.get("health"),
+            "last_switch": st.get("last_switch"),
+            "background": self.background_options(),
         }
 
     def set_enabled(self, value: bool) -> dict:
@@ -127,6 +171,22 @@ class HostsManager:
         st["enabled"] = bool(value)
         self._save_state(st)
         return self._sync()
+
+    # --- настройки фонового потока (data/hosts.json, ключ "background") ------
+
+    def background_options(self) -> dict:
+        st = self._load_state()
+        return {**BACKGROUND_DEFAULTS, **st.get("background", {})}
+
+    def set_background(self, options: dict) -> dict:
+        """Сохраняет настройки автообновления/чекера/автопереключения.
+        Неизвестные ключи молча отбрасываются — фронт шлёт только то, что знает."""
+        current = self.background_options()
+        current.update({k: v for k, v in (options or {}).items() if k in BACKGROUND_DEFAULTS})
+        st = self._load_state()
+        st["background"] = current
+        self._save_state(st)
+        return current
 
     # --- hosts-файл ---------------------------------------------------------
 
@@ -176,14 +236,24 @@ class HostsManager:
 
         if not is_admin():
             raise PermissionError("Нужны права администратора для записи в hosts")
-        groups, all_entries = [], []
+        groups, all_entries, unavailable = [], [], []
         for provider_id, lists in plan.items():
             provider = self.get_provider(provider_id)
-            # IP из списков тут молча пропускаем: hosts маппит имя -> адрес, для
-            # готового адреса подменять нечего. Их обходом занимаются winws (ipset)
-            # и прокси (ip_cidr).
-            domains, _ = split_lists(lists)
-            entries = resolve_domains(domains, provider.get("doh"), provider.get("servers"))
+            if provider.get("type") == "static":
+                # static ничего не выбирает списками — привязка это просто «включён/нет»
+                # (значение в assignments — True), записи все свои, из файла сабмодуля.
+                try:
+                    entries = static_providers.read_entries(provider_id)
+                except FileNotFoundError as e:
+                    unavailable.append(str(e))
+                    continue
+            else:
+                # IP из списков тут молча пропускаем: hosts маппит имя -> адрес, для
+                # готового адреса подменять нечего. Их обходом занимаются winws (ipset)
+                # и прокси (ip_cidr).
+                domains, _ = split_lists(lists)
+                entries = resolve_domains(domains, provider.get("doh"), provider.get("servers"))
+            entries = [dict(e) for e in entries]
             for e in entries:
                 e["provider"] = provider_id
             if entries:
@@ -191,6 +261,8 @@ class HostsManager:
                 all_entries.extend(entries)
 
         if not all_entries:
+            if unavailable:
+                raise ValueError("; ".join(unavailable))
             raise ValueError("Ничего не разрезолвилось — провайдеры недоступны?")
         self._write_block(groups)
         st = self._load_state()

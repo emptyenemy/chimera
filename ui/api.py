@@ -35,6 +35,7 @@ class Api:
         # Ставит бэкенд: у Qt это сигнал в QWebChannel, у pywebview — evaluate_js.
         self.push = push or (lambda fn, payload: None)
         self.hosts = HostsManager()
+        self.hosts.start_background()  # автообновление/чекер/автопереключение hosts, см. modules/hosts/background.py
         self.dns = DnsJumper()
         self.tg = TgProxy()
         self.winws = WinwsManager()
@@ -66,6 +67,7 @@ class Api:
         """Гасит наши процессы при закрытии окна. Зовётся бэкендом явно: на atexit
         полагаться нельзя — интерпретатор не всегда доходит до его хендлеров, и
         winws2 (вместе с WinDivert) оставался висеть до перезагрузки."""
+        self.hosts.stop_background()
         try:
             self.winws.stop()
         except Exception:
@@ -195,6 +197,14 @@ class Api:
     def hosts_delete_provider(self, provider_id):
         try:
             return _ok(self.hosts.delete_provider(provider_id))
+        except Exception as e:
+            return _err(e)
+
+    def hosts_set_background(self, options):
+        """Настройки фонового потока hosts: автообновление IP, TCP+TLS-чекер,
+        автопереключение при деградации привязки (см. modules/hosts/background.py)."""
+        try:
+            return _ok(self.hosts.set_background(options))
         except Exception as e:
             return _err(e)
 
