@@ -1,5 +1,9 @@
 @echo off
-REM Builds CHIMERA (PySide6/QWebEngineView) into a standalone folder via Nuitka.
+REM Builds Chimera (PySide6/QWebEngineView) into a standalone folder via Nuitka:
+REM build\Chimera\Chimera.exe plus the binaries it needs and versions.json.
+REM
+REM   build.bat              full build (Nuitka + post steps)
+REM   build.bat --post-only  post steps only, on an existing build\main.dist
 REM
 REM Standalone, not onefile: paths in the code resolve either as
 REM Path(__file__).parent... (see modules/appconfig.py) or through modules/paths.py
@@ -7,9 +11,13 @@ REM (APP_DIR = the exe's folder when frozen/Nuitka, data/ next to it) - both nee
 REM stable on-disk tree next to the exe. Onefile extracts to a fresh temp dir on
 REM every run, which breaks that.
 REM
-REM bin/ (winws, sing-box) is not in the repo (.gitignore) - fetched/placed
-REM separately. If missing at build time we warn: exe will build fine but
-REM winws/proxy features won't work without it.
+REM bin/ (winws, sing-box) is not in the repo (.gitignore) - run
+REM `python tools\fetch_bins.py` first (CI does). Only what the program uses is
+REM copied: bin\sing-box\sing-box.exe and bin\zapret-win-bundle\zapret-winws\.
+REM If missing we warn: the exe still builds, but winws/proxy won't work.
+REM
+REM The version comes from modules/version.py ("dev" in the repo, the tag in CI -
+REM see tools/set_version.py); Windows wants four numbers: 0.3.0-beta.1 -> 0.3.0.1.
 REM
 REM ui/app.py picks the UI engine by name from config.json, which Nuitka cannot
 REM see statically - hence --include-module for both shipped engines: backend_qt
@@ -22,11 +30,21 @@ REM
 REM Same story for main.py's own mode dispatch: "interface" (ui/tui/service) is a
 REM string from config.json, invisible to static analysis - tui.app and
 REM modules.service need --include-module too, or a built exe would fail on
-REM `main.exe service run` / "interface": "tui" with a plain ImportError.
+REM `Chimera.exe service run` / "interface": "tui" with a plain ImportError.
 
 setlocal
 REM Nuitka names the standalone folder after the entry script (main.py -> main.dist)
-set DIST_DIR=build\main.dist
+set NUITKA_DIST=build\main.dist
+set OUT_DIR=build\Chimera
+
+if /I "%~1"=="--post-only" goto post
+
+for /f "delims=" %%v in ('python -c "from modules.version import VERSION, file_version; print(file_version(VERSION))"') do set FILEVER=%%v
+if not defined FILEVER (
+    echo [!] Could not read the version from modules\version.py.
+    exit /b 1
+)
+echo Version: %FILEVER%
 
 python -m nuitka ^
     --standalone ^
@@ -35,10 +53,11 @@ python -m nuitka ^
     --windows-uac-admin ^
     --windows-icon-from-ico=assets/logo/chimera.ico ^
     --assume-yes-for-downloads ^
-    --company-name=CHIMERA ^
-    --product-name=CHIMERA ^
-    --file-version=1.0.0 ^
-    --product-version=1.0.0 ^
+    --output-filename=Chimera.exe ^
+    --company-name=Chimera ^
+    --product-name=Chimera ^
+    --file-version=%FILEVER% ^
+    --product-version=%FILEVER% ^
     --output-dir=build ^
     --include-data-dir=ui/web=ui/web ^
     --include-data-dir=strategies=strategies ^
@@ -59,15 +78,36 @@ if errorlevel 1 (
     exit /b 1
 )
 
-if exist bin (
-    echo Copying bin\ into %DIST_DIR%\bin ...
-    xcopy /E /I /Y bin "%DIST_DIR%\bin" >nul
+:post
+if not exist "%NUITKA_DIST%\Chimera.exe" (
+    echo [!] %NUITKA_DIST%\Chimera.exe not found - nothing to finish.
+    exit /b 1
+)
+if exist "%OUT_DIR%" rmdir /S /Q "%OUT_DIR%"
+move "%NUITKA_DIST%" "%OUT_DIR%" >nul
+if errorlevel 1 (
+    echo [!] Could not move %NUITKA_DIST% to %OUT_DIR%.
+    exit /b 1
+)
+
+if exist bin\sing-box\sing-box.exe (
+    mkdir "%OUT_DIR%\bin\sing-box"
+    copy /Y bin\sing-box\sing-box.exe "%OUT_DIR%\bin\sing-box\" >nul
 ) else (
-    echo.
-    echo [!] bin\ folder not found - winws.exe/sing-box.exe not included in the build.
-    echo     Place bin\ next to the exe in %DIST_DIR% before running.
+    echo [!] bin\sing-box\sing-box.exe not found - the proxy will not work in this build.
+)
+if exist bin\zapret-win-bundle\zapret-winws\winws2.exe (
+    xcopy /E /I /Y /Q bin\zapret-win-bundle\zapret-winws "%OUT_DIR%\bin\zapret-win-bundle\zapret-winws" >nul
+) else (
+    echo [!] bin\zapret-win-bundle\zapret-winws not found - strategies will not work in this build.
+)
+
+python tools\fetch_bins.py --versions "%OUT_DIR%\versions.json" >nul
+if errorlevel 1 (
+    echo [!] Could not write %OUT_DIR%\versions.json.
+    exit /b 1
 )
 
 echo.
-echo Done: %DIST_DIR%\main.exe
+echo Done: %OUT_DIR%\Chimera.exe
 endlocal
