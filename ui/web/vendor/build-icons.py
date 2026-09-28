@@ -6,7 +6,6 @@
 
 Запускается из update-vendor.sh, руками вызывать не нужно.
 """
-import io
 import json
 import re
 import sys
@@ -75,7 +74,7 @@ def main():
 
     sprite = '<svg xmlns="http://www.w3.org/2000/svg">%s</svg>' % "".join(symbols)
     # newline="\n" — файл уходит в репозиторий, переводы строк везде одинаковые.
-    with io.open(OUT, "w", encoding="utf-8", newline="\n") as f:
+    with open(OUT, "w", encoding="utf-8", newline="\n") as f:
         f.write(HEADER + RUNTIME % json.dumps(sprite, ensure_ascii=False))
 
     print("icons.js: %d иконок, %.1f КБ" % (len(symbols), OUT.stat().st_size / 1024))

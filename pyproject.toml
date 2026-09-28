@@ -13,6 +13,10 @@ extend-exclude = ["upstream", "bin"]
 # (B — flake8-bugbear), устаревшие конструкции (UP — pyupgrade). Без стилистики
 # вроде import-sort или docstring-правил — шума и так хватит на первый прогон.
 select = ["E", "F", "W", "B", "UP"]
+# UP031 (printf-форматирование → f-строки) — выключено: %-подстановка в проекте
+# сознательная — шаблоны PAC/JS/спрайта (modules/proxy, vendor/build-icons.py) и
+# генератор стратегий полны фигурных скобок, в f-строке их пришлось бы удваивать.
+ignore = ["UP031"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

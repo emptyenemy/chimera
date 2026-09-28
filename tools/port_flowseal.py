@@ -125,14 +125,14 @@ SPLIT_METHODS = ("multisplit", "multidisorder", "fakedsplit", "fakeddisorder")
 def extract_cmd(text: str) -> str:
     """Склейка строк-продолжений (^) и вырезка аргументов после winws.exe."""
     lines = text.splitlines()
-    start_i = next(i for i, l in enumerate(lines) if "winws.exe" in l)
+    start_i = next(i for i, line in enumerate(lines) if "winws.exe" in line)
     buf, i = [], start_i
     while i < len(lines):
-        l = lines[i].rstrip()
-        cont = l.endswith("^")
+        line = lines[i].rstrip()
+        cont = line.endswith("^")
         if cont:
-            l = l[:-1]
-        buf.append(l)
+            line = line[:-1]
+        buf.append(line)
         i += 1
         if not cont:
             break

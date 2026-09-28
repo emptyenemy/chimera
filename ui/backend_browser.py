@@ -55,7 +55,7 @@ def _mark_page(html: bytes, token: str) -> bytes:
     а токен заодно уезжает из адресной строки в скрипт.
     """
     tag = ('<script>window.__CHIMERA_HTTP__=true;window.__CHIMERA_TOKEN__='
-           f'{json.dumps(token)};</script>').encode("utf-8")
+           f'{json.dumps(token)};</script>').encode()
     return html.replace(b"</head>", tag + b"\n</head>", 1) if b"</head>" in html else tag + html
 
 

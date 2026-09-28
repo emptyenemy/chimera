@@ -201,7 +201,7 @@ def _classify(sock: socket.socket, target: str) -> tuple[str, str | int | None]:
         try:
             tls.sendall(_http_request(target))
             head = _read_headers(tls)
-        except (socket.timeout, TimeoutError):
+        except TimeoutError:
             return "fail", "нет ответа на запрос (DPI?)"
         except OSError:
             return "fail", "оборвано на запросе (DPI?)"
@@ -219,7 +219,7 @@ def _try_one(ip: str, target: str) -> tuple[str, str | int | None]:
     try:
         with socket.create_connection((ip, PORT), timeout=CONNECT_TIMEOUT) as sock:
             return _classify(sock, target)
-    except (socket.timeout, TimeoutError):
+    except TimeoutError:
         return "fail", "таймаут"
     except ConnectionResetError:
         return "fail", "RST на TCP"
@@ -233,7 +233,7 @@ def _try_via_proxy(proxy_addr: tuple[str, int], target: str) -> tuple[str, str |
     try:
         with _socks5_connect(proxy_addr, target, PORT, CONNECT_TIMEOUT) as sock:
             return _classify(sock, target)
-    except (socket.timeout, TimeoutError):
+    except TimeoutError:
         return "fail", "таймаут до локального прокси"
     except OSError as e:
         return "fail", f"локальный прокси: {_short(e)}"
