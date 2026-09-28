@@ -52,7 +52,7 @@
 | Настройки → Обновление Chimera → «Проверить» | `chimera update check` | read |
 | Настройки → Обновление Chimera → «Обновить» | `chimera update install` | system |
 | Настройки → Запускать вместе с Windows | `chimera autostart state` | read |
-| Настройки → Запускать вместе с Windows | `chimera autostart set <значение>` | system |
+| Настройки → Запускать вместе с Windows | `chimera autostart set <on|off>` | system |
 | Настройки → Очистить кэш Discord | `chimera discord clear-cache` | app |
 | Настройки → Источники и обновления | `chimera sources versions` | read |
 | Настройки → Источники и обновления → «Проверить» | `chimera sources check [имя]` | read |
@@ -63,22 +63,22 @@
 | Стратегии: список карточек | `chimera winws strategies` | read |
 | Стратегии → «Запустить» / Обзор → включатель | `chimera winws start [стратегия]` | system |
 | Стратегии / Обзор → «Остановить» | `chimera winws stop` | system |
-| Стратегии → автозапуск | `chimera winws autostart <значение>` | app |
+| Стратегии → автозапуск | `chimera winws autostart <on|off>` | app |
 | Стратегии → выбор списков | `chimera winws lists [списки…]` | app |
 | Стратегии → фильтры | `chimera winws filters` | read |
-| Стратегии → Game-фильтр | `chimera winws game <режим> [--tcp <tcp>] [--udp <udp>]` | system |
-| Стратегии → IPSet | `chimera winws ipset <режим>` | app |
+| Стратегии → Game-фильтр | `chimera winws game <off|all|tcp|udp> [--tcp <tcp>] [--udp <udp>]` | system |
+| Стратегии → IPSet | `chimera winws ipset <none|any|loaded>` | app |
 | Стратегии → IPSet → «Обновить» | `chimera winws ipset-update` | system |
 | Стратегии → Fake | `chimera winws fake <слот> <блоб>` | app |
 | Прокси: шапка, Обзор | `chimera proxy state` | read |
 | Прокси / Обзор → включатель | `chimera proxy start` | system |
 | Прокси / Обзор → «Остановить» | `chimera proxy stop` | system |
-| Прокси → режим | `chimera proxy mode <режим>` | system |
+| Прокси → режим | `chimera proxy mode <pac|split|tun>` | system |
 | Прокси → поле ссылки | `chimera proxy link [ссылка] [--clear]` | app |
 | Прокси → выбор списков | `chimera proxy lists [списки…]` | app |
 | Прокси → приложения | `chimera proxy apps [приложения…]` | app |
 | Прокси → «Запущенные программы» | `chimera proxy apps-running` | read |
-| Прокси → автозапуск | `chimera proxy autostart <значение>` | app |
+| Прокси → автозапуск | `chimera proxy autostart <on|off>` | app |
 | Прокси → «Скачать sing-box» | `chimera proxy core-download` | app |
 | Telegram: шапка, Обзор | `chimera tg state` | read |
 | Telegram / Обзор → включатель | `chimera tg start` | app |
@@ -116,9 +116,9 @@
 | Проверки → поле «Проверить сайт» | `chimera check site <домен> [--only <only>]` | read |
 | Проверки → «Проверить список» | `chimera check list <список> [--only <only>]` | read |
 | Проверки → шапка | `chimera check status` | read |
-| Стратегии / Прокси / Telegram → лог | `chimera logs <модуль> [--tail <tail>]` | read |
-| Настройки → фоновая служба (командная строка) | `chimera service <команда> [параметры…]` | system |
-| Справка | `chimera docs [тема]` | read |
+| Стратегии / Прокси / Telegram → лог | `chimera logs <winws|proxy|tg> [--tail <tail>]` | read |
+| Настройки → фоновая служба (командная строка) | `chimera service <install|uninstall|start|stop|status|run> [параметры…]` | system |
+| Справка | `chimera docs [commands|layout|output]` | read |
 | Справка | `chimera agent-info` | read |
 | Настройки → командная строка | `chimera path show` | read |
 | Настройки → командная строка | `chimera path add` | app |
@@ -240,7 +240,7 @@ chimera update check && chimera update install
 chimera autostart state
 ```
 
-#### `chimera autostart set <значение>`
+#### `chimera autostart set <on|off>`
 
 Включить или выключить запуск вместе с Windows (нужны права администратора). Уровень: изменение системы.
 
@@ -361,7 +361,7 @@ chimera winws start alt2
 chimera winws stop
 ```
 
-#### `chimera winws autostart <значение>`
+#### `chimera winws autostart <on|off>`
 
 Запускать стратегию при старте Chimera. Уровень: изменение приложения.
 
@@ -389,7 +389,7 @@ chimera winws lists youtube discord
 chimera winws filters
 ```
 
-#### `chimera winws game <режим> [--tcp <tcp>] [--udp <udp>]`
+#### `chimera winws game <off|all|tcp|udp> [--tcp <tcp>] [--udp <udp>]`
 
 Игровой фильтр: off, all, tcp или udp; порты — необязательно. Уровень: изменение системы.
 
@@ -402,7 +402,7 @@ chimera winws game udp
 chimera winws game all --tcp 1024-65535
 ```
 
-#### `chimera winws ipset <режим>`
+#### `chimera winws ipset <none|any|loaded>`
 
 Режим ipset: none, any или loaded. Уровень: изменение приложения.
 
@@ -459,7 +459,7 @@ chimera proxy start
 chimera proxy stop
 ```
 
-#### `chimera proxy mode <режим>`
+#### `chimera proxy mode <pac|split|tun>`
 
 Режим прокси: pac (без админа), split (выборочный TUN) или tun (весь трафик). Уровень: изменение системы.
 
@@ -510,7 +510,7 @@ chimera proxy apps Discord.exe chrome.exe
 chimera proxy apps-running
 ```
 
-#### `chimera proxy autostart <значение>`
+#### `chimera proxy autostart <on|off>`
 
 Запускать прокси при старте Chimera. Уровень: изменение приложения.
 
@@ -913,7 +913,7 @@ chimera check status
 
 Последние строки логов модулей.
 
-#### `chimera logs <модуль> [--tail <tail>]`
+#### `chimera logs <winws|proxy|tg> [--tail <tail>]`
 
 Последние строки лога модуля: winws, proxy или tg. Уровень: чтение. Работает и без запущенной Chimera.
 
@@ -929,7 +929,7 @@ chimera logs proxy --tail 100
 
 Фоновая служба Windows.
 
-#### `chimera service <команда> [параметры…]`
+#### `chimera service <install|uninstall|start|stop|status|run> [параметры…]`
 
 Фоновая служба: install, uninstall, start, stop, status, run (как `main.py service`). Уровень: изменение системы. Работает и без запущенной Chimera.
 
@@ -973,7 +973,7 @@ chimera path remove
 
 Документация этой версии: команды, папки и файлы, формат вывода.
 
-#### `chimera docs [тема]`
+#### `chimera docs [commands|layout|output]`
 
 Документация этой версии программы. Темы: commands (команды), layout (папки и файлы), output (коды возврата и формат --json). Без темы — оглавление; с --json — всё в машинном виде. Уровень: чтение. Работает и без запущенной Chimera.
 

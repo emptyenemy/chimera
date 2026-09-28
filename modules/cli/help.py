@@ -45,6 +45,10 @@ def _metavar(a: Arg) -> str:
     if a.flag:
         return f"[--{a.name} <{a.name}>]"
     name = a.name + ("…" if a.kind in ("names", "names1", "rest") else "")
+    if a.kind == "bool":
+        name = "on|off"
+    elif a.kind == "choice" and a.choices:
+        name = "|".join(a.choices)
     return f"[{name}]" if a.optional or a.kind in ("names", "rest") else f"<{name}>"
 
 
@@ -74,7 +78,7 @@ def group_help(group: str) -> str:
         return action_help(acts[0])
     lines = [f"chimera {group} — {GROUPS[group]}", "", "Действия:"]
     for act in acts:
-        lines.append(f"  {usage(act)[len('chimera '):]:<44} {act.summary.split('.')[0]}")
+        lines.append(f"  {usage(act)[len('chimera '):]:<50} {act.summary.split('.')[0]}")
     lines += ["", "Примеры:"]
     for act in acts:
         lines += [f"  {e}" for e in act.examples[:1]]
