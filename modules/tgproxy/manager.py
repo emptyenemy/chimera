@@ -32,9 +32,83 @@ _CORE_LOGGER = "tg-mtproto-proxy"
 RELEASES_API = "https://api.github.com/repos/Flowseal/tg-ws-proxy/releases/latest"
 RELEASES_PAGE = "https://github.com/Flowseal/tg-ws-proxy/releases"
 
-DEFAULTS = {"host": "127.0.0.1", "port": 1443, "secret": "", "autostart": False}
+DEFAULTS = {
+    "host": "127.0.0.1", "port": 1443, "secret": "", "autostart": False,
+    # «продвинутые» настройки ядра (proxy.config.ProxyConfig) — дефолты 1:1 с апстримом,
+    # старые state.json без этих ключей просто дополняются дефолтами при загрузке.
+    "disable_secure": False,           # --no-secure: порт 80 для CF-proxy/worker
+    "fallback_cfproxy": True,          # --no-cfproxy инвертирован
+    "cfproxy_user_domains": [],        # --cfproxy-domain (свои CF-домены вместо авто-пула)
+    "cfproxy_worker_domains": [],      # --cfproxy-worker-domain
+    "fake_tls_domain": "",             # --fake-tls-domain: включает ee-secret маскировку
+    "dc_redirects": {"2": "149.154.167.220", "4": "149.154.167.220"},  # --dc-ip DC:IP
+    "proxy_protocol": False,           # --proxy-protocol (за nginx/haproxy)
+    "force_test_dc": False,            # --force-test-dc
+}
 
 _SECRET_RE = re.compile(r"^[0-9a-f]{32}$")
+_ADV_BOOL_KEYS = ("disable_secure", "fallback_cfproxy", "proxy_protocol", "force_test_dc")
+
+
+def _validate_domain(domain) -> str:
+    """Правила — как у апстрима (proxy/config.py:_is_valid_domain): точечные метки,
+    буквы/цифры/дефис без дефиса по краям, TLD от 2 символов с буквой."""
+    d = str(domain).strip().lower()
+    if not d or len(d) > 253 or d.startswith(".") or d.endswith("."):
+        raise ValueError(f"Некорректный домен: {domain!r}")
+    labels = d.split(".")
+    if len(labels) < 2:
+        raise ValueError(f"Некорректный домен: {domain!r}")
+    for label in labels:
+        if not label or len(label) > 63 or label[0] == "-" or label[-1] == "-":
+            raise ValueError(f"Некорректный домен: {domain!r}")
+        if not all(ch.isalnum() or ch == "-" for ch in label):
+            raise ValueError(f"Некорректный домен: {domain!r}")
+    tld = labels[-1]
+    if len(tld) < 2 or not any(ch.isalpha() for ch in tld):
+        raise ValueError(f"Некорректный домен: {domain!r}")
+    return d
+
+
+def _normalize_domains(value) -> list:
+    """Строка/список доменов -> список валидных, без дублей, как coerce_domain_list
+    + _normalize_domain_pool апстрима (запятая/точка с запятой/пробел — разделители)."""
+    if value is None or value == "":
+        return []
+    if isinstance(value, str):
+        items = [value]
+    elif isinstance(value, (list, tuple)):
+        items = list(value)
+    else:
+        raise ValueError("Список доменов — строка или список строк")
+    seen = set()
+    out = []
+    for raw in items:
+        for part in str(raw).replace(",", " ").replace(";", " ").split():
+            d = _validate_domain(part)
+            if d not in seen:
+                seen.add(d)
+                out.append(d)
+    return out
+
+
+def _validate_dc_redirects(value) -> dict:
+    """{dc: ip} -> {str(dc): ip}, как parse_dc_ip_list апстрима (--dc-ip DC:IP),
+    но на входе уже разобранный объект, а не список "DC:IP" строк."""
+    if not isinstance(value, dict):
+        raise ValueError("dc_redirects — объект {номер DC: IP}")
+    result = {}
+    for dc_raw, ip_raw in value.items():
+        try:
+            dc_n = int(dc_raw)
+        except (TypeError, ValueError):
+            raise ValueError(f"Неверный номер DC: {dc_raw!r}") from None
+        try:
+            socket.inet_pton(socket.AF_INET, str(ip_raw))
+        except OSError:
+            raise ValueError(f"Неверный IP для DC{dc_n}: {ip_raw!r}") from None
+        result[str(dc_n)] = str(ip_raw)
+    return result
 
 
 def _import_core():
@@ -123,11 +197,46 @@ class TgProxy:
     def running(self) -> bool:
         return self._thread is not None and self._thread.is_alive()
 
+    def set_advanced(self, options: dict) -> dict:
+        """«Продвинутые» настройки ядра (CF-proxy/worker домены, Fake TLS, dc-ip, ...).
+        Валидирует и сохраняет только переданные ключи — остальные не трогает. Ядро
+        читает proxy_config один раз при старте (см. _apply_config), поэтому на уже
+        запущенный прокси эффекта нет — restart_required в ответе подсказывает, что
+        нужен перезапуск (tg_stop/tg_start), сама его не перезапускает."""
+        if not isinstance(options, dict):
+            raise ValueError("options — объект настроек")
+        updates = {}
+        for key in _ADV_BOOL_KEYS:
+            if key in options:
+                updates[key] = bool(options[key])
+        if "cfproxy_user_domains" in options:
+            updates["cfproxy_user_domains"] = _normalize_domains(options["cfproxy_user_domains"])
+        if "cfproxy_worker_domains" in options:
+            updates["cfproxy_worker_domains"] = _normalize_domains(options["cfproxy_worker_domains"])
+        if "fake_tls_domain" in options:
+            raw = options["fake_tls_domain"]
+            updates["fake_tls_domain"] = _validate_domain(raw) if str(raw or "").strip() else ""
+        if "dc_redirects" in options:
+            updates["dc_redirects"] = _validate_dc_redirects(options["dc_redirects"])
+        self.config.update(updates)
+        self._save()
+        result = self.state()
+        result["restart_required"] = self.running
+        return result
+
     def _apply_config(self, core) -> None:
         pc = core.proxy_config
         pc.host = self.config["host"]
         pc.port = self.config["port"]
         pc.secret = self.config["secret"]
+        pc.disable_secure = bool(self.config.get("disable_secure", False))
+        pc.fallback_cfproxy = bool(self.config.get("fallback_cfproxy", True))
+        pc.cfproxy_user_domains = list(self.config.get("cfproxy_user_domains") or [])
+        pc.cfproxy_worker_domains = list(self.config.get("cfproxy_worker_domains") or [])
+        pc.fake_tls_domain = str(self.config.get("fake_tls_domain") or "")
+        pc.proxy_protocol = bool(self.config.get("proxy_protocol", False))
+        pc.force_test_dc = bool(self.config.get("force_test_dc", False))
+        pc.dc_redirects = {int(dc): ip for dc, ip in (self.config.get("dc_redirects") or {}).items()}
 
     def _runner(self) -> None:
         import asyncio
@@ -247,8 +356,16 @@ class TgProxy:
             core = _import_core()
             version = core.__version__
             link_host = core.get_link_host(self.config["host"]) or self.config["host"]
-            link = (f"tg://proxy?server={link_host}&port={self.config['port']}"
-                    f"&secret=dd{self.config['secret']}")
+            ftls = self.config.get("fake_tls_domain") or ""
+            if ftls:
+                # ee-secret: следом за секретом hex самого домена маскировки (Fake TLS) —
+                # так же, как апстрим строит ee_link в _run()
+                domain_hex = ftls.encode("ascii").hex()
+                link = (f"tg://proxy?server={link_host}&port={self.config['port']}"
+                        f"&secret=ee{self.config['secret']}{domain_hex}")
+            else:
+                link = (f"tg://proxy?server={link_host}&port={self.config['port']}"
+                        f"&secret=dd{self.config['secret']}")
         except RuntimeError as e:
             self._error = str(e)
         return {

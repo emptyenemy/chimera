@@ -560,6 +560,14 @@ class Api:
         except Exception as e:
             return _err(e)
 
+    def tg_set_advanced(self, options):
+        """Продвинутые настройки ядра (CF-proxy/worker домены, Fake TLS, dc-ip, ...).
+        Применятся со следующего запуска прокси — см. TgProxy.set_advanced."""
+        try:
+            return _ok(self.tg.set_advanced(options))
+        except Exception as e:
+            return _err(e)
+
     def tg_log(self, offset=0):
         try:
             return _ok(self.tg.log_read(offset))
