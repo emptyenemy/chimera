@@ -1,12 +1,15 @@
 # Релиз по тегу: git tag v0.2.0 && git push origin v0.2.0.
 # Тег с дефисом (v0.3.0-beta.1) публикуется пре-релизом — его видит только бета-канал
 # самообновления. Подробности — docs/RELEASES.md.
+# Запуск вручную (Actions → Release → Run workflow) — пробная сборка с полным дымовым
+# тестом, без версии из тега и без публикации: проверить сборку до тега.
 
 name: Release
 
 on:
   push:
     tags: ["v*"]
+  workflow_dispatch:
 
 permissions:
   contents: write  # создать релиз и прикрепить архив
@@ -38,6 +41,7 @@ jobs:
 
       - name: Версия из тега
         id: ver
+        if: startsWith(github.ref, 'refs/tags/')
         shell: bash
         run: |
           python tools/set_version.py "$GITHUB_REF_NAME"
@@ -66,15 +70,17 @@ jobs:
           node-version: "22"
 
       - name: Дымовой тест сборки
-        run: python tools/smoke_build.py build\Chimera
+        run: python tools/smoke_build.py build\Chimera --full
 
       - name: Архив
+        if: startsWith(github.ref, 'refs/tags/')
         shell: bash
         run: |
           python -c "import shutil; shutil.make_archive('Chimera-${{ steps.ver.outputs.version }}-win64', 'zip', root_dir='build', base_dir='Chimera')"
           ls -la Chimera-*-win64.zip
 
       - name: Релиз
+        if: startsWith(github.ref, 'refs/tags/')
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
