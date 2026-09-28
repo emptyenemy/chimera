@@ -33,6 +33,7 @@ python -m nuitka ^
     --enable-plugin=pyside6 ^
     --windows-console-mode=disable ^
     --windows-uac-admin ^
+    --windows-icon-from-ico=assets/logo/chimera.ico ^
     --assume-yes-for-downloads ^
     --company-name=CHIMERA ^
     --product-name=CHIMERA ^
@@ -42,6 +43,7 @@ python -m nuitka ^
     --include-data-dir=ui/web=ui/web ^
     --include-data-dir=strategies=strategies ^
     --include-data-files=modules/dns_providers.json=modules/dns_providers.json ^
+    --include-data-files=assets/logo/chimera.ico=assets/logo/chimera.ico ^
     --include-data-files=upstream/tg-ws-proxy/proxy=upstream/tg-ws-proxy/proxy/=*.py ^
     --include-package=cryptography ^
     --include-package=certifi ^

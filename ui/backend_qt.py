@@ -5,11 +5,16 @@ import sys
 from concurrent.futures import ThreadPoolExecutor
 
 from PySide6.QtCore import QObject, QUrl, Signal, Slot
+from PySide6.QtGui import QIcon
 from PySide6.QtWebChannel import QWebChannel
 from PySide6.QtWebEngineWidgets import QWebEngineView
 from PySide6.QtWidgets import QApplication, QMainWindow
 
 from .api import WEB_DIR, Api
+
+# Иконка окна и панели задач. У собранного exe она и так зашита в ресурсы
+# (build.bat), но при запуске из исходников без этого висела бы иконка python.exe.
+APP_ICON = WEB_DIR.parent.parent / "assets" / "logo" / "chimera.ico"
 
 
 class Bridge(QObject):
@@ -45,6 +50,8 @@ class Bridge(QObject):
 def run():
     app = QApplication(sys.argv)
     app.setApplicationName("CHIMERA")
+    if APP_ICON.exists():
+        app.setWindowIcon(QIcon(str(APP_ICON)))
 
     api = Api()
     bridge = Bridge(api)

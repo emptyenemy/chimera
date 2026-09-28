@@ -23,7 +23,8 @@
 ├── ui/                # api.py (методы для фронта) + hub.py (пуш состояния) + backend_* + web/ (фронт: js/core.js, js/pages/, css/)
 ├── lists/             # списки доменов по сервисам (общий слой для всех модулей)
 ├── strategies/        # стратегии winws2 (*.txt) + assets/ (fake-блобы) + hostlists/
-├── tools/             # port_flowseal.py — генератор стратегий из .bat Flowseal
+├── assets/logo/       # логотип: chimera.svg (основной), chimera-simple.svg (запасной), chimera.ico
+├── tools/             # port_flowseal.py — генератор стратегий из .bat Flowseal; make_logo.py — логотип и иконка
 ├── upstream/          # сабмодули: zapret2, tg-ws-proxy, zapret-discord-youtube
 └── docs/ROADMAP.md    # актуальный статус готового/планируемого
 ```
