@@ -13,7 +13,7 @@
 
 1. Убедиться, что проверка CI на `main` зелёная.
 2. `git tag v0.2.0 && git push origin v0.2.0` (бета — `v0.3.0-beta.1`).
-3. Через 30–40 минут на странице Releases появится `Chimera-0.2.0-win64.zip`. Текст релиза — автоматический список изменений, его можно поправить руками.
+3. На странице Releases появятся три архива: `Chimera-0.2.0-win64.zip`, `Chimera-0.2.0-win64-webview.zip` и `Chimera-0.2.0-win64-lite.zip`. Текст релиза — автоматический список изменений, его можно поправить руками.
 
 Тег, который не разбирается как версия (`vtest`, `v1.2`), валит сборку на шаге «Версия из тега» — exe с несравнимой версией не выходит.
 
@@ -29,7 +29,7 @@
 | проверка, скачивание, `apply.cmd` | `modules/selfupdate.py` |
 | состояние, фоновая проверка, порядок установки | `ui/updater.py` |
 | методы для фронта | `ui/api.py`: `selfupdate_state`, `selfupdate_check`, `selfupdate_install`; источник хаба `selfupdate` |
-| интерфейс | `ui/web/js/pages/settings.js` (карточка «Обновление Chimera»), `ui/web/js/shell.js` (отметка у версии) |
+| интерфейс | `frontend/src/pages/settings/updates.tsx`, `frontend/src/components/app/sidebar.tsx` |
 
 ## Версия
 
@@ -42,14 +42,14 @@
 
 - `Chimera.exe` — это и окно, и команда `chimera` (`modules/cli`): сборка `--windows-console-mode=attach` (вывод в консоль терминала, своего окна консоли нет) и без манифеста администратора: команды не спрашивают права на каждый вызов, а окно повышается само при старте (`main.py`, `auto_elevate`). Без аргументов в терминале exe печатает справку, двойной клик открывает окно; автозапуск и запуск после обновления зовут `--window` явно.
 - Рядом с exe кладутся `skills/` и `AGENTS.md` (до `manifest.txt`, так что обновление их доставляет).
-- Nuitka standalone → `build\Chimera\Chimera.exe`, иконка — `assets/logo/chimera.ico`.
+- Nuitka standalone → `build\Chimera`, `build\Chimera-webview` или `build\Chimera-lite`, иконка — `assets/logo/chimera.ico`.
 - Бинарники заранее кладёт `python tools/fetch_bins.py` (и в CI, и локально; уже скачанное не трогает без `--force`):
   - sing-box — пиннутая версия из `modules/proxy/manager.py`, со сверкой SHA256;
   - zapret-win-bundle — на пиннутом коммите `BUNDLE_COMMIT`, в сборку идёт только `zapret-winws/` (4 МБ из 62: остальное — cygwin/blockcheck, программа их не использует).
 - В сборку копируются только `bin\sing-box\sing-box.exe` и `bin\zapret-win-bundle\zapret-winws\`, а не весь `bin\`.
 - Рядом с exe пишется `versions.json` — версии сабмодулей и бандла. В собранной программе git нет, и «Источники и обновления» берут версии оттуда, а не показывают «—».
 - Последним шагом пишется `manifest.txt` — список всех файлов сборки. Самообновление считает своими только эти файлы: всё прочее в папке программы не трогает.
-- `build.bat --post-only` — только шаги после Nuitka (переименовать `build\main.dist` в `build\Chimera`, скопировать бинарники, записать `versions.json` и `manifest.txt`) — чтобы проверить их без 20-минутной компиляции.
+- `build.bat [qt|webview|lite] --post-only` — только шаги после Nuitka (перенести `build\<вариант>\main.dist` в итоговую папку, скопировать бинарники, записать `versions.json` и `manifest.txt`) — чтобы проверить их без 20-минутной компиляции.
 - `.bat` и `.cmd` хранятся с CRLF (`.gitattributes`): `cmd.exe` промахивается по `goto` в файлах с LF.
 
 ## GitHub Actions
@@ -60,10 +60,10 @@
 2. Python 3.14, `pip install -r requirements-dev.txt`;
 3. версия из тега → `modules/version.py`;
 4. `python tools/fetch_bins.py`;
-5. `build.bat` (кэш Nuitka между сборками — `actions/cache`);
+5. `build.bat qt|webview|lite` в трёх параллельных задачах (кэш Nuitka между сборками — `actions/cache`);
 6. дымовой тест сборки `tools/smoke_build.py` (см. ниже) — сломанная сборка в релиз не уходит;
-7. zip `Chimera-<версия>-win64.zip` через `shutil.make_archive`, внутри папка `Chimera/` (у `Compress-Archive` из Windows PowerShell 5.1 обратные слеши в именах записей);
-8. `gh release create` с архивом; тег с дефисом — `--prerelease`.
+7. zip `Chimera-<версия>-win64[-webview|-lite].zip` через `shutil.make_archive`, внутри папка `Chimera/` (у `Compress-Archive` из Windows PowerShell 5.1 обратные слеши в именах записей);
+8. отдельная задача ждёт все три сборки, вычисляет SHA256 и вызывает `gh release create` с тремя архивами; тег с дефисом — `--prerelease`.
 
 `ci.yml` — на pull request и пуш в `main`: `ruff check .` и `pytest` на `windows-latest`, без сборки. Нужен, чтобы чужие PR проверялись до мержа.
 
@@ -74,7 +74,7 @@
 ### Проверка
 
 - Через 15 секунд после запуска и дальше раз в 6 часов (переключатель «Проверять обновления»), плюс кнопка «Проверить».
-- Один запрос `GET /repos/emptyenemy/chimera/releases?per_page=30` для обоих каналов. Берётся самая свежая версия по semver (не по дате: хотфикс старой ветки не обгонит свежий релиз), черновики пропускаются, пре-релизы — только в бета-канале, релиз без архива `Chimera-*-win64.zip` не считается.
+- Один запрос `GET /repos/emptyenemy/chimera/releases?per_page=30` для обоих каналов. Берётся самая свежая версия по semver (не по дате: хотфикс старой ветки не обгонит свежий релиз), черновики пропускаются, пре-релизы — только в бета-канале, релиз без архива своего варианта (`win64.zip`, `win64-webview.zip` или `win64-lite.zip`) не считается.
 - SHA256 архива — из поля `digest` ассета. Нет контрольной суммы — кнопка неактивна: скачанное не с чем сверить.
 - Без токена. Пока репозиторий приватный, GitHub отвечает 404 — «не удалось проверить: релизов не видно», программа не падает.
 - Нашлась новая версия — одно уведомление за сессию и отметка у номера версии в шапке сайдбара; клик по ней ведёт в настройки.
@@ -112,3 +112,15 @@
 - Workflow — `actionlint`; шаги `build.bat` после Nuitka — `build.bat --post-only` на фейковой сборке.
 - Сборку целиком — `python tools/smoke_build.py`: копия `build\Chimera` начисто (без `data/` и `config.json`), запуск без окна и без UAC, вызовы всех модулей через интерфейс — стратегии и fake-блобы, sing-box, Telegram-прокси, hosts и Flowseal, DNS, списки, версии, самообновление. Пока окно работает, те же процессы проверяются командной строкой exe (`--version`, `agent-info --json`, `status --json`, `winws state --json`, `lists show --json`): это сквозная проверка режима консоли attach и канала управления. Систему не трогает: winws, TUN, hosts и DNS не запускаются, а если в системе уже работает прокси или winws — шаги, которые бы их перезапустили, пропускаются. В релизном workflow он идёт с `--full`: ещё и всё, что требует прав администратора и меняет систему, — запуск winws2, запись hosts, прокси в PAC и TUN, смена DNS, задача автозапуска (каждый шаг возвращает как было; локально `--full` запускать только на одноразовой машине).
 - Проверить сборку до тега: Actions → Release → Run workflow. Это та же сборка и тот же полный дымовой тест, но без версии из тега и без публикации релиза.
+
+## Варианты
+
+| Команда | Папка | Интерфейс |
+|---|---|---|
+| `build.bat qt` | `build/Chimera` | Qt с собственным Chromium |
+| `build.bat webview` | `build/Chimera-webview` | системный WebView2, нативный WinAPI-трей |
+| `build.bat lite` | `build/Chimera-lite` | служба/CLI/TUI, `--browser` открывает интерфейс |
+
+Во всех вариантах есть CLI, TUI и собранный интерфейс. Node 22+ обязателен только при сборке. `tools/set_flavor.py` создаёт временный модуль варианта для Nuitka, `tools/finish_build.py` упаковывает переносимую папку и манифест. Самообновление выбирает архив по встроенному `FLAVOR`.
+
+Дымовая проверка: `python tools/smoke_build.py <папка> --flavor qt|webview|lite`. Qt запускается offscreen; WebView2/Lite проверяются через HTTP-мост и headless Edge. Автоматические системные действия отключены переменной `CHIMERA_SMOKE=1`; `--full` разрешает явные проверки системных изменений только на одноразовом CI-раннере.

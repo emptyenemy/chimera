@@ -13,9 +13,8 @@
       — headless Edge/Chrome по CDP (tools/ui_shot.mjs): по умолчанию обходит все
         страницы и снимает скриншоты в OUT_DIR; сценарий — список шагов, см. ui_shot.mjs.
 
-Флаг --frontend legacy|next|all выбирает фронт: прежний (ui/web, по умолчанию), новый
-(ui/web-next, нужна сборка: npm run build в frontend/) или оба подряд — снимки оба
-фронта тогда ложатся в OUT_DIR/legacy и OUT_DIR/next.
+Флаг --frontend next|all выбирает собранный интерфейс (ui/web-next).
+Нужна сборка: npm run build в frontend/. Режим all сохраняет снимки в OUT_DIR/next.
 
 Окно с интерфейсом при этом не появляется: браузер работает в headless-режиме
 с отдельным временным профилем.
@@ -64,13 +63,13 @@ class _QuietServer(ThreadingHTTPServer):
         pass  # headless-браузер рвёт long-poll при выходе — трейсы тут только шумят
 
 
-def _serve(front: str = "legacy"):
+def _serve(front: str = "next"):
     hub = _Hub()
     api = PreviewApi(push=hub.push)
     server = _QuietServer(("127.0.0.1", 0), _Handler)
     server.daemon_threads = True
     server.api, server.hub, server.token = api, hub, "preview"
-    server.web_dir = frontend.NEXT_DIR if front == "next" else frontend.LEGACY_DIR
+    server.web_dir = frontend.NEXT_DIR
     server.missing_next = front == "next" and not frontend.next_built()
     threading.Thread(target=server.serve_forever, daemon=True).start()
     return server, f"http://127.0.0.1:{server.server_address[1]}/?t=preview"
@@ -106,17 +105,17 @@ def _shot(front: str, out: Path, scenario: str) -> int:
 
 def main(argv):
     args = list(argv[1:])
-    front = "legacy"
+    front = "next"
     if "--frontend" in args:
         i = args.index("--frontend")
         front = args[i + 1] if i + 1 < len(args) else ""
         del args[i:i + 2]
-    if front not in ("legacy", "next", "all"):
-        print("--frontend: legacy, next или all")
+    if front not in ("next", "all"):
+        print("--frontend: next или all")
         return 1
     mode = args[0] if args else "serve"
     if mode == "serve":
-        server, url = _serve("next" if front == "next" else "legacy")
+        server, url = _serve("next")
         print(url, flush=True)
         try:
             threading.Event().wait()
@@ -128,7 +127,7 @@ def main(argv):
         scenario = args[2] if len(args) > 2 else ""
         if front != "all":
             return _shot(front, out, scenario)
-        codes = [_shot(f, out / f, scenario) for f in ("legacy", "next")]
+        codes = [_shot(f, out / f, scenario) for f in ("next",)]
         return max(codes)
     print(__doc__)
     return 1

@@ -12,8 +12,8 @@
   chimera-simple — одинарная линия, запасной, пока нигде не используется.
 
 Запуск: python tools/make_logo.py (нужны shapely и pillow из requirements-dev.txt).
-Пишет assets/logo/*.svg, assets/logo/chimera.ico, ui/web/img/logo.svg (favicon)
-и ui/web/js/logo.js (знак в разметке интерфейса).
+Пишет assets/logo/*.svg, assets/logo/chimera.ico, frontend/public/logo.svg (favicon)
+и frontend/src/assets/logo-path.ts (знак в разметке интерфейса).
 """
 
 import json
@@ -27,8 +27,8 @@ from shapely.ops import unary_union
 
 ROOT = Path(__file__).resolve().parent.parent
 LOGO_DIR = ROOT / "assets" / "logo"
-WEB_LOGO = ROOT / "ui" / "web" / "img" / "logo.svg"
-WEB_LOGO_JS = ROOT / "ui" / "web" / "js" / "logo.js"
+WEB_LOGO = ROOT / "frontend" / "public" / "logo.svg"
+WEB_LOGO_JS = ROOT / "frontend" / "src" / "assets" / "logo-path.ts"
 
 CENTER = (12.0, 12.0)  # холст 24×24, как у иконок lucide
 LIVE = 11.0            # полуразмер живой области: 1 единица отступа до края холста
@@ -122,36 +122,6 @@ def svg(geom, style: str = "") -> str:
 WEB_STYLE = ("<style>path{fill:#0a0a0a}"
              "@media (prefers-color-scheme:dark){path{fill:#fafafa}}</style>")
 
-# Знак в интерфейсе — прямо в JS, как спрайт lucide (ui/web/vendor/build-icons.py):
-# окно Qt открывает страницу через file://, и внешний svg (маской или <img>)
-# зависит от доступа к локальным файлам, а inline-разметка рисуется всегда и сразу.
-LOGO_JS = """// Сгенерировано tools/make_logo.py — править руками не нужно.
-//
-// <i data-logo></i> заменяется на inline-<svg> логотипа. Цвет — currentColor,
-// размер — от родителя (width/height svg: 100%%).
-(function () {
-  var SVG = %s;
-  function logo(root) {
-    var list = (root || document).querySelectorAll("i[data-logo]");
-    for (var i = 0; i < list.length; i++) {
-      var tpl = document.createElement("template");
-      tpl.innerHTML = SVG;
-      var svg = tpl.content.firstChild;
-      svg.setAttribute("class", "logo " + list[i].className);
-      svg.setAttribute("aria-hidden", "true");
-      list[i].replaceWith(svg);
-    }
-  }
-  window.logo = logo;
-  if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", function () { logo(); });
-  } else {
-    logo();
-  }
-})();
-"""
-
-
 def _mask(geom, size: int, scale: float) -> Image.Image:
     """Маска знака size×size: каждый полигон — заливка минус его дыры, всё вместе — max."""
     k = size / 24
@@ -183,12 +153,14 @@ def main() -> None:
     WEB_LOGO.parent.mkdir(parents=True, exist_ok=True)
 
     main_glyph = glyph("chimera")
-    # LF на любой ОС: иначе на Windows write_text пишет \r\n и файлы расходятся с репозиторием
-    lf = {"encoding": "utf-8", "newline": "\n"}
-    (LOGO_DIR / "chimera.svg").write_text(svg(main_glyph), **lf)
-    (LOGO_DIR / "chimera-simple.svg").write_text(svg(glyph("chimera-simple")), **lf)
-    WEB_LOGO.write_text(svg(main_glyph, WEB_STYLE), **lf)
-    WEB_LOGO_JS.write_text(LOGO_JS % json.dumps(svg(main_glyph).strip()), **lf)
+    def save(path, text):
+        data = path.read_bytes() if path.exists() else b"\r\n"
+        newline = "\r\n" if b"\r\n" in data else "\n"
+        path.write_bytes(text.replace("\n", newline).encode("utf-8"))
+    save(LOGO_DIR / "chimera.svg", svg(main_glyph))
+    save(LOGO_DIR / "chimera-simple.svg", svg(glyph("chimera-simple")))
+    save(WEB_LOGO, svg(main_glyph, WEB_STYLE))
+    save(WEB_LOGO_JS, "export const LOGO_PATH = " + json.dumps(path_d(main_glyph)) + "\n")
 
     frames = [icon_frame(main_glyph, s) for s in ICO_SIZES]
     frames[-1].save(LOGO_DIR / "chimera.ico", format="ICO",

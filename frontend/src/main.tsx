@@ -32,7 +32,7 @@ async function boot(): Promise<void> {
     failure = e instanceof Error ? e.message : String(e)
   }
   store.set("app", info)
-  void initTheme()
+  await initTheme()
 
   createRoot(document.getElementById("root")!).render(
     <StrictMode>

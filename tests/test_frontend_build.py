@@ -38,7 +38,7 @@ def test_every_referenced_file_exists():
 
 
 def test_fonts_are_reused_from_the_legacy_frontend():
-    for f in (ROOT / "ui" / "web" / "fonts").glob("*.woff2"):
+    for f in (ROOT / "frontend" / "public" / "fonts").glob("*.woff2"):
         assert (BUILD / "fonts" / f.name).is_file(), f.name
 
 

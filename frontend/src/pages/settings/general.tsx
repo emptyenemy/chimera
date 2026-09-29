@@ -110,7 +110,6 @@ export function LanguageCard() {
 
 const ENGINES = [
   { id: "pyside6", titleKey: "settings.engine.pyside6", dev: false },
-  // dev: в собранную программу pywebview не входит (build.bat) — там варианта нет
   { id: "pywebview", titleKey: "settings.engine.pywebview", dev: true },
   { id: "browser", titleKey: "settings.engine.browser", dev: false },
 ]
@@ -172,7 +171,7 @@ export function GeneralCard() {
                 onValueChange={(v) => v[0] && void setConfig("ui_backend", v[0])}
                 data-testid="settings-engine"
               >
-                {ENGINES.filter((en) => !(en.dev && app?.frozen)).map((en) => (
+                {ENGINES.filter((en) => !app?.ui_backends || app.ui_backends.includes(en.id)).map((en) => (
                   <ToggleGroupItem key={en.id} value={en.id} data-testid={`settings-engine-${en.id}`}>
                     {t(en.titleKey)}
                   </ToggleGroupItem>

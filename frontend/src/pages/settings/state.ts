@@ -27,6 +27,8 @@ export interface AutostartState {
 /** app_info с признаком собранной программы (в ней нет pywebview и git). */
 export interface AppInfoFull {
   frozen?: boolean
+  flavor?: string
+  ui_backends?: string[]
 }
 
 export const CONFIG_KEY = "settings.config"

@@ -64,6 +64,8 @@ node_modules/
 
 # Сборка нового фронта (frontend/ -> npm run build), в репозиторий не входит
 ui/web-next/
+modules/_build_flavor.py
+.playwright-mcp/
 
 # Python
 __pycache__/

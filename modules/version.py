@@ -8,8 +8,29 @@ VERSION в репозитории — "dev": запуск из исходник�
 """
 
 import re
+import sys
 
 VERSION = "dev"
+
+FLAVOR = "qt"
+if "__compiled__" in globals() or getattr(sys, "frozen", False):
+    try:
+        from modules._build_flavor import FLAVOR
+    except ImportError:
+        pass
+
+FLAVORS = ("qt", "webview", "lite")
+
+
+def asset_suffix(flavor: str = FLAVOR) -> str:
+    if flavor not in FLAVORS:
+        raise ValueError(flavor)
+    return "" if flavor == "qt" else f"-{flavor}"
+
+
+def default_backend(flavor: str = FLAVOR) -> str:
+    return {"qt": "pyside6", "webview": "pywebview", "lite": "browser"}[flavor]
+
 
 _RE = re.compile(r"^v?(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?$")
 

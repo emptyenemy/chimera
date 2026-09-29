@@ -36,11 +36,11 @@ import zipfile
 from pathlib import Path
 
 from modules import paths
-from modules.version import VERSION, is_newer, parse
+from modules.version import FLAVOR, VERSION, asset_suffix, is_newer, parse
 
 REPO = "emptyenemy/chimera"
 RELEASES_API = f"https://api.github.com/repos/{REPO}/releases?per_page=30"
-ASSET_RE = re.compile(r"^Chimera-.+-win64\.zip$")
+ASSET_RE = re.compile(r"^Chimera-.+-win64" + re.escape(asset_suffix(FLAVOR)) + r"\.zip$")
 EXE_NAME = "Chimera.exe"
 MANIFEST = "manifest.txt"  # список файлов релиза, пишет build.bat (tools/fetch_bins.py --manifest)
 SERVICE_TASK = "CHIMERA-Service"  # modules/service.py: TASK_NAME

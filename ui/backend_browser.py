@@ -21,6 +21,7 @@ long-poll; пропал клиент дольше IDLE_TIMEOUT — гасим с
 """
 
 import json
+import os
 import mimetypes
 import secrets
 import threading
@@ -205,17 +206,21 @@ def run():
     port = int(appconfig.load().get("ui_port") or DEFAULT_PORT)
     server = ThreadingHTTPServer((HOST, port), _Handler)
     server.daemon_threads = True
-    server.api, server.hub, server.token = api, hub, secrets.token_urlsafe(24)
+    headless = os.environ.get("CHIMERA_NO_BROWSER") == "1"
+    token = os.environ.get("CHIMERA_HTTP_TOKEN") if headless else None
+    server.api, server.hub, server.token = api, hub, token or secrets.token_urlsafe(24)
     server.missing_next = frontend.next_missing()
-    server.web_dir = frontend.NEXT_DIR if frontend.selected() == "next" else frontend.LEGACY_DIR
+    server.web_dir = frontend.NEXT_DIR
     if server.missing_next:
         print(frontend.MISSING_TEXT)
 
     url = f"http://{HOST}:{server.server_address[1]}/?t={server.token}"
-    print(f"Chimera открыта в браузере: {url}\nЗакрой вкладку или нажми Ctrl+C, чтобы выйти.")
+    if not headless:
+        print(f"Chimera открыта в браузере: {url}\nЗакрой вкладку или нажми Ctrl+C, чтобы выйти.")
     stop = threading.Event()
     threading.Thread(target=_watchdog, args=(server, api, hub, stop), daemon=True).start()
-    webbrowser.open(url)
+    if not headless:
+        webbrowser.open(url)
     try:
         server.serve_forever()
     except KeyboardInterrupt:

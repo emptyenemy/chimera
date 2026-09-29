@@ -44,6 +44,7 @@ export async function initTheme(): Promise<void> {
   try {
     const cfg = await api<{ theme?: unknown }>("config_read")
     if (isSetting(cfg?.theme)) setting = cfg.theme
+    apply(resolve(setting))
     emit()
   } catch {
     /* остаёмся на system: тему уже выставил бэкенд */

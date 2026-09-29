@@ -30,7 +30,7 @@ def _explicit_rules() -> list[tuple[str, str]]:
 
 
 def test_data_dirs_found():
-    assert "strategies" in _data_dirs() and "ui/web" in _data_dirs()
+    assert "strategies" in _data_dirs() and "ui/web-next" in _data_dirs()
 
 
 def test_every_runtime_file_nuitka_skips_has_explicit_rule():
@@ -65,9 +65,9 @@ def test_new_frontend_is_built_before_nuitka_and_only_the_build_ships():
     assert ci < build < nuitka
     assert "where node" in BUILD_BAT  # без node сборка не падает, а кладёт только прежний фронт
     dirs = _data_dirs()
-    assert "ui/web-next" in dirs and "ui/web" in dirs
+    assert "ui/web-next" in dirs and "ui/web" not in dirs
     assert not any(d.startswith(("frontend", "node_modules")) for d in dirs)
-    assert "%WEBNEXT%" in BUILD_BAT.split("python -m nuitka", 1)[1]
+    assert "--include-data-dir=ui/web-next=ui/web-next" in BUILD_BAT.split("python -m nuitka", 1)[1]
 
 
 def test_new_frontend_build_is_git_ignored():
@@ -108,11 +108,9 @@ def test_exe_is_also_the_command_line():
 
 
 def test_agent_files_are_copied_before_the_manifest():
-    # скилл и AGENTS.md лежат рядом с exe и попадают в manifest.txt (обновление их не потеряет)
-    skills = BUILD_BAT.index('xcopy /E /I /Y /Q skills "%OUT_DIR%\\skills"')
-    agents = BUILD_BAT.index('copy /Y AGENTS.md "%OUT_DIR%\\"')
-    manifest = BUILD_BAT.index("--manifest")
-    assert skills < manifest and agents < manifest
+    finish = (ROOT / "tools" / "finish_build.py").read_text(encoding="utf-8")
+    assert finish.index('"skills"') < finish.index("write_manifest")
+    assert finish.index('"AGENTS.md"') < finish.index("write_manifest")
 
 
 def test_cli_modules_are_reachable_from_main():
@@ -123,8 +121,5 @@ def test_cli_modules_are_reachable_from_main():
 
 
 def test_intermediate_build_dir_is_removed():
-    # build\main.build — сгенерированный C-код и объектники; после сборки не нужен.
-    # Nuitka убирает его сама (--remove-output), а build.bat добивает остаток, если
-    # папка осталась от прежних сборок без этого флага
     assert "--remove-output" in BUILD_BAT
-    assert re.search(r'rmdir /S /Q "?build\\main\.build"?', BUILD_BAT)
+    assert "--output-dir=build/%FLAVOR%" in BUILD_BAT

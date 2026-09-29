@@ -1,6 +1,6 @@
 # Новый фронт (`frontend/`)
 
-Интерфейс на настоящем [shadcn/ui](https://ui.shadcn.com) (база Base UI): Vite, React 19, TypeScript, Tailwind v4, иконки lucide. Живёт рядом с прежним (`ui/web/`), пока все страницы не перенесены; какой открыть — ключ `frontend` в `config.json` (`"legacy"` по умолчанию, `"next"`). Статус миграции и порядок страниц — в [ROADMAP.md](ROADMAP.md).
+Интерфейс на настоящем [shadcn/ui](https://ui.shadcn.com) (база Base UI): Vite, React 19, TypeScript, Tailwind v4, иконки lucide. Все девять страниц перенесены. Исходники — `frontend/`, готовый интерфейс — `ui/web-next/`. Прежний `ui/web/` удалён; старое значение `frontend` в конфиге игнорируется.
 
 Для программы Node не нужен. Он нужен, чтобы собрать и править интерфейс: Node 22+, пакетный менеджер npm.
 
@@ -10,26 +10,23 @@
 cd frontend
 npm ci              # зависимости строго по package-lock.json
 npm run typecheck   # tsc -b
+npm test            # каталоги, параметры и множественные числа ru/en
 npm run lint        # eslint (код shadcn в src/components/ui и src/hooks не проверяется)
 npm run build       # tsc -b + vite build -> ../ui/web-next
 ```
 
-`ui/web-next/` и `node_modules/` в git не входят. `build.bat` сам выполняет `npm ci` и `npm run build` перед Nuitka (если есть `frontend/` и node) и кладёт в exe готовую `ui/web-next`, но не исходники и не `node_modules`. CI (`ci.yml`) гоняет `typecheck` и `build` до pytest; `release.yml` ставит Node до `build.bat`.
+`ui/web-next/` и `node_modules/` в git не входят. `build.bat` сам выполняет `npm ci` и `npm run build` перед Nuitka (Node 22+ обязателен для всех вариантов) и кладёт в exe готовую `ui/web-next`, но не исходники и не `node_modules`. CI (`ci.yml`) гоняет `typecheck`, `lint`, `test` и `build` до pytest; `release.yml` ставит Node до `build.bat`.
 
 Бандл собирается с `base: "./"`: пути относительные, поэтому страница одинаково открывается с `file://` (PySide6), из pywebview и с локального HTTP-сервера браузерного движка, без правок серверного кода. `qwebchannel.js` лежит в `frontend/public/` и подключается до бандла.
 
-## Как выбирается фронт
+## Каталог интерфейса
 
-`ui/frontend.py` — единственное место, где движки узнают каталог фронта (`web_dir()`); иконка окна и другие пути от него не зависят. Выбран `"next"`, а сборки нет:
-
-- Qt и pywebview пишут в лог «выполните npm run build в frontend/» и открывают прежний фронт;
-- браузерный движок показывает страницу с этим сообщением.
+`ui/frontend.py` задаёт каталог `ui/web-next/` для всех движков. Если сборки нет, оконный движок сообщает, что нужно выполнить `npm run build` в `frontend/`; браузер показывает страницу с этой подсказкой.
 
 Проверка без окна программы (окно не запускается, браузер headless):
 
 ```powershell
 python tools/ui_preview.py shot <папка> --frontend next      # обойти страницы нового фронта
-python tools/ui_preview.py shot <папка> --frontend all       # оба фронта: <папка>/legacy и <папка>/next
 python tools/ui_preview.py shot <папка> сценарий.json --frontend next
 ```
 
@@ -45,7 +42,7 @@ python tools/ui_preview.py shot <папка> сценарий.json --frontend ne
 | `lib/store.ts` | стор состояния модулей, который пушит хаб (`ui/hub.py`); `useStore(ключ)`, `optimistic()` |
 | `lib/router.ts` | роутер страниц по хешу и `localStorage` (`chimera.page`) |
 | `lib/theme.ts` | тема system/light/dark: `setThemeSetting()` пишет `config_set("theme", …)` и сразу ставит класс `dark`, `data-theme`, `color-scheme` на `<html>`; для system слушает `prefers-color-scheme` |
-| `lib/i18n.ts`, `locales/ru.json` | `t("ключ", {…})` и каталог строк |
+| `lib/i18n.ts`, `lib/language.ts`, `locales/ru.json`, `locales/en.json` | `t("ключ", {…})` и каталог строк |
 | `lib/dialogs.ts`, `lib/notify.ts` | `confirmDialog()`, `promptDialog()`, тосты — вызываются откуда угодно |
 | `lib/status.ts` | «включён ли модуль», общий для обзора и меню |
 | `lib/agent-hooks.ts` | `window.api`, `window.Pages`, `window.Bridge` для внешних проверок |
@@ -56,7 +53,7 @@ python tools/ui_preview.py shot <папка> сценарий.json --frontend ne
 ## Правила
 
 - Компоненты — из shadcn, композиция и цвета по правилам shadcn: семантические токены (`bg-primary`, `text-muted-foreground`, а для состояний `text-success`, `text-warning`), `gap-*` вместо `space-y-*`, `data-icon` у иконок в кнопках, формы через `FieldGroup`/`Field`, диалогам всегда заголовок. Перед добавлением компонента — `npx shadcn@latest docs <компонент>`.
-- Токены светлой и тёмной темы в `src/index.css` (`:root` и `.dark`). Тему выставляет Python-часть классом `dark` и атрибутом `data-theme` на `<html>` до отрисовки; без них (`npm run dev`) по умолчанию тёмная.
+- Токены светлой и тёмной темы в `src/index.css` (`:root` и `.dark`). Тему выставляют Python-часть и `initTheme()` перед первой отрисовкой классом `dark` и атрибутом `data-theme` на `<html>` до отрисовки; без них (`npm run dev`) по умолчанию тёмная.
 - Вызовы бэкенда — только `api("метод", …)` с литералом имени: по нему `tests/test_cli_parity.py` проверяет, что у каждого действия окна есть команда `chimera`.
 - Пользовательские строки — только через `t("ключ", {…})`; в компонентах русского текста нет. Множественные числа: ключи `имя.one`, `имя.few`, `имя.many`, `имя.other` и параметр `count`.
 - Состояние модулей не опрашивается: страница читает стор (`useStore`), а тумблеры идут через `optimistic()` (сразу меняет стор, при ошибке откатывает и показывает тост). Ленивые источники хаба включает `useHubWatch(["dns"])`, пока страница открыта.
@@ -88,7 +85,11 @@ python tools/ui_preview.py shot <папка> сценарий.json --frontend ne
    }
    ```
 
-2. В `src/pages/registry.ts` заменить `stub("dns")` на компонент. Порядок строк — порядок пунктов меню, `groupKey` — группа, `dot` — от какого модуля горит точка у пункта.
-3. Строки — в `src/locales/ru.json` (ключи страницы с общим префиксом: `dns.*`). Форму состояния — в `src/lib/types.ts`.
+2. В `src/pages/registry.ts` добавить компонент. Порядок строк — порядок пунктов меню, `groupKey` — группа, `dot` — от какого модуля горит точка у пункта.
+3. Строки — в `src/locales/ru.json` и `en.json` (ключи страницы с общим префиксом: `dns.*`). Форму состояния — в `src/lib/types.ts`.
 4. Если странице нужны данные, которых нет в `hub_snapshot`, либо загрузите их вызовом `api(...)` в эффекте страницы, либо заведите источник в хабе (`ui/api.py`, `ui/hub.py`) и включайте его на время показа страницы через `useHubWatch`.
 5. `npm run typecheck && npm run build`, затем `python tools/ui_preview.py shot <папка> --frontend next` и посмотреть снимок. `python -m pytest` — тесты паритета с CLI сами найдут новые вызовы `api(...)`.
+
+## Язык и тема
+
+В Настройках доступны русский, английский и язык системы; изменение применяется сразу. `lib/language.ts` запрашивает `lang_get`/`i18n_get`, слушает `langChanged`, объединяет локальный каталог интерфейса с каталогом бэкенда. Множественное число выбирает `Intl.PluralRules`. Ошибки с `code`/`params` переводятся из каталога; ещё не перенесённые исключения менеджеров сохраняют исходный текст (см. [i18n.md](i18n.md)). Тема system/light/dark тоже меняется без перезапуска.

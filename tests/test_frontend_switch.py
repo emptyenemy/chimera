@@ -26,16 +26,16 @@ def built(monkeypatch, tmp_path):
     return tmp_path
 
 
-def test_legacy_is_default(cfg):
+def test_next_is_default(cfg, built):
     cfg()
-    assert frontend.selected() == "legacy"
-    assert frontend.web_dir() == frontend.LEGACY_DIR
+    assert frontend.selected() == "next"
+    assert frontend.web_dir() == built
     assert not frontend.next_missing()
 
 
-def test_unknown_value_falls_back_to_legacy(cfg):
+def test_old_or_unknown_value_uses_next(cfg):
     cfg(frontend="что-то")
-    assert frontend.selected() == "legacy"
+    assert frontend.selected() == "next"
 
 
 def test_next_uses_build(cfg, built):
@@ -48,8 +48,8 @@ def test_next_without_build_falls_back_and_says_why(cfg, monkeypatch, tmp_path, 
     monkeypatch.setattr(frontend, "NEXT_DIR", tmp_path / "нет-такой")
     cfg(frontend="next")
     assert frontend.next_missing()
-    assert frontend.web_dir() == frontend.LEGACY_DIR
-    assert "npm run build" in capsys.readouterr().out
+    with pytest.raises(FileNotFoundError, match="npm run build"):
+        frontend.web_dir()
 
 
 def test_window_icon_does_not_depend_on_web_dir():
@@ -102,7 +102,7 @@ def test_browser_shows_hint_when_next_is_not_built(server, tmp_path):
     assert _get(srv, "/index.html")[0] == 404
 
 
-def test_browser_default_dir_is_legacy(server):
+def test_browser_default_dir_is_next(server):
     srv = server(None)
     status, body = _get(srv)
     assert status == 200 and "<title>Chimera</title>" in body

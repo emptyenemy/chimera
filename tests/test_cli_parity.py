@@ -49,13 +49,6 @@ def _frontend_calls(files) -> set[str]:
     return calls
 
 
-def test_every_frontend_call_is_covered():
-    calls = _frontend_calls((ROOT / "ui" / "web" / "js").rglob("*.js"))
-    assert calls, "во фронте не нашлось вызовов api(...): изменился способ вызова?"
-    uncovered = sorted(c for c in calls if c not in MAPPED and c not in registry.EXCLUDED)
-    assert not uncovered, f"действия окна без команды: {uncovered}"
-
-
 def test_every_call_of_the_new_frontend_is_covered():
     src = ROOT / "frontend" / "src"
     files = [*src.rglob("*.ts"), *src.rglob("*.tsx")]

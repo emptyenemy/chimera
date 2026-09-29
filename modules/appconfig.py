@@ -6,6 +6,7 @@ from pathlib import Path
 from modules import i18n
 from modules.errors import ChimeraValueError
 from modules.fileutil import atomic_write_text
+from modules.version import FLAVOR, default_backend
 
 CONFIG_PATH = Path(__file__).parent.parent / "config.json"
 # close_to_tray — крестик окна прячет его в трей (движок pyside6), а не закрывает программу;
@@ -13,7 +14,7 @@ CONFIG_PATH = Path(__file__).parent.parent / "config.json"
 # theme — оформление окна: system (как в Windows) | light | dark (см. ui/theme.py);
 # lang — язык программы: auto (как в Windows) | ru | en (см. modules/i18n.py)
 THEMES = ("system", "light", "dark")
-DEFAULTS = {"interface": "ui", "auto_elevate": True, "ui_backend": "pyside6", "close_to_tray": True,
+DEFAULTS = {"interface": "service" if FLAVOR == "lite" else "ui", "auto_elevate": True, "ui_backend": default_backend(), "close_to_tray": True,
             "update_channel": "stable", "update_check": True, "theme": "system", "lang": "auto"}
 
 

@@ -37,14 +37,14 @@ from modules.dns_jumper import DnsJumper
 from modules.hosts import HostsManager
 from modules.proxy import ProxyManager
 from modules.tgproxy import TgProxy
-from modules.version import VERSION
+from modules.version import FLAVOR, VERSION
 from modules.winws import WinwsManager
 from modules.hosts.manager import is_admin
 from ui.hub import StateHub
 from ui.shareops import ShareOps
 from ui.updater import Updater
 
-WEB_DIR = Path(__file__).parent / "web"
+WEB_DIR = Path(__file__).parent / "web-next"
 
 
 def _ok(data=None):
@@ -65,7 +65,9 @@ class Api:
         # Ставит бэкенд: у Qt это сигнал в QWebChannel, у pywebview — evaluate_js.
         self.push = push or (lambda fn, payload: None)
         self.hosts = HostsManager()
-        self.hosts.start_background()  # автообновление/чекер/автопереключение hosts, см. modules/hosts/background.py
+        self._smoke = os.environ.get("CHIMERA_SMOKE") == "1"
+        if not self._smoke and (service_owned or not service.is_running()):
+            self.hosts.start_background()
         self.dns = DnsJumper()
         self.tg = TgProxy()
         self.winws = WinwsManager()
@@ -76,9 +78,10 @@ class Api:
         # приедут в UI через *_state, как и раньше.
         # Если фоновая служба (modules/service.py) уже запущена — она единственный
         # владелец процессов, UI не поднимает свои автозапуски поверх неё.
-        if not service_owned and not service.is_running():
+        if not self._smoke and not service_owned and not service.is_running():
             threading.Thread(target=self._startup_then_autostart, daemon=True).start()
-        threading.Thread(target=self._refresh_autostart_task, daemon=True).start()
+        if not self._smoke:
+            threading.Thread(target=self._refresh_autostart_task, daemon=True).start()
         # Закрыть программу по её же команде (обновление): бэкенд подменяет на свой
         # выход через поток UI; по умолчанию — сразу, модули к этому моменту уже погашены.
         self.request_quit = lambda: os._exit(0)
@@ -100,7 +103,8 @@ class Api:
             ("selfupdate", self.selfupdate_state, 5.0, False),
         ])
         self.hub.start()
-        self._watch_lists()
+        if not self._smoke:
+            self._watch_lists()
 
     def _watch_lists(self) -> None:
         """Правку lists/*.txt на диске (агентом, вручную) применяем так же, как lists_save.
@@ -313,7 +317,10 @@ class Api:
     def app_info(self):
         # frozen — собранная программа: в ней нет pywebview и git, фронт прячет то, что там не работает
         return _ok({"admin": is_admin(), "version": VERSION, "service_running": service.is_running(),
-                    "frozen": paths.IS_FROZEN})
+                    "frozen": paths.IS_FROZEN, "flavor": FLAVOR,
+                    "ui_backends": (["pyside6", "pywebview", "browser"] if not paths.IS_FROZEN
+                                    else {"qt": ["pyside6", "browser"], "webview": ["pywebview", "browser"],
+                                          "lite": ["browser"]}[FLAVOR])})
 
     # --- обновление программы (ui/updater.py, modules/selfupdate.py) ----------
 

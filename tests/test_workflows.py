@@ -22,10 +22,12 @@ def test_release_notes_carry_sha256_of_the_archive():
     assert RELEASE.index("make_archive") < RELEASE.index("sha256sum") < RELEASE.index("gh release create")
     assert "--notes" in RELEASE and "SHA256" in RELEASE
     assert "--generate-notes" in RELEASE
-    # хеш считается от того же файла, что уходит в релиз
-    assert 'zip="Chimera-${{ steps.ver.outputs.version }}-win64.zip"' in RELEASE
-    assert 'sha256sum "$zip"' in RELEASE
-    assert 'gh release create "$GITHUB_REF_NAME" "$zip"' in RELEASE
+    assert 'sha256sum "${zips[@]}"' in RELEASE
+    assert 'gh release create "$GITHUB_REF_NAME" "${zips[@]}"' in RELEASE
+    assert "needs: build" in RELEASE
+    for flavor in ("qt", "webview", "lite"):
+        assert f"flavor: {flavor}" in RELEASE
+    assert "--flavor ${{ matrix.flavor }}" in RELEASE
 
 
 def test_release_runs_tools_scripts():

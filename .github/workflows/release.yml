@@ -1,9 +1,4 @@
-# Релиз по тегу: git tag v0.2.0 && git push origin v0.2.0.
-# Тег с дефисом (v0.3.0-beta.1) публикуется пре-релизом — его видит только бета-канал
-# самообновления. Подробности — docs/RELEASES.md.
-# Запуск вручную (Actions → Release → Run workflow) — пробная сборка с полным дымовым
-# тестом, без версии из тега и без публикации: проверить сборку до тега.
-
+# Тег v* публикует три сборки. Ручной запуск проверяет их без публикации.
 name: Release
 
 on:
@@ -12,21 +7,32 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write  # создать релиз и прикрепить архив
+  contents: write
 
 jobs:
   build:
     runs-on: windows-latest
     timeout-minutes: 90
-    # консоль раннера в cp1252 — print() с кириллицей в tools/*.py падает без UTF-8
     env:
       PYTHONUTF8: "1"
       PYTHONIOENCODING: utf-8
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - flavor: qt
+            folder: Chimera
+            suffix: ""
+          - flavor: webview
+            folder: Chimera-webview
+            suffix: -webview
+          - flavor: lite
+            folder: Chimera-lite
+            suffix: -lite
     steps:
       - uses: actions/checkout@v7
         with:
           submodules: recursive
-
       - uses: actions/setup-python@v7
         with:
           python-version: "3.14"
@@ -34,12 +40,8 @@ jobs:
           cache-dependency-path: |
             requirements.txt
             requirements-dev.txt
-
       - name: Зависимости
         run: python -m pip install -r requirements-dev.txt
-
-      # pytest здесь не гоняется: он уже прошёл в ci.yml на этом коммите main
-
       - name: Версия из тега
         id: ver
         if: startsWith(github.ref, 'refs/tags/')
@@ -47,54 +49,54 @@ jobs:
         run: |
           python tools/set_version.py "$GITHUB_REF_NAME"
           echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
-
-      # Node нужен build.bat (новый фронт собирается из frontend/ в ui/web-next) и
-      # дымовому тесту сборки
       - uses: actions/setup-node@v7
         with:
           node-version: "22"
           cache: npm
           cache-dependency-path: frontend/package-lock.json
-
-      - name: Бинарники (sing-box, winws2)
+      - name: Бинарники
         run: python tools/fetch_bins.py
-
-      # Кэш Nuitka: скомпилированные модули и скачанные ею инструменты — повторная
-      # сборка заметно быстрее. Ключ — версия зависимостей, от них кэш и устаревает.
       - uses: actions/cache@v6
         with:
           path: ~\AppData\Local\Nuitka\Nuitka\Cache
-          key: nuitka-${{ runner.os }}-${{ hashFiles('requirements.txt', 'requirements-dev.txt') }}
-          restore-keys: nuitka-${{ runner.os }}-
-
+          key: nuitka-${{ runner.os }}-${{ matrix.flavor }}-${{ hashFiles('requirements.txt', 'requirements-dev.txt') }}
+          restore-keys: nuitka-${{ runner.os }}-${{ matrix.flavor }}-
       - name: Сборка
         shell: cmd
-        run: call build.bat
-
-      # Собранная программа начисто, как у пользователя: запуск без окна и вызовы
-      # всех модулей через её же интерфейс (tools/smoke_build.py). Ловит то, что
-      # тестам исходников не видно, — модуль или файл, не попавший в exe.
+        run: call build.bat ${{ matrix.flavor }}
       - name: Дымовой тест сборки
-        run: python tools/smoke_build.py build\Chimera --full
-
+        run: python tools/smoke_build.py build\${{ matrix.folder }} --flavor ${{ matrix.flavor }} --full
       - name: Архив
         if: startsWith(github.ref, 'refs/tags/')
-        shell: bash
-        run: |
-          python -c "import shutil; shutil.make_archive('Chimera-${{ steps.ver.outputs.version }}-win64', 'zip', root_dir='build', base_dir='Chimera')"
-          ls -la Chimera-*-win64.zip
-
-      - name: Релиз
+        run: python -c "import shutil; shutil.make_archive('Chimera-${{ steps.ver.outputs.version }}-win64${{ matrix.suffix }}', 'zip', root_dir='build', base_dir='${{ matrix.folder }}')"
+      - uses: actions/upload-artifact@v6
         if: startsWith(github.ref, 'refs/tags/')
+        with:
+          name: release-${{ matrix.flavor }}
+          path: Chimera-*-win64*.zip
+          if-no-files-found: error
+
+  release:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v7
+        with:
+          pattern: release-*
+          merge-multiple: true
+          path: archives
+      - name: Релиз
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          zip="Chimera-${{ steps.ver.outputs.version }}-win64.zip"
-          # хеш архива — в описание релиза: по нему можно сверить скачанный zip;
-          # своё описание встаёт перед автоматическим списком изменений
-          sha=$(sha256sum "$zip" | cut -d' ' -f1)
-          echo "SHA256 $zip: $sha"
-          flags=(--generate-notes --title "Chimera $GITHUB_REF_NAME" --notes "SHA256 архива $zip: $sha")
+          shopt -s nullglob
+          zips=(archives/Chimera-*-win64*.zip)
+          [[ ${#zips[@]} == 3 ]] || exit 1
+          sha256sum "${zips[@]}" > checksums.txt
+          { echo 'SHA256 архивов:'; echo; cat checksums.txt; } > release-notes.txt
+          flags=(--generate-notes --title "Chimera $GITHUB_REF_NAME" --notes-file release-notes.txt)
           if [[ "$GITHUB_REF_NAME" == *-* ]]; then flags+=(--prerelease); fi
-          gh release create "$GITHUB_REF_NAME" "$zip" "${flags[@]}"
+          gh release create "$GITHUB_REF_NAME" "${zips[@]}" "${flags[@]}"

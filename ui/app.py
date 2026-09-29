@@ -5,12 +5,14 @@ ui/backend_qt.py (PySide6/QWebEngineView) и ui/backend_webview.py (pywebview).
 Фронтенд (ui/web) один и тот же: мост он определяет сам, см. initBridge().
 """
 
+from modules.version import default_backend
+
 BACKENDS = {
     "pyside6": ("ui.backend_qt", "PySide6"),
     "pywebview": ("ui.backend_webview", "pywebview"),
     "browser": ("ui.backend_browser", "стандартная библиотека"),
 }
-DEFAULT_BACKEND = "pyside6"  # тот, на котором собирается exe (см. build.bat)
+DEFAULT_BACKEND = default_backend()  # тот, на котором собирается exe (см. build.bat)
 FALLBACK_BACKEND = "browser"  # без своих зависимостей — работает всегда
 
 
@@ -29,6 +31,15 @@ def run(backend_name: str | None = None):
               f"Беру {DEFAULT_BACKEND}.")
         name = DEFAULT_BACKEND
 
+    from modules import paths
+    from modules.version import FLAVOR
+    if paths.IS_FROZEN and name != "browser" and name != default_backend(FLAVOR):
+        name = default_backend(FLAVOR)
+    if name == "pywebview":
+        from ui.webview_runtime import installed
+        if not installed():
+            print("WebView2 Runtime не установлен. Открываю интерфейс в браузере.")
+            name = "browser"
     try:
         backend = _load(name)
     except ImportError as e:

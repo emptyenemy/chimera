@@ -1,7 +1,7 @@
 """Дымовой тест собранной программы — «как у пользователя, начисто».
 
-    python tools/smoke_build.py [папка сборки] [--full] [--frontend legacy|next]
-                                          (по умолчанию build\\Chimera, прежний фронт)
+    python tools/smoke_build.py [папка сборки] [--full] [--flavor qt|webview|lite]
+                                          (по умолчанию build\\Chimera, Qt)
 
 --full — ещё и то, что требует прав администратора и меняет систему (запуск winws2,
 запись hosts, прокси в PAC и TUN, смена DNS, задача автозапуска). Каждый шаг
@@ -22,6 +22,7 @@ hosts и Flowseal, DNS, списки, версии, самообновление
 
 import json
 import os
+import secrets
 import shutil
 import socket
 import subprocess
@@ -94,7 +95,7 @@ def _cli_check(app: Path, env: dict) -> dict:
     return _cli_step(app, env, "service status", ["service", "status"])
 
 
-def run(build: Path, full: bool = False, front: str = "legacy") -> int:
+def run(build: Path, full: bool = False, front: str = "next", flavor: str = "qt") -> int:
     if not (build / "Chimera.exe").exists():
         print(f"нет {build / 'Chimera.exe'} — сначала build.bat")
         return 2
@@ -103,27 +104,50 @@ def run(build: Path, full: bool = False, front: str = "legacy") -> int:
     shutil.copytree(build, app, ignore=shutil.ignore_patterns("data", "config.json"))
     # единственное отличие от чистой установки: без UAC — иначе запрос прав на экране
     # (у exe манифеста администратора нет, но окно повышается само; auto_elevate=false это отключает)
-    # frontend — какой из двух фронтов в сборке проверяем (config.json -> frontend)
-    (app / "config.json").write_text(json.dumps({"auto_elevate": False, "frontend": front}), encoding="utf-8")
-
+    # Изолированные настройки: автоматические системные действия отключены.
     port = _free_port()
+    config = {"auto_elevate": False, "frontend": front, "ui_port": port, "update_check": False}
+    (app / "config.json").write_text(json.dumps(config), encoding="utf-8")
     env = dict(os.environ)
     env.update({
         "QT_QPA_PLATFORM": "offscreen",             # никакого окна на экране
         "QTWEBENGINE_REMOTE_DEBUGGING": str(port),
         "CHIMERA_DATA": str(data),
+        "CHIMERA_SMOKE": "1",
         "CHIMERA_INSTANCE_EVENT": rf"Local\Chimera_Smoke_{os.getpid()}",
     })
+    token = secrets.token_urlsafe(24)
+    if flavor != "qt":
+        env.update({"CHIMERA_NO_BROWSER": "1", "CHIMERA_HTTP_TOKEN": token})
     log = open(tmp / "engine.log", "wb")
     # --window: exe без аргументов из консоли печатает справку, а окно нужно именно оно
-    proc = subprocess.Popen([str(app / "Chimera.exe"), "--window"], cwd=app, env=env, stdout=log,
+    proc = subprocess.Popen([str(app / "Chimera.exe"), "--window" if flavor == "qt" else "--browser"], cwd=app, env=env, stdout=log,
                             stderr=subprocess.STDOUT)
     try:
-        _wait_cdp(port, proc)
-        r = subprocess.run(["node", str(CDP), str(port), str(CHECKS), *(["full"] if full else [])],
+        if flavor == "qt":
+            _wait_cdp(port, proc)
+            command = ["node", str(CDP), str(port), str(CHECKS)]
+        else:
+            from tools.ui_preview import _browser
+            browser = _browser()
+            if not browser:
+                raise RuntimeError("Headless Edge/Chrome is required")
+            deadline = time.monotonic() + 60
+            while True:
+                try:
+                    request = urllib.request.Request(f"http://127.0.0.1:{port}/", headers={"X-Chimera-Token": token})
+                    with urllib.request.urlopen(request, timeout=2):
+                        break
+                except OSError:
+                    if proc.poll() is not None or time.monotonic() > deadline:
+                        raise RuntimeError("HTTP bridge did not start") from None
+                    time.sleep(0.2)
+            command = ["node", str(ROOT / "tools" / "smoke_http.mjs"), browser,
+                       f"http://127.0.0.1:{port}/?t={token}", str(CHECKS)]
+        r = subprocess.run([*command, *(["full"] if full else [])],
                            capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=420)
         if r.returncode != 0:
-            print(r.stdout, r.stderr)
+            print(r.stdout.replace(token, "<token>"), r.stderr.replace(token, "<token>"))
             return 1
         result = json.loads(r.stdout.strip().splitlines()[-1])
         result["steps"] += _cli_checks_while_running(app, env)
@@ -142,7 +166,7 @@ def run(build: Path, full: bool = False, front: str = "legacy") -> int:
         failed += 1
     if failed:
         tail = (tmp / "engine.log").read_bytes()[-3000:].decode("utf-8", "replace")
-        print("---- хвост лога движка ----\n" + tail)
+        print("---- хвост лога движка ----\n" + tail.replace(token, "<token>"))
     else:
         shutil.rmtree(tmp, ignore_errors=True)
     print(f"\n{'всё работает' if not failed else f'сломано: {failed}'}")
@@ -151,12 +175,19 @@ def run(build: Path, full: bool = False, front: str = "legacy") -> int:
 
 if __name__ == "__main__":
     args = sys.argv[1:]
-    front = "legacy"
+    flavor = "qt"
+    if "--flavor" in args:
+        i = args.index("--flavor")
+        flavor = args[i + 1] if i + 1 < len(args) else ""
+        del args[i:i + 2]
+    if flavor not in ("qt", "webview", "lite"):
+        sys.exit("--flavor: qt, webview или lite")
+    front = "next"
     if "--frontend" in args:
         i = args.index("--frontend")
         front = args[i + 1] if i + 1 < len(args) else ""
         del args[i:i + 2]
-    if front not in ("legacy", "next"):
-        sys.exit("--frontend: legacy или next")
+    if front not in ("next",):
+        sys.exit("--frontend: next")
     args = [a for a in args if a != "--full"]
-    sys.exit(run(Path(args[0]) if args else ROOT / "build" / "Chimera", full="--full" in sys.argv, front=front))
+    sys.exit(run(Path(args[0]) if args else ROOT / "build" / "Chimera", full="--full" in sys.argv, front=front, flavor=flavor))

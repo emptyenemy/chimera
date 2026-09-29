@@ -1,7 +1,6 @@
 PySide6>=6.11
 # Второй движок окна (config.json -> "ui_backend": "pywebview"): системный WebView2
-# вместо своего Chromium — окно легче и стартует быстрее, но в сборку exe движок не
-# входит (см. build.bat). Без пакета UI просто работает на PySide6.
+# вместо своего Chromium. Входит в вариант build.bat webview; Qt и Lite его не включают.
 pywebview>=5.0
 # AES для ядра tg-ws-proxy (без неё фолбэк через ctypes/OpenSSL, на Windows ненадёжен)
 cryptography>=41.0

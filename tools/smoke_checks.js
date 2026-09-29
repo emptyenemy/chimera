@@ -18,23 +18,29 @@
 
   for (let i = 0; i < 150 && (typeof api !== "function" || typeof Bridge === "undefined"); i++) await sleep(100);
 
-  // Два фронта (config.json -> frontend): прежний ui/web и новый ui/web-next (React).
-  // Новый помечает <html data-frontend="next">; общий контракт — window.api, window.Pages
-  // и data-testid, поэтому проверки ниже одинаковы, отличаются только селекторы каркаса.
-  const next = document.documentElement.dataset.frontend === "next";
   const skip = why => `пропуск: ${why}`;
-
   await step("интерфейс загрузился", async () => {
-    need(document.querySelector(next ? '[data-testid="sidebar"]' : ".sidebar"), "нет сайдбара");
-    need(document.querySelector(next ? '[data-testid="brand-logo"]' : ".sb-logo svg"), "нет логотипа");
-    need(document.querySelectorAll(next ? "svg.lucide" : "svg.icon").length > 5, "не отрисовались иконки");
-    return next ? "новый фронт" : "прежний фронт";
+    need(document.querySelector('[data-testid="sidebar"]'), "нет сайдбара");
+    need(document.querySelector('[data-testid="brand-logo"]'), "нет логотипа");
+    need(document.querySelectorAll("svg.lucide").length > 5, "не отрисовались иконки");
+    need(Pages.list.length === 9, "нет всех страниц");
+    return "shadcn";
   });
-  // выпадающие списки прежнего фронта оформлены через customizable select (base.css); без
-  // него движок молча рисует системный список — ловим, если в сборку попал старый Chromium
-  await step("выпадающие списки: base-select", async () => {
-    if (next) return skip("у нового фронта списки на компонентах shadcn");
-    need(CSS.supports("appearance", "base-select"), "движок не поддерживает appearance: base-select");
+  await step("все страницы", async () => {
+    for (const page of Pages.list) {
+      Pages.go(page.id);
+      for (let i = 0; i < 50 && !document.querySelector(`[data-testid="page-${page.id}"]`); i++) await sleep(100);
+      need(document.querySelector(`[data-testid="page-${page.id}"]`), `не открылась страница ${page.id}`);
+    }
+    return `${Pages.list.length} страниц`;
+  });
+  await step("языки", async () => {
+    const state = await api("lang_get");
+    for (const lang of ["ru", "en"]) {
+      const data = await api("i18n_get", lang);
+      need(data.lang === lang && data.catalog["err.admin.hosts"], "каталог не загружен");
+    }
+    return state.lang;
   });
   await step("app_info", async () => (await api("app_info")).version);
   await step("hub_snapshot", async () => Object.keys(await api("hub_snapshot")).join(","));
@@ -132,28 +138,31 @@
 
   // страница «Проверка сайтов» целиком: список -> две потоковые проверки на бэкенде ->
   // пуши -> сведённая таблица; самый короткий список, чтобы не ждать
-  await step("проверка сайтов: список", async () => {
+  let listSmokeName = "";
+  await step("проверка сайтов: выбор списка", async () => {
     Pages.go("checks");
-    if (next && !document.querySelector('[data-testid="checks-list"]')) {
-      await sleep(300);
-      if (!document.querySelector('[data-testid="checks-list"]')) return skip("страница ещё не перенесена в новый фронт");
-    }
+    for (let i = 0; i < 50 && !document.querySelector('[data-testid="checks-list"]'); i++) await sleep(100);
+    const trigger = document.querySelector('[data-testid="checks-list"]');
+    need(trigger, "нет выбора списка");
     const lists = await api("lists_all");
-    const small = [...lists].sort((a, b) => a.count - b.count)[0];
-    for (let i = 0; i < 50 && !document.querySelector('[data-testid="checks-list"] option[value="' + small.name + '"]'); i++) await sleep(100);
-    const sel = document.querySelector('[data-testid="checks-list"]');
-    sel.value = small.name;
-    sel.dispatchEvent(new Event("change", { bubbles: true }));
-    let summary = "";
-    for (let i = 0; i < 300; i++) {
-      await sleep(200);
-      summary = document.querySelector('[data-key="summary"]')?.textContent || "";
-      if (summary.startsWith("Открывается")) break;
-    }
-    need(summary.startsWith("Открывается"), `проверка не закончилась: «${summary}»`);
-    const rows = document.querySelectorAll('[data-page="checks"] tbody tr[data-key]').length;
+    const small = [...lists].filter(l => l.count > 0).sort((a, b) => a.count - b.count)[0];
+    need(small, "нет непустых списков");
+    trigger.click();
+    for (let i = 0; i < 50 && !document.querySelector(`[data-testid="checks-list-${small.name}"]`); i++) await sleep(100);
+    const option = document.querySelector(`[data-testid="checks-list-${small.name}"]`);
+    need(option, "не открылся список shadcn");
+    option.click();
+    listSmokeName = small.name;
+    return small.name;
+  });
+  await step("проверка сайтов: поток результатов", async () => {
+    need(listSmokeName, "список не выбран");
+    for (let i = 0; i < 300 && !document.querySelector('[data-testid="checks-summary"]'); i++) await sleep(200);
+    const summary = document.querySelector('[data-testid="checks-summary"]')?.textContent || "";
+    need(summary, "проверка не закончилась");
+    const rows = document.querySelectorAll('[data-testid^="checks-row-"]').length;
     need(rows > 0, "таблица результатов пустая");
-    return `${small.name}: ${summary}`;
+    return `${listSmokeName}: ${summary}`;
   }, { network: true });
 
   // источники и обновление программы
