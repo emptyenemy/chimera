@@ -389,6 +389,17 @@ ACTIONS: tuple[Action, ...] = (
        methods=("lists_read", "lists_save"), level=APP, offline=True,
        args=(Arg("имя", "str"), Arg("домены", "names1", "домены или подсети")),
        examples=("chimera lists remove youtube ytimg.com",)),
+    _a("lists", "validate", "Проверить файл списка, ничего не меняя: кодировка, синтаксис доменов и подсетей, "
+       "дубликаты. Без имени — все списки. Есть ошибки — код возврата 1.",
+       "Только командная строка: проверка файла до применения", handler="lists_validate", offline=True,
+       args=(Arg("имя", "str", "список; без него — все", optional=True),),
+       examples=("chimera lists validate", "chimera lists validate youtube --json")),
+    _a("lists", "apply", "Применить список к обходу, прокси и hosts сейчас (без имени — все). Обычно не нужно: "
+       "правку lists/*.txt на диске работающая программа подхватывает сама, а сохранение через `lists save` "
+       "применяется сразу. Нужна работающая Chimera с окном или в трее.",
+       "Списки → «Сохранить» (применение)", handler="lists_apply", methods=("lists_apply",), level=APP,
+       args=(Arg("имя", "str", "список; без него — все", optional=True),),
+       examples=("chimera lists apply", "chimera lists apply youtube")),
 
     # --- проверки --------------------------------------------------------------------------
     _a("check", "site", "Проверить один домен: доступность с этого компьютера и наличие в реестре блокировок.",

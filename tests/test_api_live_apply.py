@@ -197,6 +197,42 @@ def test_tg_set_advanced_does_not_start_stopped_proxy(api):
     assert api.tg.calls == []
 
 
+# --- явное применение (chimera lists apply) ------------------------------------------
+
+def test_lists_apply_one_list_reports_modules_and_errors(api, monkeypatch):
+    monkeypatch.setattr(api_mod.domains, "read_raw", lambda name: "x")
+    api.hosts.fail = "нет прав"
+
+    res = api.lists_apply("discord")
+
+    assert res["ok"] is True
+    assert res["data"]["applied"] == ["discord"]
+    assert res["data"]["modules"] == ["winws", "proxy", "hosts"]
+    assert res["data"]["apply_errors"] == [{"module": "hosts", "error": "нет прав"}]
+    assert names(api.winws) == ["refresh"] and names(api.proxy) == ["reload"]
+
+
+def test_lists_apply_without_name_covers_every_list_once(api, monkeypatch):
+    monkeypatch.setattr(api_mod.domains, "available_lists", lambda: ["discord", "youtube"])
+
+    res = api.lists_apply()
+
+    assert res["data"]["applied"] == ["discord", "youtube"]
+    assert names(api.winws) == ["refresh"] and names(api.hosts) == ["resync"]
+
+
+def test_lists_apply_unknown_list_is_an_error(api, monkeypatch):
+    def missing(name):
+        raise FileNotFoundError(f"Список {name!r} не найден")
+
+    monkeypatch.setattr(api_mod.domains, "read_raw", missing)
+
+    res = api.lists_apply("nope")
+
+    assert res["ok"] is False and "nope" in res["error"]
+    assert api.winws.calls == []
+
+
 # --- правка файлов напрямую (modules/filewatch.py) -----------------------------------
 
 def test_file_change_from_watcher_is_applied_like_lists_save(api):

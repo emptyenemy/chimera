@@ -450,6 +450,40 @@ def h_lists_remove(ctx, act, ns):
     return Result({"name": name, "removed": removed}, [f"Удалено: {len(removed)}"])
 
 
+def h_lists_validate(ctx, act, ns):
+    dm = _domains()
+    name = ns.get("a0")
+    try:
+        results = [dm.validate_list(n) for n in ([name] if name else dm.available_lists())]
+    except (FileNotFoundError, ValueError) as e:
+        raise CliError(str(e), "not_found", 1) from e
+    lines = []
+    for r in results:
+        lines.append(f"{r['name']}: " + ("ошибок нет" if r["ok"] else f"ошибок {len(r['errors'])}")
+                     + f", записей {r['entries']} (доменов {r['domains']}, подсетей {r['networks']})"
+                     + (f", предупреждений {len(r['warnings'])}" if r["warnings"] else ""))
+        for kind, items in (("ошибка", r["errors"]), ("предупреждение", r["warnings"])):
+            for p in items:
+                where = f"строка {p['line']}" if p["line"] else "файл"
+                lines.append(f"  {kind}, {where}: {p['problem']}" + (f" ({p['entry']})" if p["entry"] else ""))
+    bad = sum(1 for r in results if not r["ok"])
+    return Result({"lists": results}, lines or ["Списков нет."], exit_code=1 if bad else 0)
+
+
+def h_lists_apply(ctx, act, ns):
+    from modules import service
+    name = ns.get("a0")
+    if cl.discover() is None and service.is_running():
+        raise CliError("Работает только фоновая служба, у неё нет канала управления, поэтому применить список "
+                       "отсюда нельзя. Служба следит за lists/*.txt сама: правка файла подхватывается в течение "
+                       "нескольких секунд, результат в data/changes.log.", "service_only", 3)
+    res = ctx.call("lists_apply", name)
+    lines = [f"Применено: {', '.join(res['applied']) or 'нет списков'}."]
+    lines.append("Используют: " + (", ".join(res["modules"]) if res["modules"] else "ни один модуль (список нигде не подключён)"))
+    lines += [f"ошибка {e['module']}: {e['error']}" for e in res["apply_errors"]]
+    return Result(res, lines, exit_code=1 if res["apply_errors"] else 0)
+
+
 # --- проверки -----------------------------------------------------------------------------------------
 
 def _check_one(ctx, domain: str, only: str | None) -> dict:
@@ -630,7 +664,8 @@ HANDLERS = {
     "hosts_background": h_hosts_background, "dns_ping": h_dns_ping, "dns_probe_config": h_dns_probe_config,
     "lists_show": h_lists_show, "lists_save": h_lists_save, "lists_create": h_lists_create,
     "lists_delete": h_lists_delete, "lists_rename": h_lists_rename, "lists_add": h_lists_add,
-    "lists_remove": h_lists_remove, "check_site": h_check_site, "check_list": h_check_list,
+    "lists_remove": h_lists_remove, "lists_validate": h_lists_validate, "lists_apply": h_lists_apply,
+    "check_site": h_check_site, "check_list": h_check_list,
     "logs": h_logs, "service": h_service, "docs": h_docs, "agent_info": h_agent_info, "path_show": h_path_show, "path_add": h_path_add,
     "path_remove": h_path_remove,
     "doctor": h_doctor, "config_export": h_config_export,

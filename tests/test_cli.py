@@ -612,6 +612,73 @@ def test_lists_delete_and_rename_online(capsys, running):
     assert api.called("lists_delete") == [["games"]] and api.called("lists_rename") == [["a", "b"]]
 
 
+def test_lists_validate_ok_without_running_app(capsys, stopped, local_lists):
+    code, data, _ = run_json(capsys, "lists", "validate", "youtube")
+    assert code == 0 and data["ok"] is True
+    res = data["data"]["lists"][0]
+    assert res["name"] == "youtube" and res["entries"] == 2 and res["errors"] == []
+
+
+def test_lists_validate_all_lists_and_reports_errors_with_exit_code_1(capsys, stopped, local_lists):
+    (local_lists / "bad.txt").write_text("ok.example\nhttps://bad.example/x\n", encoding="utf-8")
+    code, out, _ = run(capsys, "lists", "validate")
+    assert code == 1
+    assert "bad" in out and "строка 2" in out and "youtube" in out
+
+
+def test_lists_validate_json_lists_problems(capsys, stopped, local_lists):
+    (local_lists / "bad.txt").write_text("a.example\na.example\n*.b.example\n", encoding="utf-8")
+    code, data, _ = run_json(capsys, "lists", "validate", "bad")
+    res = data["data"]["lists"][0]
+    assert code == 1 and data["ok"] is False
+    assert [e["line"] for e in res["errors"]] == [3]
+    assert [w["line"] for w in res["warnings"]] == [2]
+
+
+def test_lists_validate_unknown_list_is_not_found(capsys, stopped, local_lists):
+    code, _, err = run(capsys, "lists", "validate", "nope")
+    assert code == 1 and "nope" in err
+
+
+def test_lists_apply_goes_through_the_app(capsys, running):
+    api, _ = running
+    api.extra["lists_apply"] = {"applied": ["youtube"], "modules": ["winws"], "apply_errors": []}
+    code, out, _ = run(capsys, "lists", "apply", "youtube")
+    assert code == 0 and api.called("lists_apply") == [["youtube"]]
+    assert "youtube" in out
+
+
+def test_lists_apply_without_name_applies_everything(capsys, running):
+    api, _ = running
+    api.extra["lists_apply"] = {"applied": ["a", "b"], "modules": [], "apply_errors": []}
+    assert run(capsys, "lists", "apply")[0] == 0
+    assert api.called("lists_apply") == [[None]]
+
+
+def test_lists_apply_reports_module_errors_with_exit_code_1(capsys, running):
+    api, _ = running
+    api.extra["lists_apply"] = {"applied": ["youtube"], "modules": ["hosts"],
+                                "apply_errors": [{"module": "hosts", "error": "нет прав"}]}
+    code, out, _ = run(capsys, "lists", "apply", "youtube")
+    assert code == 1 and "hosts" in out and "нет прав" in out
+
+
+def test_lists_apply_when_only_the_service_runs_explains_why(capsys, stopped, monkeypatch):
+    from modules import service
+    monkeypatch.setattr(service, "is_running", lambda: True)
+    code, data, _ = run_json(capsys, "lists", "apply")
+    assert code == 3
+    assert data["error"]["code"] == "service_only"
+    assert "сама" in data["error"]["message"]  # служба следит за списками сама
+
+
+def test_lists_apply_without_any_process_says_nothing_to_apply(capsys, stopped, monkeypatch):
+    from modules import service
+    monkeypatch.setattr(service, "is_running", lambda: False)
+    code, _, err = run(capsys, "lists", "apply")
+    assert code == 3 and "не запущена" in err
+
+
 def test_check_offline_uses_local_checkers(capsys, stopped, monkeypatch):
     from modules import blockcheck, cheburcheck
     monkeypatch.setattr(blockcheck, "check", lambda d, socks_addr=None: {"domain": d, "verdict": "ok"})

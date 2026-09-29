@@ -123,6 +123,77 @@ def load_lists(names: list[str]) -> list[str]:
     return result
 
 
+# --- проверка файла списка --------------------------------------------------------
+
+# метка домена: буквы (в том числе не латинские), цифры, _ и дефис, не с дефиса и не на дефис
+_LABEL_RE = re.compile(r"(?!-)[\w-]{1,63}(?<!-)")
+_IP_LIKE_RE = re.compile(r"[0-9a-fA-F:.]+(/\d+)?")
+
+
+def _entry_problem(entry: str) -> str | None:
+    """Что не так с записью, которая не разобралась как IP/подсеть; None — это годный домен."""
+    if "://" in entry:
+        return "похоже на URL: оставьте только домен"
+    if "*" in entry:
+        return "символ * не нужен: запись example.com покрывает и поддомены"
+    if re.search(r"\s", entry):
+        return "пробел внутри записи"
+    if _IP_LIKE_RE.fullmatch(entry) and ("/" in entry or ":" in entry or entry.rsplit(".", 1)[-1].isdigit()):
+        return "похоже на IP-адрес или подсеть, но не разбирается"
+    if "/" in entry or ":" in entry or "@" in entry:
+        return "в домене не должно быть путей, портов и логинов"
+    name = entry.lstrip(".").rstrip(".")
+    labels = name.split(".")
+    if len(name) > 253 or not all(_LABEL_RE.fullmatch(label) for label in labels):
+        return "не домен: пустые части, дефис по краям или недопустимые символы"
+    return None
+
+
+def validate_list(name: str) -> dict:
+    """Проверяет файл списка, ничего не меняя: кодировка, синтаксис записей, дубликаты.
+
+    Ошибки (errors) — записи, которые потребители прочтут неправильно; предупреждения
+    (warnings) — дубликаты, которые схлопываются сами. Номера строк с единицы."""
+    path = _safe_path(name)
+    if not path.exists():
+        raise FileNotFoundError(f"Список {name!r} не найден")
+    errors: list[dict] = []
+    warnings: list[dict] = []
+    result = {"name": name.strip(), "entries": 0, "domains": 0, "networks": 0,
+              "errors": errors, "warnings": warnings, "ok": True}
+    raw = path.read_bytes()
+    try:
+        text = raw.decode("utf-8")
+    except UnicodeDecodeError as e:
+        errors.append({"line": None, "entry": "", "problem": f"файл не в кодировке UTF-8 (первый непонятный байт: {e.start})"})
+        result["ok"] = False
+        return result
+    if text.startswith("﻿"):
+        errors.append({"line": 1, "entry": "", "problem": "BOM в начале файла: первая запись прочитается испорченной, "
+                                                          "сохраните как UTF-8 без BOM"})
+        text = text[1:]
+    seen: dict[str, int] = {}
+    for number, line in enumerate(text.splitlines(), 1):
+        entry = line.split("#", 1)[0].strip()
+        if not entry:
+            continue
+        result["entries"] += 1
+        doms, nets = split_entries([entry])
+        if not nets:
+            problem = _entry_problem(entry)
+            if problem:
+                errors.append({"line": number, "entry": entry, "problem": problem})
+                continue
+        key = nets[0] if nets else doms[0]
+        if key in seen:
+            warnings.append({"line": number, "entry": entry, "problem": f"дубликат записи в строке {seen[key]}"})
+            continue
+        seen[key] = number
+        result["networks" if nets else "domains"] += 1
+    result["ok"] = not errors
+    return result
+
+
 # --- домены vs IP ---------------------------------------------------------------
 
 

@@ -638,6 +638,19 @@ class Api:
         except Exception as e:
             return _err(e)
 
+    def lists_apply(self, name=None):
+        """Явно применяет содержимое списка (без имени — всех) к winws, прокси и hosts: то же,
+        что делает lists_save и наблюдатель за файлами. Ошибки модулей — в apply_errors."""
+        try:
+            if name:
+                domains.read_raw(name)  # нет такого списка — ошибка, а не молчаливое «применено»
+            names = [name] if name else domains.available_lists()
+            return _ok({"applied": names,
+                        "modules": liveapply.consumers(names, self.winws, self.proxy, self.hosts),
+                        "apply_errors": liveapply.lists_changed(names, self.winws, self.proxy, self.hosts)})
+        except Exception as e:
+            return _err(e)
+
     def lists_create(self, name):
         try:
             return _ok(domains.create_list(name))  # новый список пока никуда не подключён

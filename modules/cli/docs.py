@@ -25,7 +25,9 @@ TOPICS = {
 # path — от папки программы. kind: edit | generated | secret | log | internal | external
 LAYOUT = (
     ("config.json", "edit", "Настройки программы. Менять командой `chimera config set` (часть ключей — только правкой файла)."),
-    ("lists/*.txt", "edit", "Списки доменов и подсетей, по одной записи в строке, # — комментарий. Команды `chimera lists …`."),
+    ("lists/*.txt", "edit", "Списки доменов и подсетей, по одной записи в строке, # — комментарий. Команды `chimera lists …`. "
+     "Правку файла напрямую работающая программа подхватывает сама за пару секунд (создание, изменение, удаление); "
+     "проверить файл: `chimera lists validate`."),
     ("strategies/*.txt", "generated", "Стратегии winws2, портируются из Flowseal (tools/port_flowseal.py). Не править."),
     ("strategies/hostlists/list-general-user.txt", "generated", "Собирается из выбранных у обхода списков. Не править."),
     ("strategies/hostlists/ipset-user.txt", "generated", "Подсети из выбранных списков. Не править."),
@@ -42,7 +44,8 @@ LAYOUT = (
     ("data/singbox-ips.json", "generated", "Подсети выбранных у прокси списков. Пересобирается."),
     ("data/proxy.pac", "generated", "PAC-файл режима pac. Пересобирается."),
     ("data/logs/*.log", "log", "Логи модулей (winws, proxy, tgproxy, hosts, service, update). Читать: `chimera logs <модуль>`."),
-    ("data/changes.log", "log", "Журнал изменений через командную строку: время, источник, команда, результат."),
+    ("data/changes.log", "log", "Журнал изменений: время, источник (`cli` — команда, `file` — правка списка "
+     "на диске), команда, результат (`ok` или `error`)."),
     ("data/control.json", "secret", "Порт и токен канала управления. Агенту читать не нужно, не показывать."),
     ("bin/", "external", "Бинарники (sing-box, winws2). Не править."),
     ("upstream/", "external", "Внешние проекты (сабмодули). Не править."),

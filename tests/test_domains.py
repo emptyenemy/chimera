@@ -191,3 +191,78 @@ def test_split_lists_over_multiple_files(lists_dir):
     dom, nets = domains.split_lists(["a", "b"])
     assert dom == ["example.com"]
     assert nets == ["1.2.3.4/32", "10.0.0.0/8"]
+
+
+# --- validate_list -----------------------------------------------------------------
+
+def problems(res, key="errors"):
+    return [(p["line"], p["problem"]) for p in res[key]]
+
+
+def test_validate_clean_list_counts_domains_and_networks(lists_dir):
+    write_list(lists_dir, "svc", "# svc\nexample.com\nsub.example.org # коммент\n\n1.2.3.4\n10.0.0.0/8\n")
+
+    res = domains.validate_list("svc")
+
+    assert res["ok"] is True and res["errors"] == [] and res["warnings"] == []
+    assert (res["entries"], res["domains"], res["networks"]) == (4, 2, 2)
+
+
+def test_validate_reports_bad_entries_with_line_numbers(lists_dir):
+    write_list(lists_dir, "svc", "good.com\nhttps://bad.com/path\n*.wild.com\nhas space.com\n"
+               "300.1.1.1\n10.0.0.0/33\nbad..dots.com\n-lead.com\n")
+
+    res = domains.validate_list("svc")
+
+    assert res["ok"] is False
+    assert [e["line"] for e in res["errors"]] == [2, 3, 4, 5, 6, 7, 8]
+    assert all(e["problem"] for e in res["errors"])
+    assert "URL" in res["errors"][0]["problem"]
+    assert "*" in res["errors"][1]["problem"]
+    assert "IP" in res["errors"][4]["problem"]
+
+
+def test_validate_accepts_idn_and_underscore(lists_dir):
+    write_list(lists_dir, "svc", "пример.рф\n_dmarc.example.com\nxn--e1afmkfd.xn--p1ai\n")
+
+    assert domains.validate_list("svc")["ok"] is True
+
+
+def test_validate_duplicates_are_warnings_after_normalisation(lists_dir):
+    write_list(lists_dir, "svc", "Example.com\nexample.com\n.example.com\n1.2.3.4\n1.2.3.4/32\nother.com\n")
+
+    res = domains.validate_list("svc")
+
+    assert res["ok"] is True
+    assert [w["line"] for w in res["warnings"]] == [2, 3, 5]
+    assert "строке 1" in res["warnings"][0]["problem"]
+
+
+def test_validate_flags_non_utf8_file(lists_dir):
+    (lists_dir / "svc.txt").write_bytes("привет.рф\n".encode("cp1251"))
+
+    res = domains.validate_list("svc")
+
+    assert res["ok"] is False
+    assert "UTF-8" in res["errors"][0]["problem"]
+
+
+def test_validate_flags_bom(lists_dir):
+    (lists_dir / "svc.txt").write_bytes(b"\xef\xbb\xbfexample.com\n")
+
+    res = domains.validate_list("svc")
+
+    assert res["ok"] is False and "BOM" in res["errors"][0]["problem"]
+
+
+def test_validate_accepts_crlf(lists_dir):
+    (lists_dir / "svc.txt").write_bytes(b"a.com\r\nb.com\r\n")
+
+    assert domains.validate_list("svc")["entries"] == 2
+
+
+def test_validate_bad_name_and_missing_file_raise(lists_dir):
+    with pytest.raises(ValueError):
+        domains.validate_list("../etc")
+    with pytest.raises(FileNotFoundError):
+        domains.validate_list("nope")
