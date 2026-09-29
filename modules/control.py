@@ -110,6 +110,8 @@ def write_discovery(port: int, token: str) -> Path:
     tmp = path.with_suffix(".tmp")
     tmp.write_text(json.dumps(data), encoding="utf-8")
     _restrict_permissions(tmp)
+    if _current_sid() == "S-1-5-18":
+        _grant_service_user(tmp)
     os.replace(tmp, path)
     return path
 
@@ -147,12 +149,15 @@ def relaunch_command() -> list[str]:
     return [str(pyw if pyw.exists() else exe), str(Path(__file__).parent.parent / "main.py"), "--window"]
 
 
-def spawn_relaunch() -> None:
+def spawn_relaunch(service_mode: bool = False) -> None:
     """Запускает новую копию после выхода этой: пауза, потом start. Новая копия стартует,
     когда событие «одного экземпляра» уже освобождено (см. modules/instance.py)."""
     if sys.platform != "win32":
         return
-    cmd = " ".join(f'"{a}"' for a in relaunch_command())
+    args = relaunch_command()
+    if service_mode:
+        args = [*args[:-1], "service", "run"]
+    cmd = subprocess.list2cmdline(args)
     subprocess.Popen(["cmd", "/c", f'ping -n 4 127.0.0.1 >nul & start "" {cmd}'],
                      creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0)
                      | getattr(subprocess, "DETACHED_PROCESS", 0),
@@ -312,9 +317,54 @@ class ControlServer:
         """quit/restart: гасим модули и просим движок закрыть программу (как при обновлении)."""
         time.sleep(0.2)  # ответ клиенту уйдёт раньше, чем мы начнём закрываться
         if action == "restart":
-            spawn_relaunch()
+            if getattr(self.api, "_service_owned", False):
+                spawn_relaunch(service_mode=True)
+            else:
+                spawn_relaunch()
         self.api.shutdown()
         self.api.request_quit()
+
+
+_service_access_sid: str | None = None
+_service_access_check = 0.0
+
+
+def _interactive_sid() -> str | None:
+    script = ("$name = (Get-CimInstance Win32_ComputerSystem).UserName; "
+              "if ($name) { ([System.Security.Principal.NTAccount]::new($name)).Translate("
+              "[System.Security.Principal.SecurityIdentifier]).Value }")
+    try:
+        result = subprocess.run(["powershell", "-NoProfile", "-NonInteractive", "-Command", script],
+                                capture_output=True, text=True, timeout=10,
+                                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+        sid = result.stdout.strip()
+        return sid if re.fullmatch(r"S-1-5-21-(?:\d+-){3}\d+", sid) else None
+    except (OSError, subprocess.SubprocessError):
+        return None
+
+
+def _grant_service_user(path: Path) -> None:
+    global _service_access_sid
+    sid = _interactive_sid()
+    if not sid or sid == _service_access_sid:
+        return
+    try:
+        result = subprocess.run(["icacls", str(path), "/grant:r", f"*{sid}:R"],
+                                capture_output=True, timeout=10,
+                                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+        if result.returncode == 0:
+            _service_access_sid = sid
+    except (OSError, subprocess.SubprocessError):
+        pass
+
+
+def refresh_service_access() -> None:
+    global _service_access_check
+    if sys.platform != "win32" or time.monotonic() - _service_access_check < 10:
+        return
+    _service_access_check = time.monotonic()
+    if _server is not None and _current_sid() == "S-1-5-18":
+        _grant_service_user(CONTROL_PATH)
 
 
 _server: ControlServer | None = None

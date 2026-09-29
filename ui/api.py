@@ -58,7 +58,9 @@ def _err(e: Exception):
 
 
 class Api:
-    def __init__(self, push=None):
+    def __init__(self, push=None, *, service_owned=False):
+        self._service_owned = service_owned
+        self._closed = False
         # push(jsFnName, payload) — стриминг результатов в JS (см. _push).
         # Ставит бэкенд: у Qt это сигнал в QWebChannel, у pywebview — evaluate_js.
         self.push = push or (lambda fn, payload: None)
@@ -74,7 +76,7 @@ class Api:
         # приедут в UI через *_state, как и раньше.
         # Если фоновая служба (modules/service.py) уже запущена — она единственный
         # владелец процессов, UI не поднимает свои автозапуски поверх неё.
-        if not service.is_running():
+        if not service_owned and not service.is_running():
             threading.Thread(target=self._startup_then_autostart, daemon=True).start()
         threading.Thread(target=self._refresh_autostart_task, daemon=True).start()
         # Закрыть программу по её же команде (обновление): бэкенд подменяет на свой
@@ -104,7 +106,7 @@ class Api:
         """Правку lists/*.txt на диске (агентом, вручную) применяем так же, как lists_save.
         Следит владелец процессов: при работающей службе — она, окно молчит."""
         self.lists_watcher = filewatch.ListsWatcher(self._lists_file_changed,
-                                                    active=lambda: not service.is_running())
+                                                    active=lambda: getattr(self, "_service_owned", False) or not service.is_running())
         self.lists_watcher.start_background(self._bg_stop)
 
     def _lists_file_changed(self, kind, name) -> list:
@@ -157,21 +159,28 @@ class Api:
         Если рядом работает фоновая служба — она единственный владелец процессов
         (иначе закрытие окна погасило бы то, что служба должна держать поднятым);
         UI просто перестаёт опрашивать состояние и выходит."""
+        if getattr(self, "_closed", False):
+            return
+        self._closed = True
         control.stop_current()  # `chimera ...` больше не должна видеть закрывающуюся программу
         self.hub.stop()
         self._bg_stop.set()
         watcher = getattr(self, "lists_watcher", None)
         if watcher is not None:
             watcher.stop()  # применение правки не должно идти к уже погашенным модулям
-        if service.is_running():
-            return
         self.hosts.stop_background()
+        if service.is_running() and not getattr(self, "_service_owned", False):
+            return
         try:
             self.winws.stop()
         except Exception:
             pass
         try:
             self.proxy.stop()  # снять TUN/маршруты sing-box, иначе сеть «провиснет»
+        except Exception:
+            pass
+        try:
+            self.tg.stop()
         except Exception:
             pass
 

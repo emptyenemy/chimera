@@ -27,7 +27,6 @@ import os
 import subprocess
 import sys
 import tempfile
-import threading
 from pathlib import Path
 from xml.sax.saxutils import escape
 
@@ -342,35 +341,12 @@ def run() -> int:
     _write_pid()
     logger.info("служба запущена, pid=%s", os.getpid())
 
-    from modules.hosts import HostsManager
-    from modules.proxy import ProxyManager
-    from modules.tgproxy import TgProxy
-    from modules.winws import WinwsManager
+    from modules import control
+    from ui.api import Api
 
-    hosts = HostsManager()
-    tg = TgProxy()
-    winws = WinwsManager()
-    proxy = ProxyManager()
-
-    autostart_modules(tg, winws, proxy, log=logger.info, allow_proxy_pac=False)
-
-    # HostsManager.start_background()/stop_background() — фоновая пересинхронизация
-    # hosts (см. modules/hosts/background.py). hasattr — на случай если модуль
-    # соберут без этой части (старая версия hosts/manager.py).
-    if hasattr(hosts, "start_background"):
-        try:
-            hosts.start_background()
-        except Exception as e:
-            logger.error("hosts.start_background: %s", e)
-    else:
-        logger.info("HostsManager.start_background() ещё нет — фоновые задачи hosts не запущены")
-
-    # окна при живой службе не следят за файлами (Api.__init__), поэтому применяет она
-    watcher = None
-    try:
-        watcher = start_lists_watch(winws, proxy, hosts, threading.Event(), logger.info)
-    except Exception as e:
-        logger.error("наблюдатель за списками не запущен: %s", e)
+    api = Api(service_owned=True)
+    autostart_modules(api.tg, api.winws, api.proxy, log=logger.info, allow_proxy_pac=False)
+    control.start_for(api)
 
     # signal.SIGINT — для ручного `service run` в консоли (Ctrl+C): без него сигнал
     # не дошёл бы до потока, застрявшего в блокирующем WaitForSingleObject.
@@ -385,37 +361,20 @@ def run() -> int:
     except (ValueError, OSError):
         pass  # не главный поток или сигнал недоступен — не критично
 
+    api.request_quit = lambda: interrupted.update(flag=True)
     logger.info("ожидание сигнала остановки")
-    WAIT_OBJECT_0 = 0
-    while not interrupted["flag"]:
-        if _wait_event(stop_event, 1000) == WAIT_OBJECT_0:
-            break
-    logger.info("получен сигнал остановки, гашу модули")
-    if watcher is not None:
-        watcher.stop()  # дождаться идущего применения до остановки модулей
-
-    if hasattr(hosts, "stop_background"):
-        try:
-            hosts.stop_background()
-        except Exception as e:
-            logger.error("hosts.stop_background: %s", e)
     try:
-        winws.stop()
-    except Exception as e:
-        logger.error("winws.stop: %s", e)
-    try:
-        proxy.stop()
-    except Exception as e:
-        logger.error("proxy.stop: %s", e)
-    try:
-        tg.stop()
-    except Exception as e:
-        logger.error("tg.stop: %s", e)
-
-    _remove_pid()
-    _close_handle(stop_event)
-    _close_handle(running_mutex)
-    logger.info("служба остановлена")
+        while not interrupted["flag"]:
+            if _wait_event(stop_event, 1000) == 0:
+                break
+            control.refresh_service_access()
+    finally:
+        logger.info("получен сигнал остановки, гашу модули")
+        api.shutdown()
+        _remove_pid()
+        _close_handle(stop_event)
+        _close_handle(running_mutex)
+        logger.info("служба остановлена")
     return 0
 
 
