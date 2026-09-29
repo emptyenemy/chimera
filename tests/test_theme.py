@@ -82,6 +82,13 @@ def test_boot_script_sets_attribute_and_class():
     assert 'setAttribute("data-theme","light")' in light and 'classList.remove("dark")' in light
 
 
+def test_boot_script_survives_missing_document_element():
+    # на DocumentCreation <html> может быть ещё не создан: не падаем, а ждём DOMContentLoaded
+    js = theme.boot_script("dark")
+    assert "if(!r)return" in js
+    assert 'addEventListener("DOMContentLoaded"' in js
+
+
 def test_theme_default_is_system():
     assert appconfig.DEFAULTS["theme"] == "system"
 

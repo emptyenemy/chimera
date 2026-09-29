@@ -42,6 +42,8 @@ def window_bg(setting: str | None = None) -> str:
 def boot_script(mode: str) -> str:
     """JS, ставящий тему на <html>: атрибут data-theme и класс dark (для shadcn)."""
     cls = 'classList.add("dark")' if mode == "dark" else 'classList.remove("dark")'
-    return ('(function(){var r=document.documentElement;'
+    # documentElement может быть null (Qt зовёт скрипт на DocumentCreation): тогда ждём разбора страницы
+    return ('(function(){function a(){var r=document.documentElement;if(!r)return;'
             f'r.setAttribute("data-theme","{mode}");r.{cls};'
-            f'r.style.colorScheme="{mode}";}})();')
+            f'r.style.colorScheme="{mode}";return 1;}}'
+            'if(!a())document.addEventListener("DOMContentLoaded",a);})();')
