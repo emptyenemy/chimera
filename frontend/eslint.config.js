@@ -6,7 +6,8 @@ import tseslint from 'typescript-eslint'
 import { defineConfig, globalIgnores } from 'eslint/config'
 
 export default defineConfig([
-  globalIgnores(['dist']),
+  // код shadcn не правим ради линтера
+  globalIgnores(['dist', 'src/components/ui', 'src/hooks']),
   {
     files: ['**/*.{ts,tsx}'],
     extends: [
