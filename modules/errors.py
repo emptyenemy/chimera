@@ -41,3 +41,7 @@ def localized(result: dict) -> str:
     if code and code != RAW and i18n.has(code):
         return i18n.translate(i18n.current_lang(), code, result.get("params") or {})
     return str(result.get("error") or i18n.t("err.unknown"))
+
+
+class ChimeraValueError(ChimeraError, ValueError):
+    """Неверное значение параметра. Остаётся ValueError: так его ловили до кодов ошибок."""

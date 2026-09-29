@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 
 from modules import i18n
-from modules.errors import ChimeraError
+from modules.errors import ChimeraValueError
 from modules.fileutil import atomic_write_text
 
 CONFIG_PATH = Path(__file__).parent.parent / "config.json"
@@ -35,9 +35,9 @@ def _write(data: dict) -> None:
 def set_value(key: str, value) -> dict:
     """Меняет одну настройку и сразу пишет файл. Возвращает полный конфиг."""
     if key == "theme" and (not isinstance(value, str) or value not in THEMES):
-        raise ChimeraError("err.config.theme_unknown", value=repr(value), options=", ".join(THEMES))
+        raise ChimeraValueError("err.config.theme_unknown", value=repr(value), options=", ".join(THEMES))
     if key == "lang" and (not isinstance(value, str) or value not in i18n.SETTINGS):
-        raise ChimeraError("err.config.lang_unknown", value=repr(value), options=", ".join(i18n.SETTINGS))
+        raise ChimeraValueError("err.config.lang_unknown", value=repr(value), options=", ".join(i18n.SETTINGS))
     data = load()
     data[key] = value
     _write(data)
