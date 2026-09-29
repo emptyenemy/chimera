@@ -21,6 +21,7 @@ import { DashboardPage } from "@/pages/dashboard"
 import { StubPage } from "@/pages/stub"
 import { ChecksPage } from "@/pages/checks"
 import { DnsPage } from "@/pages/dns"
+import { StrategiesPage } from "@/pages/strategies"
 
 export interface PageDef {
   id: string
@@ -39,7 +40,7 @@ const stub = (id: string): ComponentType => () => createElement(StubPage, { id, 
 
 export const PAGES: PageDef[] = [
   { id: "dashboard", titleKey: "nav.dashboard", icon: LayoutDashboardIcon, groupKey: "", component: DashboardPage },
-  { id: "strategies", titleKey: "nav.strategies", icon: ShieldIcon, groupKey: "nav.group.bypass", dot: "winws", component: stub("strategies") },
+  { id: "strategies", titleKey: "nav.strategies", icon: ShieldIcon, groupKey: "nav.group.bypass", dot: "winws", component: StrategiesPage },
   { id: "proxy", titleKey: "nav.proxy", icon: GlobeIcon, groupKey: "nav.group.bypass", dot: "proxy", component: stub("proxy") },
   { id: "telegram", titleKey: "nav.telegram", icon: SendIcon, groupKey: "nav.group.bypass", dot: "tg", component: stub("telegram") },
   { id: "hosts", titleKey: "nav.hosts", icon: ServerIcon, groupKey: "nav.group.network", dot: "hosts", component: stub("hosts") },
