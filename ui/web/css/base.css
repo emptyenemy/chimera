@@ -157,6 +157,8 @@ input, textarea, .selectable, .log, code, .mono { user-select: text; }
 .sb-item[aria-current="page"] { background: var(--sidebar-accent); font-weight: 500; }
 .sb-item[aria-current="page"] .icon { color: var(--sidebar-foreground); }
 .sb-item .sb-dot { margin-left: auto; }
+/* у страниц без модуля (DNS, списки…) точку никто не красит: без .dot это пустой квадрат */
+.sb-item .sb-dot:not(.dot) { display: none; }
 .sb-footer { padding: 8px; border-top: 1px solid var(--sidebar-border); }
 .sb-status { display: flex; flex-direction: column; gap: 2px; }
 .sb-status-row {
