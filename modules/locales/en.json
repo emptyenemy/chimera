@@ -1,0 +1,23 @@
+{
+  "err.admin.autostart": "Administrator rights are required to set up autostart.",
+  "err.admin.dns": "Administrator rights are required to change DNS.",
+  "err.admin.dns_reset": "Administrator rights are required to reset DNS.",
+  "err.admin.hosts": "Administrator rights are required to edit the hosts file.",
+  "err.admin.tun": "TUN mode requires administrator rights. Switch to “System proxy (PAC)” or run the program as administrator.",
+  "err.admin.winws": "Administrator rights are required to start zapret2.",
+  "err.admin.winws_restart": "Administrator rights are required to restart zapret2.",
+  "err.config.lang_unknown": "Unknown language {value}. Available: {options}.",
+  "err.config.theme_unknown": "Unknown theme {value}. Available: {options}.",
+  "err.lang.unknown": "Unknown language {lang}. Available: {options}.",
+  "err.list.empty": "The list has no domains.",
+  "err.method.unknown": "Unknown method: {method}",
+  "err.panic.dns.one": "Could not reset DNS on adapter {adapters}: {error}",
+  "err.panic.dns.other": "Could not reset DNS on adapters {adapters}: {error}",
+  "err.raw": "{message}",
+  "err.record.not_started": "Recording has not been started.",
+  "err.strategies.none": "No strategies available. Pick one on the Strategies tab.",
+  "err.tg.no_link": "The link is not available.",
+  "err.unknown": "Unknown error",
+  "err.url.http_only": "Only http(s) links are allowed.",
+  "err.winws.foreign": "winws2 was not started by this Chimera. Restart the strategy manually."
+}

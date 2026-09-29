@@ -17,6 +17,7 @@ from modules.cli import client as cl
 from modules.cli import pathenv
 from modules.cli.client import CliError, Usage
 from modules.cli.registry import READ
+from modules.errors import ChimeraError
 
 CHANGES_LOG = paths.data_path("changes.log")
 LOG_FILES = {"winws": paths.log_path("winws.log"), "proxy": paths.log_path("proxy.log"),
@@ -262,7 +263,7 @@ def h_config_set(ctx, act, ns):
             raise CliError(f"Настройку {key!r} через командную строку менять нельзя.", "forbidden", 1)
         try:
             return Result(appconfig.set_value(key, value))
-        except ValueError as e:
+        except (ValueError, ChimeraError) as e:
             raise CliError(str(e), "invalid", 1)
     return Result(ctx.call("config_set", key, value))
 
