@@ -3,6 +3,8 @@
 import json
 from pathlib import Path
 
+from modules.fileutil import atomic_write_text
+
 CONFIG_PATH = Path(__file__).parent.parent / "config.json"
 # close_to_tray — крестик окна прячет его в трей (движок pyside6), а не закрывает программу;
 # update_channel — stable | beta (пре-релизы), update_check — проверять обновления в фоне
@@ -22,9 +24,7 @@ def load() -> dict:
 
 
 def _write(data: dict) -> None:
-    CONFIG_PATH.write_text(
-        json.dumps(data, ensure_ascii=False, indent=4) + "\n", encoding="utf-8"
-    )
+    atomic_write_text(CONFIG_PATH, json.dumps(data, ensure_ascii=False, indent=4) + "\n")
 
 
 def set_value(key: str, value) -> dict:

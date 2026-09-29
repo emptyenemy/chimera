@@ -10,6 +10,8 @@ import ipaddress
 import re
 from pathlib import Path
 
+from modules.fileutil import atomic_write_text
+
 LISTS_DIR = Path(__file__).parent.parent / "lists"
 
 # имя списка = имя файла без .txt; разрешаем только безопасные символы (без путей)
@@ -42,7 +44,7 @@ def read_raw(name: str) -> str:
 def save_raw(name: str, content: str) -> dict:
     path = _safe_path(name)
     text = content.replace("\r\n", "\n").rstrip("\n") + "\n"
-    path.write_text(text, encoding="utf-8")
+    atomic_write_text(path, text)
     return {"name": name, "count": len(load_list(name))}
 
 
@@ -50,7 +52,7 @@ def create_list(name: str) -> dict:
     path = _safe_path(name)
     if path.exists():
         raise ValueError(f"Список {name!r} уже существует")
-    path.write_text(f"# {name}\n", encoding="utf-8")
+    atomic_write_text(path, f"# {name}\n")
     return {"name": name, "count": 0}
 
 
