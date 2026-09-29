@@ -312,7 +312,9 @@ def run() -> int:
 
     logger = logging.getLogger("chimera-service")
     logger.setLevel(logging.INFO)
-    handler = logging.FileHandler(LOG_PATH, mode="a", encoding="utf-8")
+    # служба живёт неделями: лог ограничен по размеру (1 МБ и два прежних файла)
+    from logging.handlers import RotatingFileHandler
+    handler = RotatingFileHandler(LOG_PATH, maxBytes=1024 * 1024, backupCount=2, encoding="utf-8")
     handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(message)s", "%Y-%m-%d %H:%M:%S"))
     logger.addHandler(handler)
 

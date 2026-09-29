@@ -261,11 +261,9 @@ class HostsBackground:
 
     def _log_switch(self, event: dict) -> None:
         try:
-            from .. import paths
-            path = paths.log_path("hosts.log")
-            line = (f"[автопереключение] {event['from']} -> {event['to']}: "
-                    f"{event['reason']}\n")
-            with open(path, "a", encoding="utf-8") as f:
-                f.write(line)
+            from .. import applog, paths
+            # applog.write дописывает строку с временем и сам ограничивает размер файла
+            applog.write(f"[автопереключение] {event['from']} -> {event['to']}: {event['reason']}",
+                         paths.log_path("hosts.log"))
         except OSError:
             pass  # лог — не критично, само переключение уже применено и записано в state
