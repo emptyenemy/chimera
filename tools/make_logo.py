@@ -46,14 +46,8 @@ SIMPLE_WIDTH = 2.0
 OUTER_WIDTH = 3.6
 INNER_WIDTH = 1.4
 
-# Иконка приложения: тёмная плашка с серым краем — на тёмной панели задач
-# знак не теряется, на светлой плашка сама даёт контраст.
+# Прозрачная иконка приложения: только знак, без подложки.
 ICO_SIZES = (16, 20, 24, 32, 40, 48, 64, 256)
-PLATE_FILL = (10, 10, 10, 255)
-PLATE_EDGE = (63, 63, 70, 255)
-PLATE_RADIUS = 5.5
-PLATE_EDGE_WIDTH = 0.5
-GLYPH_ON_PLATE = 0.78  # насколько ужать знак на плашке
 GLYPH_COLOR = (250, 250, 250, 255)
 SUPERSAMPLE = 16
 
@@ -179,14 +173,8 @@ def _mask(geom, size: int, scale: float) -> Image.Image:
 
 def icon_frame(geom, size: int) -> Image.Image:
     big = size * SUPERSAMPLE
-    k = big / 24
     img = Image.new("RGBA", (big, big), (0, 0, 0, 0))
-    edge = max(1, round(PLATE_EDGE_WIDTH * k))
-    ImageDraw.Draw(img).rounded_rectangle(
-        (0, 0, big - 1, big - 1), radius=PLATE_RADIUS * k,
-        fill=PLATE_FILL, outline=PLATE_EDGE, width=edge,
-    )
-    img.paste(Image.new("RGBA", (big, big), GLYPH_COLOR), (0, 0), _mask(geom, big, GLYPH_ON_PLATE))
+    img.paste(Image.new("RGBA", (big, big), GLYPH_COLOR), (0, 0), _mask(geom, big, 1.0))
     return img.resize((size, size), Image.Resampling.LANCZOS)
 
 
