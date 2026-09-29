@@ -245,6 +245,24 @@ def test_file_change_from_watcher_is_applied_like_lists_save(api):
     assert api.hub.poked  # счётчики доменов на вкладках обновятся сразу
 
 
+def test_shutdown_stops_watcher_before_modules(api, monkeypatch):
+    import threading
+
+    order = []
+    monkeypatch.setattr(api_mod.control, "stop_current", lambda: None)
+    monkeypatch.setattr(api_mod.service, "is_running", lambda: False)
+    api.hub = type("Hub", (), {"stop": lambda self: None})()
+    api._bg_stop = threading.Event()
+    api.lists_watcher = type("W", (), {"stop": lambda self: order.append("watcher")})()
+    api.hosts.stop_background = lambda: order.append("hosts")
+    api.winws.stop = lambda: order.append("winws")
+    api.proxy.stop = lambda: order.append("proxy")
+
+    api.shutdown()
+
+    assert order[0] == "watcher" and "winws" in order
+
+
 def test_file_removal_from_watcher_drops_list_from_consumers(api):
     api._lists_file_changed("removed", "discord")
 

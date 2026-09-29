@@ -138,6 +138,9 @@ class Api:
         control.stop_current()  # `chimera ...` больше не должна видеть закрывающуюся программу
         self.hub.stop()
         self._bg_stop.set()
+        watcher = getattr(self, "lists_watcher", None)
+        if watcher is not None:
+            watcher.stop()  # применение правки не должно идти к уже погашенным модулям
         if service.is_running():
             return
         self.hosts.stop_background()

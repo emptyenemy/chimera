@@ -366,9 +366,9 @@ def run() -> int:
         logger.info("HostsManager.start_background() ещё нет — фоновые задачи hosts не запущены")
 
     # окна при живой службе не следят за файлами (Api.__init__), поэтому применяет она
-    watch_stop = threading.Event()
+    watcher = None
     try:
-        start_lists_watch(winws, proxy, hosts, watch_stop, logger.info)
+        watcher = start_lists_watch(winws, proxy, hosts, threading.Event(), logger.info)
     except Exception as e:
         logger.error("наблюдатель за списками не запущен: %s", e)
 
@@ -391,7 +391,8 @@ def run() -> int:
         if _wait_event(stop_event, 1000) == WAIT_OBJECT_0:
             break
     logger.info("получен сигнал остановки, гашу модули")
-    watch_stop.set()
+    if watcher is not None:
+        watcher.stop()  # дождаться идущего применения до остановки модулей
 
     if hasattr(hosts, "stop_background"):
         try:
