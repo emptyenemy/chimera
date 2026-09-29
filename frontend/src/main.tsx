@@ -9,6 +9,7 @@ import { t } from "@/lib/i18n"
 import { notify } from "@/lib/notify"
 import { router } from "@/lib/router"
 import { loadSnapshot, store } from "@/lib/store"
+import { initTheme } from "@/lib/theme"
 import type { AppInfo } from "@/lib/types"
 import { PAGE_IDS } from "@/pages/registry"
 
@@ -29,6 +30,7 @@ async function boot(): Promise<void> {
     failure = e instanceof Error ? e.message : String(e)
   }
   store.set("app", info)
+  void initTheme()
 
   createRoot(document.getElementById("root")!).render(
     <StrictMode>

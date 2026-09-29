@@ -44,6 +44,7 @@ python tools/ui_preview.py shot <папка> сценарий.json --frontend ne
 | `lib/bridge.ts` | мост к Python: Qt WebChannel, pywebview, HTTP с long-poll; `api("метод", …)`, `onPush` |
 | `lib/store.ts` | стор состояния модулей, который пушит хаб (`ui/hub.py`); `useStore(ключ)`, `optimistic()` |
 | `lib/router.ts` | роутер страниц по хешу и `localStorage` (`chimera.page`) |
+| `lib/theme.ts` | тема system/light/dark: `setThemeSetting()` пишет `config_set("theme", …)` и сразу ставит класс `dark`, `data-theme`, `color-scheme` на `<html>`; для system слушает `prefers-color-scheme` |
 | `lib/i18n.ts`, `locales/ru.json` | `t("ключ", {…})` и каталог строк |
 | `lib/dialogs.ts`, `lib/notify.ts` | `confirmDialog()`, `promptDialog()`, тосты — вызываются откуда угодно |
 | `lib/status.ts` | «включён ли модуль», общий для обзора и меню |
