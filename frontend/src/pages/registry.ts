@@ -2,7 +2,7 @@
    Чтобы добавить страницу: компонент в pages/, строка сюда, строки в locales/ru.json
    (см. docs/FRONTEND.md). */
 
-import { createElement, type ComponentType } from "react"
+import type { ComponentType } from "react"
 import {
   GlobeIcon,
   LayoutDashboardIcon,
@@ -19,7 +19,9 @@ import {
 import type { ModuleKey } from "@/lib/types"
 import { DashboardPage } from "@/pages/dashboard"
 import { SettingsPage } from "@/pages/settings"
-import { StubPage } from "@/pages/stub"
+import { HostsPage } from "@/pages/hosts"
+import { ListsPage } from "@/pages/lists"
+import { ProxyPage } from "@/pages/proxy"
 import { TelegramPage } from "@/pages/telegram"
 import { ChecksPage } from "@/pages/checks"
 import { DnsPage } from "@/pages/dns"
@@ -37,17 +39,14 @@ export interface PageDef {
   component: ComponentType
 }
 
-// пока страница не перенесена, вместо неё карточка «Скоро в новом интерфейсе»
-const stub = (id: string): ComponentType => () => createElement(StubPage, { id, titleKey: `nav.${id}` })
-
 export const PAGES: PageDef[] = [
   { id: "dashboard", titleKey: "nav.dashboard", icon: LayoutDashboardIcon, groupKey: "", component: DashboardPage },
   { id: "strategies", titleKey: "nav.strategies", icon: ShieldIcon, groupKey: "nav.group.bypass", dot: "winws", component: StrategiesPage },
-  { id: "proxy", titleKey: "nav.proxy", icon: GlobeIcon, groupKey: "nav.group.bypass", dot: "proxy", component: stub("proxy") },
+  { id: "proxy", titleKey: "nav.proxy", icon: GlobeIcon, groupKey: "nav.group.bypass", dot: "proxy", component: ProxyPage },
   { id: "telegram", titleKey: "nav.telegram", icon: SendIcon, groupKey: "nav.group.bypass", dot: "tg", component: TelegramPage },
-  { id: "hosts", titleKey: "nav.hosts", icon: ServerIcon, groupKey: "nav.group.network", dot: "hosts", component: stub("hosts") },
+  { id: "hosts", titleKey: "nav.hosts", icon: ServerIcon, groupKey: "nav.group.network", dot: "hosts", component: HostsPage },
   { id: "dns", titleKey: "nav.dns", icon: NetworkIcon, groupKey: "nav.group.network", component: DnsPage },
-  { id: "lists", titleKey: "nav.lists", icon: ListIcon, groupKey: "nav.group.data", component: stub("lists") },
+  { id: "lists", titleKey: "nav.lists", icon: ListIcon, groupKey: "nav.group.data", component: ListsPage },
   { id: "checks", titleKey: "nav.checks", icon: ScanSearchIcon, groupKey: "nav.group.data", component: ChecksPage },
   { id: "settings", titleKey: "nav.settings", icon: SettingsIcon, groupKey: "nav.group.system", component: SettingsPage },
 ]
