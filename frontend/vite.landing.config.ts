@@ -8,8 +8,17 @@ const at = (path: string) => fileURLToPath(new URL(path, import.meta.url))
 export default defineConfig({
   root: at('../landing/'),
   base: './',
+  cacheDir: at('./node_modules/.vite-landing/'),
   plugins: [react(), tailwindcss()],
-  resolve: { alias: { '@': at('./src/') } },
+  resolve: {
+    alias: {
+      '@': at('./src/'),
+      '/landing-entry.tsx': at('./src/landing/main.tsx'),
+      'react': at('./node_modules/react/'),
+      'react-dom': at('./node_modules/react-dom/'),
+    },
+  },
+  server: { fs: { allow: [at('../')] } },
   build: {
     outDir: at('../landing/dist/'),
     emptyOutDir: true,

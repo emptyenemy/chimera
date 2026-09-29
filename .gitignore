@@ -61,6 +61,7 @@ logs/
 
 # Node (frontend/)
 node_modules/
+landing/.vite/
 
 # Сборка нового фронта (frontend/ -> npm run build), в репозиторий не входит
 ui/web-next/
