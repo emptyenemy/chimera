@@ -78,6 +78,7 @@ python -m nuitka ^
     --include-data-dir=ui/web=ui/web ^
     --include-data-dir=strategies=strategies ^
     --include-data-dir=lists=lists ^
+    --include-data-dir=modules/locales=modules/locales ^
     --include-data-files=upstream/zapret-discord-youtube/.service/hosts=upstream/zapret-discord-youtube/.service/hosts ^
     --include-data-files=strategies/assets=strategies/assets/=*.bin ^
     --include-data-files=modules/dns_providers.json=modules/dns_providers.json ^
