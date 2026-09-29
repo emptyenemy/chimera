@@ -11,7 +11,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
-from modules import appconfig, applog, autostart, blockcheck, cheburcheck, control, doctor, domainrec, domains, paths, service, shareconfig, upstream, winproc
+from modules import appconfig, applog, autostart, blockcheck, cheburcheck, control, doctor, domainrec, domains, liveapply, paths, service, shareconfig, upstream, winproc
 from modules import discord as discord_cache
 from modules.dns_jumper import DnsJumper
 from modules.hosts import HostsManager
@@ -631,25 +631,9 @@ class Api:
 
     def lists_delete(self, name):
         try:
-            used_by_proxy = name in (self.proxy.config.get("lists") or [])
-            used_by_winws = name in (self.winws.config.get("lists") or [])
-            used_by_hosts = self._hosts_uses(name)
             domains.delete_list(name)
-            # удалённый список не должен оставаться в подключениях; set_lists сверяет
-            # имена с существующими файлами, поэтому достаточно переустановить те же
-            errors = []
-            if used_by_proxy:
-                self._apply_safely(errors, "proxy", lambda: self.proxy.set_lists(self.proxy.config["lists"]))
-            if used_by_winws:
-                self._apply_safely(errors, "winws", lambda: self.winws.set_lists(self.winws.config["lists"]))
-            if used_by_hosts:
-                patched = {}
-                for pid, lists in self.hosts.assignments().items():
-                    kept = [n for n in lists if n != name] if isinstance(lists, (list, tuple, set)) else lists
-                    if kept:
-                        patched[pid] = kept
-                self._apply_safely(errors, "hosts", lambda: self.hosts.set_assignments(patched))
-            return _ok({"apply_errors": errors})
+            # удалённый список не должен оставаться в подключениях
+            return _ok({"apply_errors": liveapply.lists_removed(name, self.winws, self.proxy, self.hosts)})
         except Exception as e:
             return _err(e)
 
@@ -659,29 +643,13 @@ class Api:
     # обновляем файлы; где без перезапуска нельзя (игровой фильтр, блоб, настройки
     # ядра Telegram) — перезапускаем модуль сами, если он запущен.
 
-    @staticmethod
-    def _apply_safely(errors: list, module: str, fn) -> None:
-        try:
-            fn()
-        except Exception as e:
-            errors.append({"module": module, "error": str(e)})
-
-    def _hosts_uses(self, name) -> bool:
-        # у статического провайдера в привязке не список имён, а True
-        return any(isinstance(lists, (list, tuple, set)) and name in lists
-                   for lists in self.hosts.assignments().values())
+    # Сама логика применения к winws/proxy/hosts — в modules/liveapply.py: её же зовёт
+    # наблюдатель за файлами в службе, где Api нет.
 
     def _lists_changed(self, name) -> list:
         """Применяет изменившееся содержимое списка к тем, кто его использует.
         Возвращает ошибки применения [{"module", "error"}] — сохранение они не ломают."""
-        errors = []
-        if name in (self.winws.config.get("lists") or []):
-            self._apply_safely(errors, "winws", self.winws.refresh_user_lists)
-        if name in (self.proxy.config.get("lists") or []):
-            self._apply_safely(errors, "proxy", self.proxy.reload_lists)
-        if self._hosts_uses(name):
-            self._apply_safely(errors, "hosts", self.hosts.resync)
-        return errors
+        return liveapply.lists_changed([name], self.winws, self.proxy, self.hosts)
 
     def _restart_winws_if_running(self) -> None:
         """Перезапускает текущую стратегию, если winws запущен: игровой фильтр и
