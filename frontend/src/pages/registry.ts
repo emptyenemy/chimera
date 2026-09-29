@@ -18,6 +18,7 @@ import {
 
 import type { ModuleKey } from "@/lib/types"
 import { DashboardPage } from "@/pages/dashboard"
+import { ListsPage } from "@/pages/lists"
 import { StubPage } from "@/pages/stub"
 
 export interface PageDef {
@@ -42,7 +43,7 @@ export const PAGES: PageDef[] = [
   { id: "telegram", titleKey: "nav.telegram", icon: SendIcon, groupKey: "nav.group.bypass", dot: "tg", component: stub("telegram") },
   { id: "hosts", titleKey: "nav.hosts", icon: ServerIcon, groupKey: "nav.group.network", dot: "hosts", component: stub("hosts") },
   { id: "dns", titleKey: "nav.dns", icon: NetworkIcon, groupKey: "nav.group.network", component: stub("dns") },
-  { id: "lists", titleKey: "nav.lists", icon: ListIcon, groupKey: "nav.group.data", component: stub("lists") },
+  { id: "lists", titleKey: "nav.lists", icon: ListIcon, groupKey: "nav.group.data", component: ListsPage },
   { id: "checks", titleKey: "nav.checks", icon: ScanSearchIcon, groupKey: "nav.group.data", component: stub("checks") },
   { id: "settings", titleKey: "nav.settings", icon: SettingsIcon, groupKey: "nav.group.system", component: stub("settings") },
 ]
