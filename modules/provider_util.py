@@ -1,5 +1,7 @@
 """Валидация и id для пользовательских DNS-провайдеров (DNS Jumper и Hosts)."""
 
+from modules.errors import ChimeraValueError
+
 import ipaddress
 import re
 from urllib.parse import urlparse
@@ -16,7 +18,7 @@ def parse_servers(raw) -> list[str]:
         try:
             ipaddress.ip_address(it)
         except ValueError:
-            raise ValueError(f"«{it}» — не похоже на IP-адрес") from None
+            raise ChimeraValueError('err.provider_util.does_not_look_like_an_ip_address', p0=it) from None
         out.append(it)
     return out
 
@@ -28,7 +30,7 @@ def validate_doh(url: str) -> str:
         return ""
     p = urlparse(url)
     if p.scheme not in ("http", "https") or not p.netloc:
-        raise ValueError("DoH-адрес должен быть вида https://host/dns-query")
+        raise ChimeraValueError('err.provider_util.a_doh_address_must_have_the_form_https_host_dns')
     return url
 
 
@@ -39,7 +41,7 @@ def validate_host(host: str) -> str:
         return ""
     if "." in host and re.fullmatch(r"[a-z0-9.-]+", host):
         return host
-    raise ValueError("DoT-адрес — это хост, напр. dns.example.com")
+    raise ChimeraValueError('err.provider_util.a_dot_address_must_be_a_hostname_such_as_dns_exa')
 
 
 def unique_id(name: str, existing) -> str:

@@ -25,6 +25,10 @@ windivert2 здесь не нужен: драйвер требуется winws2,
 сокет и так пойдёт через прокси — отдельной обработки не требуется.
 """
 
+from modules.i18n import t as _tr
+
+from modules.errors import ChimeraOSError, ChimeraValueError
+
 import re
 import socket
 import ssl
@@ -76,13 +80,13 @@ def check(target: str, socks_addr: tuple[str, int] | None = None) -> dict:
     """
     target = (target or "").strip()
     if not target:
-        raise ValueError("Пустой домен")
+        raise ChimeraValueError('err.blockcheck.empty_domain')
     started = time.monotonic()
 
     if socks_addr:
         status, detail = _try_via_proxy(socks_addr, target)
         if status == "ok":
-            return _result(target, "ok", None, started, "через прокси", via="proxy")
+            return _result(target, "ok", None, started, _tr('msg.modules.blockcheck.through_proxy'), via="proxy")
         if status in ("challenge", "denied"):
             return _result(target, status, None, started, _describe(status, detail), via="proxy")
         return _result(target, "blocked", None, started, detail, via="proxy")
@@ -91,9 +95,9 @@ def check(target: str, socks_addr: tuple[str, int] | None = None) -> dict:
     try:
         addrs = _resolve(target)
     except socket.gaierror:
-        return _result(target, "dns", None, started, "не резолвится")
+        return _result(target, "dns", None, started, _tr('msg.modules.blockcheck.does_not_resolve'))
     if not addrs:
-        return _result(target, "dns", None, started, "нет адресов")
+        return _result(target, "dns", None, started, _tr('msg.modules.blockcheck.no_addresses'))
 
     # 2) как браузер (Happy Eyeballs): гоним адреса параллельно, первый прошедший
     #    TLS = достижим. Так общий домен укладывается в OVERALL_TIMEOUT независимо
@@ -101,7 +105,7 @@ def check(target: str, socks_addr: tuple[str, int] | None = None) -> dict:
     pool = ThreadPoolExecutor(max_workers=len(addrs))
     fut_addr = {pool.submit(_try_one, ip, target): (family, ip) for family, ip in addrs}
     pending = set(fut_addr)
-    last_ip, last_reason = addrs[-1][1], "таймаут"
+    last_ip, last_reason = addrs[-1][1], _tr('msg.modules.blockcheck.timeout')
     ok_ip, ok_family = None, None
     chal_ip, chal_code = None, None
     denied_ip, denied_code = None, None
@@ -143,7 +147,7 @@ def check(target: str, socks_addr: tuple[str, int] | None = None) -> dict:
 
 
 def _describe(status: str, code: int) -> str:
-    return f"HTTP {code} (Cloudflare)" if status == "challenge" else f"HTTP {code} (отказ сайта)"
+    return f"HTTP {code} (Cloudflare)" if status == "challenge" else _tr('msg.modules.blockcheck.http_site_refused_the_request', p0=f'{code}')
 
 
 def _resolve(target: str) -> list[tuple[int, str]]:
@@ -196,18 +200,18 @@ def _classify(sock: socket.socket, target: str) -> tuple[str, str | int | None]:
     try:
         tls = _ssl_ctx.wrap_socket(sock, server_hostname=target)
     except (ssl.SSLError, OSError):
-        return "fail", "TLS оборван (DPI?)"
+        return "fail", _tr('msg.modules.blockcheck.tls_connection_closed_dpi')
     with tls:
         try:
             tls.sendall(_http_request(target))
             head = _read_headers(tls)
         except TimeoutError:
-            return "fail", "нет ответа на запрос (DPI?)"
+            return "fail", _tr('msg.modules.blockcheck.no_response_to_the_request_dpi')
         except OSError:
-            return "fail", "оборвано на запросе (DPI?)"
+            return "fail", _tr('msg.modules.blockcheck.connection_closed_during_the_request_dpi')
         m = _STATUS_RE.match(head)
         if not m:
-            return "fail", "не HTTP-ответ"
+            return "fail", _tr('msg.modules.blockcheck.not_an_http_response')
         code = int(m.group(1))
         if 400 <= code < 600:
             return ("challenge" if _CF_CHALLENGE_RE.search(head) else "denied"), code
@@ -220,9 +224,9 @@ def _try_one(ip: str, target: str) -> tuple[str, str | int | None]:
         with socket.create_connection((ip, PORT), timeout=CONNECT_TIMEOUT) as sock:
             return _classify(sock, target)
     except TimeoutError:
-        return "fail", "таймаут"
+        return "fail", _tr('msg.modules.blockcheck.timeout')
     except ConnectionResetError:
-        return "fail", "RST на TCP"
+        return "fail", _tr('msg.modules.blockcheck.tcp_reset')
     except OSError as e:
         return "fail", _short(e)
 
@@ -234,9 +238,9 @@ def _try_via_proxy(proxy_addr: tuple[str, int], target: str) -> tuple[str, str |
         with _socks5_connect(proxy_addr, target, PORT, CONNECT_TIMEOUT) as sock:
             return _classify(sock, target)
     except TimeoutError:
-        return "fail", "таймаут до локального прокси"
+        return "fail", _tr('msg.modules.blockcheck.local_proxy_timeout')
     except OSError as e:
-        return "fail", f"локальный прокси: {_short(e)}"
+        return "fail", _tr('msg.modules.blockcheck.local_proxy', p0=f'{_short(e)}')
 
 
 def _recv_exact(sock: socket.socket, n: int) -> bytes:
@@ -244,7 +248,7 @@ def _recv_exact(sock: socket.socket, n: int) -> bytes:
     while len(buf) < n:
         chunk = sock.recv(n - len(buf))
         if not chunk:
-            raise OSError("SOCKS5: соединение оборвано")
+            raise ChimeraOSError('err.blockcheck.socks5_connection_closed')
         buf += chunk
     return buf
 
@@ -259,13 +263,13 @@ def _socks5_connect(proxy_addr: tuple[str, int], target: str, port: int, timeout
     try:
         sock.sendall(b"\x05\x01\x00")  # ver=5, 1 метод авторизации: no-auth
         if _recv_exact(sock, 2) != b"\x05\x00":
-            raise OSError("SOCKS5: прокси отказал в no-auth")
+            raise ChimeraOSError('err.blockcheck.socks5_proxy_rejected_no_auth')
         host = target.encode("ascii")
         req = b"\x05\x01\x00\x03" + bytes([len(host)]) + host + port.to_bytes(2, "big")
         sock.sendall(req)
         head = _recv_exact(sock, 4)
         if head[1] != 0x00:
-            raise OSError(f"SOCKS5: CONNECT отказан (код {head[1]})")
+            raise ChimeraOSError('err.blockcheck.socks5_connect_rejected_code', p0=head[1])
         atyp = head[3]
         if atyp == 0x01:
             _recv_exact(sock, 4 + 2)
@@ -275,7 +279,7 @@ def _socks5_connect(proxy_addr: tuple[str, int], target: str, port: int, timeout
         elif atyp == 0x04:
             _recv_exact(sock, 16 + 2)
         else:
-            raise OSError("SOCKS5: неизвестный тип адреса в ответе")
+            raise ChimeraOSError('err.blockcheck.socks5_unknown_address_type_in_response')
     except BaseException:
         sock.close()
         raise
@@ -296,5 +300,5 @@ def _result(target, status, ip, started, reason, via=None) -> dict:
 
 
 def _short(e: OSError) -> str:
-    msg = (getattr(e, "strerror", None) or str(e) or "ошибка сети").strip()
+    msg = (getattr(e, "strerror", None) or str(e) or _tr('msg.modules.blockcheck.network_error')).strip()
     return msg[:60]

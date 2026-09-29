@@ -14,6 +14,10 @@ sing-box.exe тянется одним пиннутым релизом в bin/si
 Настройки (ссылка, списки, приложения, режим, autostart) — в data/proxy.json.
 """
 
+from modules.i18n import t as _tr
+
+from modules.errors import ChimeraFileNotFoundError, ChimeraRuntimeError, ChimeraValueError
+
 import ctypes
 import hashlib
 import io
@@ -201,7 +205,7 @@ class ProxyManager:
 
     def set_mode(self, mode: str) -> dict:
         if mode not in MODES:
-            raise ValueError("Режим — 'pac', 'split' или 'tun'")
+            raise ChimeraValueError('err.proxy.manager.mode_must_be_pac_split_or_tun')
         self.config["mode"] = mode
         self._save()
         if self.running:
@@ -256,15 +260,11 @@ class ProxyManager:
             blob = resp.read()
         digest = hashlib.sha256(blob).hexdigest()
         if digest != SINGBOX_SHA256:
-            raise RuntimeError(
-                "Скачанный архив sing-box не прошёл проверку контрольной суммы "
-                "(SHA256 не совпадает с ожидаемым для версии "
-                f"{SINGBOX_VERSION}) — файл повреждён или подменён, установка отменена."
-            )
+            raise ChimeraRuntimeError('err.proxy.manager.the_downloaded_sing_box_archive_failed_sha256_ve', p0=SINGBOX_VERSION)
         with zipfile.ZipFile(io.BytesIO(blob)) as z:
             name = next((n for n in z.namelist() if n.endswith("sing-box.exe")), None)
             if not name:
-                raise RuntimeError("В архиве нет sing-box.exe")
+                raise ChimeraRuntimeError('err.proxy.manager.the_archive_does_not_contain_sing_box_exe')
             with z.open(name) as src, open(SINGBOX_EXE_NEW, "wb") as dst:
                 dst.write(src.read())
 
@@ -278,7 +278,7 @@ class ProxyManager:
                 os.replace(SINGBOX_EXE, SINGBOX_EXE_OLD)
                 os.replace(SINGBOX_EXE_NEW, SINGBOX_EXE)
             except OSError as e:
-                raise RuntimeError(f"Не удалось подменить sing-box.exe: {e}") from e
+                raise ChimeraRuntimeError('err.proxy.manager.could_not_replace_sing_box_exe', p0=e) from e
             restart_required = True
 
         self._core_version_cached = False  # скачали новый бинарь — пересчитать версию
@@ -286,8 +286,7 @@ class ProxyManager:
         if restart_required:
             result["restart_required"] = True
             result["message"] = (
-                "sing-box обновлён, но прокси сейчас запущен — новая версия "
-                "начнёт работать после перезапуска прокси."
+                _tr('msg.modules.proxy.manager.sing_box_updated_restart_the_running_proxy_to_us')
             )
         return result
 
@@ -318,7 +317,7 @@ class ProxyManager:
 
     def build_config(self) -> dict:
         if not self.config["link"]:
-            raise ValueError("Не вставлена ссылка на прокси (vless:// и т.п.)")
+            raise ChimeraValueError('err.proxy.manager.enter_a_proxy_link_vless_etc')
         proxy_ob = dict(parser.parse_link(self.config["link"])["outbound"])
         proxy_ob["tag"] = "proxy"
 
@@ -563,9 +562,7 @@ class ProxyManager:
             if self.running:
                 self.stop()
             if not SINGBOX_EXE.exists():
-                raise FileNotFoundError(
-                    "sing-box не установлен. Нажми «Скачать sing-box»."
-                )
+                raise ChimeraFileNotFoundError('err.proxy.manager.sing_box_is_not_installed_click_download_sing_bo')
             cfg = self.build_config()
             self._write_rulesets()  # конфиг ссылается на эти файлы — они должны быть до старта ядра
             CONFIG_PATH.write_text(json.dumps(cfg, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -583,7 +580,7 @@ class ProxyManager:
             except OSError as e:
                 self._close_log()
                 self._proc = None
-                raise RuntimeError(f"Не удалось запустить sing-box: {e}") from e
+                raise ChimeraRuntimeError('err.proxy.manager.could_not_start_sing_box', p0=e) from e
             # ловим мгновенную смерть (кривой конфиг, нет прав на TUN, занят адаптер/порт)
             time.sleep(1.5)
             if self._proc.poll() is not None:
@@ -599,8 +596,8 @@ class ProxyManager:
 
     def _read_error(self, code: int) -> str:
         lines = [ln.strip() for ln in LOG_PATH.read_text(encoding="utf-8", errors="replace").splitlines() if ln.strip()]
-        tail = " | ".join(lines[-4:]) if lines else "нет вывода"
-        return f"sing-box завершился (код {code}). {tail}"
+        tail = " | ".join(lines[-4:]) if lines else _tr('msg.modules.proxy.manager.no_output')
+        return _tr('msg.modules.proxy.manager.sing_box_exited_code', p0=f'{code}', p1=f'{tail}')
 
     def log_read(self, offset: int = 0) -> dict:
         """Инкрементальное чтение лога sing-box (живой стрим в UI)."""
@@ -664,7 +661,7 @@ class ProxyManager:
                           "server": p["server"], "security": p["security"],
                           "transport": transport}
             except ValueError as e:
-                err = f"Ссылка не разобрана: {e}"
+                err = _tr('msg.modules.proxy.manager.could_not_parse_the_link', p0=f'{e}')
         ours = self._ours_alive
         running = ours or bool(self._system_pids())
         _dom, _nets = self._split()

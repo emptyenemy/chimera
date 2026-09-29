@@ -6,6 +6,8 @@ snapshot() читает настройки менеджеров Api, а изме
 секрет и адрес прослушивания Telegram-прокси в snapshot не читаются вовсе.
 """
 
+from modules.i18n import t as _tr
+
 from modules import appconfig, dns_providers, domains
 from modules.hosts import manager as hosts_manager
 from modules.proxy import manager as proxy_manager
@@ -21,7 +23,7 @@ def _check(res):
     """Ответ метода Api ({ok, data|error}) -> данные, либо исключение с текстом ошибки."""
     if isinstance(res, dict) and "ok" in res:
         if not res["ok"]:
-            raise RuntimeError(res.get("error") or "неизвестная ошибка")
+            raise RuntimeError(res.get("error") or _tr('msg.ui.shareops.unknown_error'))
         return res.get("data")
     return res
 

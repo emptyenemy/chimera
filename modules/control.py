@@ -13,6 +13,8 @@ Api зовёт start_for(api). Слушает только 127.0.0.1 на слу
 Сторожа «клиент пропал — выходим» здесь нет: он есть только у движка browser.
 """
 
+from modules.i18n import t as _tr
+
 import atexit
 import json
 import os
@@ -58,7 +60,7 @@ def _mask(value: str) -> str:
     if not value:
         return value
     scheme = re.match(r"^([a-zA-Z][\w+.-]*://)", value)
-    return (scheme.group(1) if scheme else "") + "…(скрыто)"
+    return (scheme.group(1) if scheme else "") + _tr('msg.modules.control.hidden')
 
 
 def redact(obj):
@@ -183,7 +185,7 @@ class _Handler(BaseHTTPRequestHandler):
             pass  # клиент ушёл, не дождавшись ответа
 
     def _refuse(self) -> None:
-        self._send(403, {"ok": False, "code": "forbidden", "error": "доступ запрещён"})
+        self._send(403, {"ok": False, "code": "forbidden", "error": _tr('msg.modules.control.access_denied')})
 
     def _guard(self) -> bool:
         """Токен, Host и Origin. False — ответ уже отправлен."""
@@ -217,7 +219,7 @@ class _Handler(BaseHTTPRequestHandler):
         except (ValueError, UnicodeDecodeError):
             req = None
         if not isinstance(req, dict):
-            self._send(400, {"ok": False, "code": "bad_request", "error": "битый запрос"})
+            self._send(400, {"ok": False, "code": "bad_request", "error": _tr('msg.modules.control.malformed_request')})
             return None
         return req
 
@@ -226,7 +228,7 @@ class _Handler(BaseHTTPRequestHandler):
             return
         if self.path.split("?")[0] == "/hello":
             return self._send(200, {"protocol": PROTOCOL, "version": VERSION, "pid": os.getpid()})
-        self._send(404, {"ok": False, "code": "not_found", "error": "нет такого адреса"})
+        self._send(404, {"ok": False, "code": "not_found", "error": _tr('msg.modules.control.no_such_address')})
 
     def do_POST(self):
         raw = self._read_raw()
@@ -240,7 +242,7 @@ class _Handler(BaseHTTPRequestHandler):
             return self._api(req)
         if path == "/control":
             return self._control(req)
-        self._send(404, {"ok": False, "code": "not_found", "error": "нет такого адреса"})
+        self._send(404, {"ok": False, "code": "not_found", "error": _tr('msg.modules.control.no_such_address')})
 
     def _api(self, req: dict) -> None:
         method = req.get("method")
@@ -249,15 +251,15 @@ class _Handler(BaseHTTPRequestHandler):
             try:
                 args = json.loads(args)
             except ValueError:
-                return self._send(400, {"ok": False, "code": "bad_request", "error": "битые аргументы"})
+                return self._send(400, {"ok": False, "code": "bad_request", "error": _tr('msg.modules.control.malformed_arguments')})
         if not isinstance(method, str) or not isinstance(args, list):
-            return self._send(400, {"ok": False, "code": "bad_request", "error": "нужны method и args"})
+            return self._send(400, {"ok": False, "code": "bad_request", "error": _tr('msg.modules.control.method_and_args_are_required')})
         if method not in self.server.allowed or method.startswith("_"):
             return self._send(200, {"ok": False, "code": "forbidden",
-                                    "error": f"метод {method!r} через командную строку недоступен"})
+                                    "error": _tr('msg.modules.control.method_is_not_available_through_the_command_line', p0=f'{method!r}')})
         if method == "config_set" and (not args or args[0] not in CONFIG_KEYS_WRITABLE):
             return self._send(200, {"ok": False, "code": "forbidden",
-                                    "error": "эту настройку через командную строку менять нельзя"})
+                                    "error": _tr('msg.modules.control.this_setting_cannot_be_changed_through_the_comma')})
         result = json.loads(self.server.api.dispatch(method, json.dumps(args)))
         if not req.get("reveal"):
             result = redact(result)
@@ -266,7 +268,7 @@ class _Handler(BaseHTTPRequestHandler):
     def _control(self, req: dict) -> None:
         action = req.get("action")
         if action not in CONTROL_ACTIONS:
-            return self._send(400, {"ok": False, "code": "bad_request", "error": "неизвестное действие"})
+            return self._send(400, {"ok": False, "code": "bad_request", "error": _tr('msg.modules.control.unknown_action')})
         self._send(200, {"ok": True, "data": {"action": action}})
         threading.Thread(target=self.server.finish, args=(action,), daemon=True).start()
 

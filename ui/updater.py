@@ -7,6 +7,8 @@
 модули и выходить — ошибка на середине оставляет программу работать как была.
 """
 
+from modules.i18n import t as _tr
+
 import os
 import threading
 import time
@@ -82,9 +84,9 @@ class Updater:
         ждёт именно его выхода.
         """
         if not paths.IS_FROZEN:
-            raise RuntimeError("Запуск из исходников — обновляется через git, не из программы")
+            raise RuntimeError(_tr('msg.ui.updater.running_from_source_update_through_git_not_from'))
         if not (self._state["installable"] and self._asset):
-            raise RuntimeError("Нечего ставить — сначала проверь обновления")
+            raise RuntimeError(_tr('msg.ui.updater.nothing_to_install_check_for_updates_first'))
         asset = dict(self._asset)
         restart_service = service.is_running()
         try:

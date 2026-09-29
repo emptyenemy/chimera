@@ -9,6 +9,10 @@
 HTTPS (защищённый DNS) спрашивают имена мимо кэша Windows, и часть доменов не покажется.
 """
 
+from modules.i18n import t as _tr
+
+from modules.errors import ChimeraRuntimeError
+
 import ipaddress
 import json
 import subprocess
@@ -89,7 +93,7 @@ def read_cache() -> set[str]:
     res = subprocess.run(["powershell", "-NoProfile", "-NonInteractive", "-Command", _READ_PS],
                          capture_output=True, text=True, timeout=20, creationflags=_NO_WINDOW)
     if res.returncode != 0:
-        raise RuntimeError(res.stderr.strip() or "Не удалось прочитать кэш DNS")
+        raise RuntimeError(res.stderr.strip() or _tr('msg.modules.domainrec.could_not_read_the_dns_cache'))
     out = res.stdout.strip()
     data = json.loads(out) if out else []
     if isinstance(data, str):
@@ -102,4 +106,4 @@ def flush() -> None:
     кэше, при записи не покажутся."""
     res = subprocess.run(["ipconfig", "/flushdns"], capture_output=True, timeout=20, creationflags=_NO_WINDOW)
     if res.returncode != 0:
-        raise RuntimeError("Не удалось сбросить кэш DNS")
+        raise ChimeraRuntimeError('err.domainrec.could_not_clear_the_dns_cache')

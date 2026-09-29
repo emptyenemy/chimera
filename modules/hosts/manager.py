@@ -10,6 +10,8 @@
 применено (провайдер, списки, записи) хранится в state.json рядом с модулем.
 """
 
+from modules.errors import ChimeraPermissionError, ChimeraValueError
+
 import ctypes
 import json
 import os
@@ -232,7 +234,7 @@ class HostsManager:
         if not plan:
             if self._is_applied():
                 if not is_admin():
-                    raise PermissionError("Нужны права администратора для записи в hosts")
+                    raise ChimeraPermissionError('err.hosts.manager.administrator_rights_are_required_to_write_hosts')
                 self._write_hosts(BLOCK_RE.sub("\n", self._read_hosts()))
             st = self._load_state()
             st["entries"] = []
@@ -240,7 +242,7 @@ class HostsManager:
             return self.state()
 
         if not is_admin():
-            raise PermissionError("Нужны права администратора для записи в hosts")
+            raise ChimeraPermissionError('err.hosts.manager.administrator_rights_are_required_to_write_hosts')
         groups, all_entries, unavailable = [], [], []
         for provider_id, lists in plan.items():
             provider = self.get_provider(provider_id)
@@ -268,7 +270,7 @@ class HostsManager:
         if not all_entries:
             if unavailable:
                 raise ValueError("; ".join(unavailable))
-            raise ValueError("Ничего не разрезолвилось — провайдеры недоступны?")
+            raise ChimeraValueError('err.hosts.manager.no_addresses_resolved_are_the_providers_unavaila')
         self._write_block(groups)
         st = self._load_state()
         st["entries"] = all_entries

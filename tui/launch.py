@@ -5,6 +5,8 @@
 причина и запускается старое меню (tui/app.py), которое поведения не меняло.
 """
 
+from modules.i18n import t as _tr
+
 import sys
 
 
@@ -29,19 +31,19 @@ def run(simple: bool = False, *, interactive=None, remote=None) -> int:
     if simple:
         return run_simple()
     if not (interactive() if interactive else _interactive()):
-        _say("Полноэкранному интерфейсу нужен интерактивный терминал. Запускаю простое меню (chimera tui --simple).")
+        _say(_tr('tui.launch.the_full_screen_interface_needs_an_interactive_t'))
         return run_simple()
     try:
         from tui.remote import Remote
         from tui.textual_app import ChimeraTui
     except ImportError as e:
-        _say(f"Не удалось загрузить Textual ({e}). Запускаю простое меню (chimera tui --simple).")
+        _say(_tr('tui.launch.could_not_load_textual_starting_the_simple_menu', p0=e))
         return run_simple()
     try:
         ChimeraTui(remote or Remote()).run()
     except KeyboardInterrupt:
         pass
     except Exception as e:  # noqa: BLE001 — терминал не потянул интерфейс: откатываемся на простое меню
-        _say(f"Полноэкранный интерфейс не запустился ({type(e).__name__}: {e}). Запускаю простое меню (chimera tui --simple).")
+        _say(_tr('tui.launch.the_full_screen_interface_could_not_start_starti', p0=type(e).__name__, p1=e))
         return run_simple()
     return 0

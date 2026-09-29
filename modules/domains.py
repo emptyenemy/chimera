@@ -6,6 +6,10 @@
 канал (hostlist vs ipset у zapret, domain_suffix vs ip_cidr у sing-box).
 """
 
+from modules.i18n import t as _tr
+
+from modules.errors import ChimeraFileNotFoundError, ChimeraValueError
+
 import hashlib
 import ipaddress
 import re
@@ -61,7 +65,7 @@ def own_prune() -> None:
 def _safe_path(name: str) -> Path:
     name = name.strip()
     if not NAME_RE.match(name):
-        raise ValueError("Имя списка: только латиница, цифры, точка, дефис и подчёркивание")
+        raise ChimeraValueError('err.domains.list_names_may_contain_only_latin_letters_digits')
     return LISTS_DIR / f"{name}.txt"
 
 
@@ -77,7 +81,7 @@ def list_info() -> list[dict]:
 def read_raw(name: str) -> str:
     path = _safe_path(name)
     if not path.exists():
-        raise FileNotFoundError(f"Список {name!r} не найден")
+        raise ChimeraFileNotFoundError('err.domains.list_was_not_found', p0=f'{name!r}')
     return path.read_text(encoding="utf-8")
 
 
@@ -92,7 +96,7 @@ def save_raw(name: str, content: str) -> dict:
 def create_list(name: str) -> dict:
     path = _safe_path(name)
     if path.exists():
-        raise ValueError(f"Список {name!r} уже существует")
+        raise ChimeraValueError('err.domains.list_already_exists', p0=f'{name!r}')
     text = f"# {name}\n"
     _own_mark(name, content_hash(text.encode("utf-8")))
     atomic_write_text(path, text)
@@ -110,9 +114,9 @@ def rename_list(old: str, new: str) -> dict:
     old_path = _safe_path(old)
     new_path = _safe_path(new)
     if not old_path.exists():
-        raise FileNotFoundError(f"Список {old!r} не найден")
+        raise ChimeraFileNotFoundError('err.domains.list_was_not_found', p0=f'{old!r}')
     if old != new and new_path.exists():
-        raise ValueError(f"Список {new!r} уже существует")
+        raise ChimeraValueError('err.domains.list_already_exists', p0=f'{new!r}')
     _own_mark(old, None)
     _own_mark(new, content_hash(old_path.read_bytes()))
     old_path.rename(new_path)
@@ -122,7 +126,7 @@ def rename_list(old: str, new: str) -> dict:
 def load_list(name: str) -> list[str]:
     path = LISTS_DIR / f"{name}.txt"
     if not path.exists():
-        raise FileNotFoundError(f"Список доменов {name!r} не найден в {LISTS_DIR}")
+        raise ChimeraFileNotFoundError('err.domains.domain_list_was_not_found_in', p0=f'{name!r}', p1=LISTS_DIR)
     domains = []
     for line in path.read_text(encoding="utf-8").splitlines():
         line = line.split("#", 1)[0].strip()
@@ -153,19 +157,19 @@ _IP_LIKE_RE = re.compile(r"[0-9a-fA-F:.]+(/\d+)?")
 def _entry_problem(entry: str) -> str | None:
     """Что не так с записью, которая не разобралась как IP/подсеть; None — это годный домен."""
     if "://" in entry:
-        return "похоже на URL: оставьте только домен"
+        return _tr('msg.modules.domains.looks_like_a_url_keep_only_the_domain')
     if "*" in entry:
-        return "символ * не нужен: запись example.com покрывает и поддомены"
+        return _tr('msg.modules.domains.an_asterisk_is_not_needed_example_com_also_cover')
     if re.search(r"\s", entry):
-        return "пробел внутри записи"
+        return _tr('msg.modules.domains.whitespace_inside_the_entry')
     if _IP_LIKE_RE.fullmatch(entry) and ("/" in entry or ":" in entry or entry.rsplit(".", 1)[-1].isdigit()):
-        return "похоже на IP-адрес или подсеть, но не разбирается"
+        return _tr('msg.modules.domains.looks_like_an_ip_address_or_subnet_but_cannot_be')
     if "/" in entry or ":" in entry or "@" in entry:
-        return "в домене не должно быть путей, портов и логинов"
+        return _tr('msg.modules.domains.domains_must_not_contain_paths_ports_or_credenti')
     name = entry.lstrip(".").rstrip(".")
     labels = name.split(".")
     if len(name) > 253 or not all(_LABEL_RE.fullmatch(label) for label in labels):
-        return "не домен: пустые части, дефис по краям или недопустимые символы"
+        return _tr('msg.modules.domains.not_a_domain_empty_parts_or_invalid_characters')
     return None
 
 
@@ -176,7 +180,7 @@ def validate_list(name: str) -> dict:
     (warnings) — дубликаты, которые схлопываются сами. Номера строк с единицы."""
     path = _safe_path(name)
     if not path.exists():
-        raise FileNotFoundError(f"Список {name!r} не найден")
+        raise ChimeraFileNotFoundError('err.domains.list_was_not_found', p0=f'{name!r}')
     errors: list[dict] = []
     warnings: list[dict] = []
     result = {"name": name.strip(), "entries": 0, "domains": 0, "networks": 0,
@@ -185,12 +189,11 @@ def validate_list(name: str) -> dict:
     try:
         text = raw.decode("utf-8")
     except UnicodeDecodeError as e:
-        errors.append({"line": None, "entry": "", "problem": f"файл не в кодировке UTF-8 (первый непонятный байт: {e.start})"})
+        errors.append({"line": None, "entry": "", "problem": _tr('msg.modules.domains.the_file_is_not_utf_8_first_invalid_byte', p0=f'{e.start}')})
         result["ok"] = False
         return result
     if text.startswith("﻿"):
-        errors.append({"line": 1, "entry": "", "problem": "BOM в начале файла: первая запись прочитается испорченной, "
-                                                          "сохраните как UTF-8 без BOM"})
+        errors.append({"line": 1, "entry": "", "problem": _tr('msg.modules.domains.bom_at_the_beginning_of_the_file_save_as_utf_8_w')})
         text = text[1:]
     seen: dict[str, int] = {}
     for number, line in enumerate(text.splitlines(), 1):
@@ -206,7 +209,7 @@ def validate_list(name: str) -> dict:
                 continue
         key = nets[0] if nets else doms[0]
         if key in seen:
-            warnings.append({"line": number, "entry": entry, "problem": f"дубликат записи в строке {seen[key]}"})
+            warnings.append({"line": number, "entry": entry, "problem": _tr('msg.modules.domains.duplicate_of_the_entry_on_line', p0=f'{seen[key]}')})
             continue
         seen[key] = number
         result["networks" if nets else "domains"] += 1

@@ -22,6 +22,10 @@ Api._autostart_all, теперь общая, чтобы UI и сервис не 
 пропускаем с записью в лог, поднимаем только TUN (см. allow_proxy_pac).
 """
 
+from modules.i18n import t as _tr
+
+from modules.errors import ChimeraRuntimeError
+
 import ctypes
 import os
 import subprocess
@@ -220,7 +224,7 @@ def install(dry_run: bool = False) -> dict:
             capture_output=True, text=True, creationflags=_NO_WINDOW,
         )
         if r.returncode != 0:
-            raise RuntimeError((r.stderr or r.stdout or "schtasks /Create не удался").strip())
+            raise RuntimeError((r.stderr or r.stdout or _tr('msg.modules.service.schtasks_create_failed')).strip())
     finally:
         try:
             os.remove(path)
@@ -237,20 +241,20 @@ def uninstall(dry_run: bool = False) -> dict:
         return {"dry_run": True, "command": printed}
     r = subprocess.run(command, capture_output=True, text=True, creationflags=_NO_WINDOW)
     if r.returncode != 0 and is_installed():
-        raise RuntimeError((r.stderr or r.stdout or "schtasks /Delete не удался").strip())
+        raise RuntimeError((r.stderr or r.stdout or _tr('msg.modules.service.schtasks_delete_failed')).strip())
     return {"installed": is_installed()}
 
 
 def start_task() -> dict:
     """Запускает установленную задачу немедленно, не дожидаясь перезагрузки."""
     if not is_installed():
-        raise RuntimeError("Служба не установлена — сначала `service install`")
+        raise ChimeraRuntimeError('err.service.the_service_is_not_installed_run_service_install')
     r = subprocess.run(
         ["schtasks", "/Run", "/TN", TASK_NAME],
         capture_output=True, text=True, creationflags=_NO_WINDOW,
     )
     if r.returncode != 0:
-        raise RuntimeError((r.stderr or r.stdout or "schtasks /Run не удался").strip())
+        raise RuntimeError((r.stderr or r.stdout or _tr('msg.modules.service.schtasks_run_failed')).strip())
     return {"started": True}
 
 
@@ -395,59 +399,62 @@ def cli(argv: list[str]) -> int:
 
     parser = argparse.ArgumentParser(prog="main.py service", add_help=True)
     sub = parser.add_subparsers(dest="cmd", required=True)
-    p_install = sub.add_parser("install", help="поставить задачу автозапуска службы")
-    p_install.add_argument("--dry-run", action="store_true", help="только напечатать XML задачи")
-    p_uninstall = sub.add_parser("uninstall", help="снять задачу автозапуска службы")
-    p_uninstall.add_argument("--dry-run", action="store_true", help="только напечатать команду")
-    sub.add_parser("start", help="запустить задачу немедленно")
-    sub.add_parser("stop", help="сигналить работающей службе остановиться")
-    sub.add_parser("status", help="установлена ли задача и запущен ли фон")
-    sub.add_parser("run", help="сам фоновый процесс (это зовёт задача планировщика)")
+    p_install = sub.add_parser("install", help=_tr('msg.modules.service.install_the_service_startup_task'))
+    p_install.add_argument("--dry-run", action="store_true", help=_tr('msg.modules.service.print_task_xml_only'))
+    p_uninstall = sub.add_parser("uninstall", help=_tr('msg.modules.service.remove_the_service_startup_task'))
+    p_uninstall.add_argument("--dry-run", action="store_true", help=_tr('msg.modules.service.print_the_command_only'))
+    sub.add_parser("start", help=_tr('msg.modules.service.start_the_task_immediately'))
+    sub.add_parser("stop", help=_tr('msg.modules.service.signal_the_running_service_to_stop'))
+    sub.add_parser("status", help=_tr('msg.modules.service.show_whether_the_task_is_installed_and_the_servi'))
+    sub.add_parser("run", help=_tr('msg.modules.service.run_the_background_service_called_by_task_schedu'))
     ns = parser.parse_args(argv)
 
     if not is_supported():
-        print("service-режим поддерживается только на Windows.")
+        print(_tr('msg.modules.service.service_mode_is_supported_only_on_windows'))
         return 1
 
     if ns.cmd == "install":
         try:
             install(dry_run=ns.dry_run)
         except Exception as e:
-            print(f"Не удалось установить задачу: {e}")
+            print(_tr('msg.modules.service.could_not_install_the_task', p0=f'{e}'))
             return 1
         if not ns.dry_run:
-            print("Задача автозапуска службы установлена.")
+            print(_tr('msg.modules.service.service_startup_task_installed'))
         return 0
 
     if ns.cmd == "uninstall":
         try:
             uninstall(dry_run=ns.dry_run)
         except Exception as e:
-            print(f"Не удалось удалить задачу: {e}")
+            print(_tr('msg.modules.service.could_not_remove_the_task', p0=f'{e}'))
             return 1
         if not ns.dry_run:
-            print("Задача автозапуска службы удалена.")
+            print(_tr('msg.modules.service.service_startup_task_removed'))
         return 0
 
     if ns.cmd == "start":
         try:
             start_task()
         except Exception as e:
-            print(f"Не удалось запустить службу: {e}")
+            print(_tr('msg.modules.service.could_not_start_the_service', p0=f'{e}'))
             return 1
-        print("Служба запущена.")
+        print(_tr('msg.modules.service.service_started'))
         return 0
 
     if ns.cmd == "stop":
         res = stop_task()
-        print("Сигнал остановки отправлен." if res["signaled"] else "Служба не запущена.")
+        print(_tr('msg.modules.service.stop_signal_sent') if res["signaled"] else _tr('msg.modules.service.service_is_not_running'))
         return 0
 
     if ns.cmd == "status":
         st = status()
-        print(f"Задача установлена: {'да' if st['installed'] else 'нет'}")
+        print(_tr('msg.modules.service.task_installed', p0=f"{(_tr('msg.modules.service.yes') if st['installed'] else _tr('msg.modules.service.no'))}"))
         pid_part = f" (pid {st['pid']})" if st.get("pid") else ""
-        print(f"Служба запущена: {'да' if st['running'] else 'нет'}{pid_part}")
+        print(_tr('msg.modules.service.service_running',
+            p0=f"{(_tr('msg.modules.service.yes') if st['running'] else _tr('msg.modules.service.no'))}",
+            p1=f'{pid_part}',
+        ))
         return 0
 
     if ns.cmd == "run":

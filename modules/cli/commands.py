@@ -5,6 +5,8 @@
 config, check, logs) или не сводится к одному методу (start, stop, service, path).
 """
 
+from modules.i18n import t as _tr
+
 import concurrent.futures
 import json
 import subprocess
@@ -211,7 +213,7 @@ def h_start(ctx, act, ns):
 
 def h_tui(ctx, act, ns):
     if ctx.json:
-        raise Usage("У chimera tui нет вывода в JSON: это интерактивный интерфейс.")
+        raise Usage(_tr('err.cli.commands.chimera_tui_does_not_support_json_output_it_is_i'))
     from tui import launch
     return Result(None, [], exit_code=launch.run(simple=bool(ns.get("a0"))))
 

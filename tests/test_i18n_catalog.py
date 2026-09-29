@@ -13,7 +13,7 @@ from modules.cli import help as helptext
 
 ROOT = Path(__file__).resolve().parent.parent
 SOURCE_DIRS = ("modules", "ui", "tools", "tui")
-NAMESPACES = ("err.", "cli.", "docs.", "doctor.", "tray.")
+NAMESPACES = ("err.", "cli.", "docs.", "doctor.", "tray.", "tui.", "msg.")
 FORMS = ("one", "few", "many", "other")
 PLACEHOLDER = re.compile(r"\{(\w+)\}")
 
@@ -196,7 +196,8 @@ def _raised_codes():
         tree = ast.parse(path.read_text(encoding="utf-8"))
         for node in ast.walk(tree):
             if isinstance(node, ast.Call) and getattr(node.func, "id", getattr(node.func, "attr", "")) in (
-                    "ChimeraError", "ChimeraValueError"):
+                    "ChimeraError", "ChimeraValueError", "ChimeraRuntimeError", "ChimeraOSError",
+                    "ChimeraPermissionError", "ChimeraFileNotFoundError", "ChimeraKeyError"):
                 yield path.relative_to(ROOT), node.lineno, node.args[0] if node.args else None
 
 

@@ -5,6 +5,10 @@ clearing» в service.bat у Flowseal (Cache/Code Cache/GPUCache под %APPDATA
 с понятной причиной, а не выборочно по вариантам вперемешку с ошибкой.
 """
 
+from modules.i18n import t as _tr
+
+from modules.errors import ChimeraRuntimeError
+
 import os
 import shutil
 import subprocess
@@ -27,7 +31,7 @@ _CREATE_NO_WINDOW = 0x08000000
 def _appdata() -> Path:
     raw = os.environ.get("APPDATA")
     if not raw:
-        raise RuntimeError("Переменная APPDATA не задана — не Windows?")
+        raise ChimeraRuntimeError('err.discord.appdata_is_not_set_is_this_windows')
     return Path(raw)
 
 
@@ -93,13 +97,13 @@ def clear_cache(appdata: Path | None = None, running_check=None) -> dict:
              for exe, dirname, label in _VARIANTS if (base / dirname).is_dir()]
 
     if not found:
-        return {"cleared": [], "freed_bytes": 0, "note": "установленный Discord не найден"}
+        return {"cleared": [], "freed_bytes": 0, "note": _tr('msg.modules.discord.no_installed_discord_found')}
 
     check = running_check or _running_processes
     running = check([exe for exe, *_rest in found])
     running_labels = [label for exe, _dirname, label, _base_dir in found if exe in running]
     if running_labels:
-        raise RuntimeError("Закрой " + ", ".join(running_labels) + " перед очисткой кэша")
+        raise RuntimeError(_tr('msg.modules.discord.close') + ", ".join(running_labels) + _tr('msg.modules.discord.before_clearing_the_cache'))
 
     cleared = []
     freed_total = 0

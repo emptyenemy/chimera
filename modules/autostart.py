@@ -14,6 +14,8 @@
 ничего не дублируем, чтобы состояние не разъезжалось.
 """
 
+from modules.i18n import t as _tr
+
 import os
 import re
 import subprocess
@@ -131,7 +133,7 @@ def enable() -> None:
             capture_output=True, text=True, creationflags=_NO_WINDOW,
         )
         if r.returncode != 0:
-            raise RuntimeError((r.stderr or r.stdout or "schtasks /Create не удался").strip())
+            raise RuntimeError((r.stderr or r.stdout or _tr('msg.modules.autostart.schtasks_create_failed')).strip())
     finally:
         try:
             os.remove(path)
@@ -146,7 +148,7 @@ def disable() -> None:
         capture_output=True, text=True, creationflags=_NO_WINDOW,
     )
     if r.returncode != 0 and is_enabled():
-        raise RuntimeError((r.stderr or r.stdout or "schtasks /Delete не удался").strip())
+        raise RuntimeError((r.stderr or r.stdout or _tr('msg.modules.autostart.schtasks_delete_failed')).strip())
 
 
 def _decode(raw: bytes) -> str:

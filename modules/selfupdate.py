@@ -25,6 +25,10 @@ robocopy /MIR: он удалил бы в папке всё, чего нет в �
 отвечает 404 — это «не удалось проверить», а не ошибка программы.
 """
 
+from modules.i18n import t as _tr
+
+from modules.errors import ChimeraRuntimeError
+
 import hashlib
 import json
 import re
@@ -124,10 +128,12 @@ def check(channel: str = "stable", current: str = VERSION, fetch=_fetch_json) ->
     try:
         releases = fetch(RELEASES_API)
     except urllib.error.HTTPError as e:
-        why = "релизов не видно — репозиторий закрыт или релизов ещё нет" if e.code == 404 else f"GitHub ответил {e.code}"
-        return {**base, "error": f"не удалось проверить: {why}"}
+        why = _tr('msg.modules.selfupdate.releases_are_unavailable_repository_is_private_o') if e.code == 404 else _tr('msg.modules.selfupdate.github_returned',
+            p0=f'{e.code}',
+        )
+        return {**base, "error": _tr('msg.modules.selfupdate.could_not_check', p0=f'{why}')}
     except (urllib.error.URLError, OSError, ValueError):
-        return {**base, "error": "не удалось проверить (нет сети?)"}
+        return {**base, "error": _tr('msg.modules.selfupdate.could_not_check_no_network')}
 
     rel = pick_release(releases, channel)
     if rel is None:
@@ -163,8 +169,7 @@ def download(asset: dict, dest_dir: Path, progress=None, opener=urllib.request.u
                 if progress:
                     progress(done, total)
         if h.hexdigest() != (asset.get("sha256") or "").lower():
-            raise RuntimeError("SHA256 скачанного архива не совпадает с опубликованным — "
-                               "файл повреждён или подменён, установка отменена")
+            raise ChimeraRuntimeError('err.selfupdate.the_downloaded_archive_s_sha256_does_not_match_t')
         part.replace(final)
         return final
     finally:
@@ -179,10 +184,10 @@ def stage(zip_path: Path, dest: Path) -> Path:
         with zipfile.ZipFile(zip_path) as z:
             z.extractall(dest)  # zipfile сам отбрасывает абсолютные пути и «..»
     except (zipfile.BadZipFile, OSError) as e:
-        raise RuntimeError(f"архив обновления не распаковался: {e}") from e
+        raise ChimeraRuntimeError('err.selfupdate.could_not_extract_the_update_archive', p0=e) from e
     exe = next(dest.rglob(EXE_NAME), None)
     if exe is None:
-        raise RuntimeError(f"в архиве обновления нет {EXE_NAME}")
+        raise ChimeraRuntimeError('err.selfupdate.the_update_archive_does_not_contain', p0=EXE_NAME)
     return exe.parent
 
 
@@ -224,7 +229,7 @@ def _backup(app_dir: Path, files: set[str], rollback: Path) -> None:
                 dst.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copy2(src, dst)
     except OSError as e:
-        raise RuntimeError(f"не удалось сохранить текущую версию для отката — обновление отменено: {e}") from e
+        raise ChimeraRuntimeError('err.selfupdate.could_not_save_the_current_version_for_rollback', p0=e) from e
 
 
 def _win(root: str, rel: str) -> str:
@@ -241,8 +246,7 @@ def write_script(app_dir: Path, staged: Path, pid: int, restart_service: bool, r
     """
     old = read_manifest(app_dir)
     if old is None:
-        raise RuntimeError(f"в папке программы нет {MANIFEST} — не отличить её файлы от чужих, "
-                           "обновление поверх не ставится; скачай архив релиза вручную")
+        raise ChimeraRuntimeError('err.selfupdate.the_application_folder_has_no_so_its_files_canno', p0=MANIFEST)
     keep = set(KEEP_FILES) | {MANIFEST}
     new = set(_files(staged))
     # в пользовательских папках ничего не удаляем — ни при обновлении, ни при откате

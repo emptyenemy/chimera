@@ -20,6 +20,8 @@ long-poll; пропал клиент дольше IDLE_TIMEOUT — гасим с
 и выходим, как при закрытии окна.
 """
 
+from modules.i18n import t as _tr
+
 import json
 import os
 import mimetypes
@@ -174,7 +176,7 @@ class _Handler(BaseHTTPRequestHandler):
             req = json.loads(raw.decode("utf-8"))
             method, args_json = req["method"], req.get("args") or "[]"
         except (ValueError, KeyError, TypeError):
-            return self._json({"ok": False, "error": "битый запрос"}, 400)
+            return self._json({"ok": False, "error": _tr('msg.ui.backend_browser.malformed_request')}, 400)
         # dispatch сам ловит ошибки метода и возвращает готовый JSON-текст
         body = self.server.api.dispatch(method, args_json).encode("utf-8")
         self._send(200, body, "application/json; charset=utf-8")
@@ -187,7 +189,7 @@ def _watchdog(server, api: Api, hub: _Hub, stop: threading.Event) -> None:
     """Нет запросов дольше IDLE_TIMEOUT — вкладку закрыли, гасимся как по закрытию окна."""
     while not stop.wait(5.0):
         if time.monotonic() - hub.touched > IDLE_TIMEOUT:
-            print("Вкладка закрыта — останавливаю Chimera.")
+            print(_tr('msg.ui.backend_browser.tab_closed_stopping_chimera'))
             api.shutdown()
             threading.Thread(target=server.shutdown, daemon=True).start()
             return
@@ -216,7 +218,7 @@ def run():
 
     url = f"http://{HOST}:{server.server_address[1]}/?t={server.token}"
     if not headless:
-        print(f"Chimera открыта в браузере: {url}\nЗакрой вкладку или нажми Ctrl+C, чтобы выйти.")
+        print(_tr('msg.ui.backend_browser.chimera_is_open_in_the_browser_close_the_tab_or', p0=f'{url}'))
     stop = threading.Event()
     threading.Thread(target=_watchdog, args=(server, api, hub, stop), daemon=True).start()
     if not headless:

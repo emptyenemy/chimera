@@ -5,6 +5,8 @@
 Бросаем ValueError на нечитаемой/неподдержанной ссылке.
 """
 
+from modules.errors import ChimeraValueError
+
 import base64
 import json
 from urllib.parse import parse_qs, unquote, urlsplit
@@ -73,7 +75,7 @@ def _parse_vless(u) -> dict:
     q = _qs(u.query)
     host, port = u.hostname, u.port
     if not host or not port:
-        raise ValueError("VLESS: нет host:port")
+        raise ChimeraValueError('err.proxy.parser.vless_missing_host_port')
     ob = {"type": "vless", "server": host, "server_port": int(port),
           "uuid": unquote(u.username or "")}
     if q.get("flow"):
@@ -91,7 +93,7 @@ def _parse_trojan(u) -> dict:
     q = _qs(u.query)
     host, port = u.hostname, u.port
     if not host or not port:
-        raise ValueError("Trojan: нет host:port")
+        raise ChimeraValueError('err.proxy.parser.trojan_missing_host_port')
     ob = {"type": "trojan", "server": host, "server_port": int(port),
           "password": unquote(u.username or "")}
     # у trojan TLS по умолчанию включён, даже если security не указан
@@ -116,7 +118,7 @@ def _parse_ss(u, raw: str) -> dict:
         host, _, p = hostport.partition(":")
         port = int(p) if p else None
     if not host or not port:
-        raise ValueError("SS: не разобрать host:port")
+        raise ChimeraValueError('err.proxy.parser.ss_could_not_parse_host_port')
     return {"type": "shadowsocks", "server": host, "server_port": int(port),
             "method": method, "password": password}
 
@@ -126,7 +128,7 @@ def _parse_vmess(raw: str) -> tuple[dict, str]:
     cfg = json.loads(_b64(raw[len("vmess://"):]).decode("utf-8", "replace"))
     host, port = cfg.get("add"), cfg.get("port")
     if not host or not port:
-        raise ValueError("VMess: нет add/port")
+        raise ChimeraValueError('err.proxy.parser.vmess_missing_add_port')
     ob = {"type": "vmess", "server": host, "server_port": int(port),
           "uuid": cfg.get("id", ""), "alter_id": int(cfg.get("aid", 0) or 0),
           "security": "auto"}
@@ -156,7 +158,7 @@ def parse_link(raw: str) -> dict:
     raw = (raw or "").strip()
     scheme = raw.split("://", 1)[0].lower() if "://" in raw else ""
     if not scheme:
-        raise ValueError("Это не похоже на ссылку (нет scheme://)")
+        raise ChimeraValueError('err.proxy.parser.this_does_not_look_like_a_link_missing_scheme')
     u = urlsplit(raw)
     name = ""
     if scheme in _PARSERS:
@@ -166,7 +168,7 @@ def parse_link(raw: str) -> dict:
     elif scheme == "vmess":
         ob, name = _parse_vmess(raw)
     else:
-        raise ValueError(f"Протокол {scheme}:// пока не поддержан (есть vless/trojan/ss/vmess)")
+        raise ChimeraValueError('err.proxy.parser.protocol_is_not_supported_use_vless_trojan_ss_vm', p0=scheme)
     server = _hostport(ob["server"], ob["server_port"])
     label = unquote(u.fragment) if u.fragment else (name or server)
     sec = "reality" if ob.get("tls", {}).get("reality") else (

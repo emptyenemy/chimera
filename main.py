@@ -1,5 +1,7 @@
 """Точка входа CHIMERA. Режим интерфейса берётся из config.json."""
 
+from modules.i18n import t as _tr
+
 import ctypes
 import os
 import sys
@@ -70,8 +72,7 @@ def main() -> int:
     if mode == "ui" and config.get("auto_elevate", True) and not is_admin():
         if relaunch_as_admin():
             return 0  # управление ушло в админский процесс
-        print("Не удалось получить права администратора (UAC отклонён). "
-              "Применять hosts и менять DNS не выйдет.")
+        print(_tr('msg.main.could_not_obtain_administrator_rights_uac_was_de'))
 
     if mode == "ui":
         from ui.app import run
@@ -93,7 +94,7 @@ def main() -> int:
         from modules import service
         return service.run()
 
-    print(f"Неизвестный режим интерфейса: {mode!r}. Доступно: ui, tui, service.")
+    print(_tr('msg.main.unknown_interface_mode_available_ui_tui_service', p0=f'{mode!r}'))
     return 1
 
 

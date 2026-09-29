@@ -9,6 +9,8 @@ DNS-вкладка использует всех, у кого есть IP-сер
 Hosts-вкладка — только тех, у кого unblock=true (остальные там бесполезны).
 """
 
+from modules.errors import ChimeraKeyError, ChimeraValueError
+
 import json
 from pathlib import Path
 
@@ -47,20 +49,20 @@ def get(provider_id: str) -> dict:
     for p in load_all():
         if p["id"] == provider_id:
             return p
-    raise KeyError(f"DNS-провайдер {provider_id} не найден")
+    raise ChimeraKeyError('err.dns_providers.dns_provider_was_not_found', p0=provider_id)
 
 
 def add(name: str, servers="", ipv6="", doh: str = "", dot: str = "",
         unblock: bool = False, filtering: bool = False) -> dict:
     name = (name or "").strip()
     if not name:
-        raise ValueError("Введи название провайдера")
+        raise ChimeraValueError('err.dns_providers.enter_a_provider_name')
     doh = validate_doh(doh)
     dot = validate_host(dot)
     ips = parse_servers(servers)
     ip6 = parse_servers(ipv6)
     if not (ips or ip6 or doh or dot):
-        raise ValueError("Укажи IP-сервер (IPv4/IPv6) или DoH/DoT-адрес")
+        raise ChimeraValueError('err.dns_providers.specify_an_ip_server_ipv4_ipv6_or_a_doh_dot_addr')
     existing = {p["id"] for p in load_all()}
     provider = {"id": unique_id(name, existing), "name": name,
                 "servers": ips, "ipv6": ip6, "doh": doh, "dot": dot,
@@ -72,5 +74,5 @@ def add(name: str, servers="", ipv6="", doh: str = "", dot: str = "",
 def delete(provider_id: str) -> None:
     user = _load_user()
     if not any(p["id"] == provider_id for p in user):
-        raise ValueError("Встроенного провайдера удалить нельзя")
+        raise ChimeraValueError('err.dns_providers.built_in_providers_cannot_be_deleted')
     _save_user([p for p in user if p["id"] != provider_id])

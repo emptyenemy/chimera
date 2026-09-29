@@ -5,6 +5,8 @@ state_changed(). Вкладки, которым нужно тяжёлое (сп�
 в sources() — приложение опрашивает эти источники, только пока вкладка открыта.
 """
 
+from modules.i18n import t as _tr
+
 from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical, VerticalScroll
@@ -15,7 +17,9 @@ from tui.screens import ListPicker
 CHECK, EMPTY = "☑", "☐"
 
 
-def tag(ok, on="работает", off="остановлен") -> str:
+def tag(ok, on=None, off=None) -> str:
+    on = on if on is not None else _tr('tui.panes.running')
+    off = off if off is not None else _tr('tui.panes.stopped')
     return f"● {on}" if ok else f"○ {off}"
 
 
@@ -49,7 +53,7 @@ class Pane(Vertical):
     """Основа вкладки: перерисовка по ключам состояния и объявление ленивых источников."""
 
     KEYS: tuple = ()
-    BINDINGS = [Binding("f", "cycle_focus", "Следующий элемент", show=False)]
+    BINDINGS = [Binding("f", "cycle_focus", _tr('tui.panes.next_element'), show=False)]
 
     def on_mount(self) -> None:
         self.render_state()
@@ -74,15 +78,15 @@ class Pane(Vertical):
 
 # --- обзор -------------------------------------------------------------------------------
 
-MODULES = (("winws", "Обход DPI (winws)"), ("proxy", "Прокси (sing-box)"),
-           ("tg", "Telegram-прокси"), ("hosts_state", "Hosts"))
+MODULES = (("winws", _tr('tui.panes.dpi_bypass_winws')), ("proxy", _tr('tui.panes.proxy_sing_box')),
+           ("tg", _tr('tui.panes.telegram_proxy')), ("hosts_state", "Hosts"))
 
 
 class OverviewPane(Pane):
     KEYS = ("app", "winws", "proxy", "tg", "hosts_state")
 
     def compose(self) -> ComposeResult:
-        yield Static("Подключаюсь к Chimera…", id="ov-app", markup=False, classes="dim")
+        yield Static(_tr('tui.panes.connecting_to_chimera'), id="ov-app", markup=False, classes="dim")
         for key, title in MODULES:
             with Horizontal(classes="row"):
                 yield Static(title, markup=False, classes="name")
@@ -90,7 +94,7 @@ class OverviewPane(Pane):
                 yield Static("…", id=f"st-{key}", markup=False, classes="state")
         yield Static("", id="ov-notes", markup=False, classes="dim")
         with Horizontal(classes="row"):
-            yield Button("Выключить всё", id="panic")
+            yield Button(_tr('tui.panes.turn_everything_off'), id="panic")
 
     def focus_primary(self) -> None:
         self.query_one("#sw-winws", Switch).focus()
@@ -106,22 +110,22 @@ class OverviewPane(Pane):
         app = self.app
         a = app.data("app")
         if a:
-            extra = ", служба в фоне" if a.get("service_running") else ""
-            adm = "да" if a.get("admin") else "нет"
-            self.query_one("#ov-app", Static).update(f"Chimera {a.get('version', '?')} · права администратора: {adm}{extra}")
+            extra = _tr('tui.panes.background_service') if a.get("service_running") else ""
+            adm = _tr('tui.panes.yes') if a.get("admin") else _tr('tui.panes.no')
+            self.query_one("#ov-app", Static).update(_tr('tui.panes.chimera_administrator_rights', p0=a.get('version', '?'), p1=adm, p2=extra))
         notes = []
         w = app.data("winws")
         if w is not None:
-            cur = f", стратегия {w['current']}" if w.get("current") else ""
-            ext = " (запущен не из Chimera)" if w.get("external") else ""
+            cur = _tr('tui.panes.strategy_228', p0=w['current']) if w.get("current") else ""
+            ext = _tr('tui.panes.started_outside_chimera') if w.get("external") else ""
             self._set("winws", tag(w.get("running")) + cur + ext, bool(w.get("running")))
             if w.get("error"):
                 notes.append(f"winws: {w['error']}")
         p = app.data("proxy")
         if p is not None:
-            self._set("proxy", tag(p.get("running")) + f", режим {p.get('mode', 'pac')}", bool(p.get("running")))
+            self._set("proxy", tag(p.get("running")) + _tr('tui.panes.mode_267', p0=p.get('mode', 'pac')), bool(p.get("running")))
             if p.get("error"):
-                notes.append(f"прокси: {p['error']}")
+                notes.append(_tr('tui.panes.proxy', p0=p['error']))
         t = app.data("tg")
         if t is not None:
             self._set("tg", tag(t.get("running")), bool(t.get("running")))
@@ -129,8 +133,12 @@ class OverviewPane(Pane):
                 notes.append(f"Telegram: {t['error']}")
         h = app.data("hosts_state")
         if h is not None:
-            applied = "применено" if h.get("applied") else "не применено"
-            self._set("hosts_state", f"{tag(h.get('enabled'), 'включено', 'выключено')}, {applied}, записей: {h.get('count', 0)}",
+            applied = _tr('tui.panes.applied') if h.get("applied") else _tr('tui.panes.not_applied')
+            self._set("hosts_state", _tr('tui.panes.entries',
+                p0=tag(h.get('enabled'), _tr('tui.panes.enabled'), _tr('tui.panes.disabled')),
+                p1=applied,
+                p2=h.get('count', 0),
+            ),
                       bool(h.get("enabled")))
         for key, title in MODULES:
             if app.error(key):
@@ -144,54 +152,53 @@ class OverviewPane(Pane):
             if want:
                 sid = (app.data("winws") or {}).get("last_strategy")
                 if not sid:
-                    app.status("Стратегия не выбрана: откройте вкладку «Стратегии» и нажмите Enter на нужной.", error=True)
+                    app.status(_tr('tui.panes.no_strategy_selected_open_strategies_and_press_e'), error=True)
                     app.resync()
                     return
-                app.act(f"Запуск стратегии {sid}", "winws_start", sid, journal=f"winws start {sid}")
+                app.act(_tr('tui.panes.starting_strategy', p0=sid), "winws_start", sid, journal=f"winws start {sid}")
             else:
-                app.act("Остановка обхода", "winws_stop", journal="winws stop")
+                app.act(_tr('tui.panes.stopping_bypass'), "winws_stop", journal="winws stop")
         elif key == "proxy":
-            app.act("Запуск прокси" if want else "Остановка прокси", "proxy_start" if want else "proxy_stop",
+            app.act(_tr('tui.panes.starting_proxy') if want else _tr('tui.panes.stopping_proxy'), "proxy_start" if want else "proxy_stop",
                     journal="proxy start" if want else "proxy stop")
         elif key == "tg":
-            app.act("Запуск Telegram-прокси" if want else "Остановка Telegram-прокси",
+            app.act(_tr('tui.panes.starting_telegram_proxy') if want else _tr('tui.panes.stopping_telegram_proxy'),
                     "tg_start" if want else "tg_stop", journal="tg start" if want else "tg stop")
         elif key == "hosts_state":
-            app.act("Включение hosts" if want else "Выключение hosts", "hosts_set_enabled", want,
+            app.act(_tr('tui.panes.enabling_hosts') if want else _tr('tui.panes.disabling_hosts'), "hosts_set_enabled", want,
                     journal="hosts on" if want else "hosts off")
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "panic":
             event.stop()
-            self.app.confirm("Выключить всё: обход, прокси, Telegram-прокси, службу, hosts, и вернуть DNS, "
-                             "который ставила Chimera?", self._panic)
+            self.app.confirm(_tr('tui.panes.turn_off_bypass_proxy_telegram_proxy_service_and'), self._panic)
 
     def _panic(self) -> None:
         def after(data):
             failed = [f"{s['step']} ({s.get('error')})" for s in (data or {}).get("steps", []) if not s.get("ok")]
             if failed:
-                self.app.status("Выключить всё: не удалось: " + "; ".join(failed), error=True)
+                self.app.status(_tr('tui.panes.turn_everything_off_failed') + "; ".join(failed), error=True)
 
-        self.app.act("Выключить всё", "panic_all", journal="panic", after=after)
+        self.app.act(_tr('tui.panes.turn_everything_off'), "panic_all", journal="panic", after=after)
 
 
 # --- стратегии -----------------------------------------------------------------------------------
 
 class StrategiesPane(Pane):
     KEYS = ("winws",)
-    BINDINGS = [*Pane.BINDINGS, Binding("slash", "search", "Поиск", show=False), Binding("x", "stop", "Остановить обход")]
+    BINDINGS = [*Pane.BINDINGS, Binding("slash", "search", _tr('tui.panes.search'), show=False), Binding("x", "stop", _tr('tui.panes.stop_bypass'))]
 
     def compose(self) -> ComposeResult:
         yield Static("…", id="st-head", markup=False)
-        yield Input(placeholder="Поиск по стратегиям (/)", id="st-search")
+        yield Input(placeholder=_tr('tui.panes.search_strategies'), id="st-search")
         yield DataTable(id="st-table", cursor_type="row", zebra_stripes=True)
-        yield Static("Enter — запустить выбранную стратегию · x — остановить · / — поиск", markup=False, classes="dim")
+        yield Static(_tr('tui.panes.enter_to_start_the_selected_strategy_x_to_stop_t'), markup=False, classes="dim")
 
     def on_mount(self) -> None:
         t = self.query_one("#st-table", DataTable)
         t.add_column("", key="mark", width=2)
-        t.add_column("Стратегия", key="id")
-        t.add_column("Описание", key="desc")
+        t.add_column(_tr('tui.panes.strategy'), key="id")
+        t.add_column(_tr('tui.panes.description'), key="desc")
         super().on_mount()
 
     def focus_primary(self) -> None:
@@ -201,22 +208,22 @@ class StrategiesPane(Pane):
         self.query_one("#st-search", Input).focus()
 
     def action_stop(self) -> None:
-        self.app.act("Остановка обхода", "winws_stop", journal="winws stop")
+        self.app.act(_tr('tui.panes.stopping_bypass'), "winws_stop", journal="winws stop")
 
     def render_state(self) -> None:
         w = self.app.data("winws")
         if w is None:
-            self.query_one("#st-head", Static).update("Нет данных о winws.")
+            self.query_one("#st-head", Static).update(_tr('tui.panes.no_winws_data'))
             return
         head = tag(w.get("running"))
         if w.get("current"):
-            head += f", стратегия {w['current']}"
+            head += _tr('tui.panes.strategy_188', p0=w['current'])
         if w.get("last_strategy") and not w.get("running"):
-            head += f", последняя: {w['last_strategy']}"
+            head += _tr('tui.panes.last', p0=w['last_strategy'])
         if w.get("version"):
-            head += f" · версия {w['version']}"
+            head += _tr('tui.panes.version', p0=w['version'])
         if w.get("error"):
-            head += f" · ошибка: {w['error']}"
+            head += _tr('tui.panes.error', p0=w['error'])
         self.query_one("#st-head", Static).update(head)
         q = self.query_one("#st-search", Input).value.strip().lower()
         rows = []
@@ -239,28 +246,28 @@ class StrategiesPane(Pane):
     def on_data_table_row_selected(self, event: DataTable.RowSelected) -> None:
         event.stop()
         sid = event.row_key.value
-        self.app.act(f"Запуск стратегии {sid}", "winws_start", sid, journal=f"winws start {sid}")
+        self.app.act(_tr('tui.panes.starting_strategy', p0=sid), "winws_start", sid, journal=f"winws start {sid}")
 
 
 # --- списки -------------------------------------------------------------------------------------------
 
 class ListsPane(Pane):
     KEYS = ("lists",)
-    BINDINGS = [*Pane.BINDINGS, Binding("e", "edit", "Править"), Binding("space", "toggle", "Отметить")]
+    BINDINGS = [*Pane.BINDINGS, Binding("e", "edit", _tr('tui.panes.edit')), Binding("space", "toggle", _tr('tui.panes.select'))]
     COLUMNS = ("winws", "proxy", "hosts")
 
     def compose(self) -> ComposeResult:
-        yield Static("Пробел/Enter на «winws» или «прокси» — включить список в транспорт · e — править файл", markup=False, classes="dim")
+        yield Static(_tr('tui.panes.space_enter_on_winws_or_proxy_to_assign_a_list_e'), markup=False, classes="dim")
         yield DataTable(id="ls-table", cursor_type="cell", zebra_stripes=True)
         yield Static("", id="ls-note", markup=False, classes="dim")
 
     def on_mount(self) -> None:
         t = self.query_one("#ls-table", DataTable)
-        t.add_column("Список", key="name")
-        t.add_column("Доменов", key="count")
-        t.add_column("в winws", key="winws")
-        t.add_column("в прокси", key="proxy")
-        t.add_column("в hosts", key="hosts")
+        t.add_column(_tr('tui.panes.list'), key="name")
+        t.add_column(_tr('tui.panes.domains'), key="count")
+        t.add_column(_tr('tui.panes.in_winws'), key="winws")
+        t.add_column(_tr('tui.panes.in_proxy'), key="proxy")
+        t.add_column(_tr('tui.panes.in_hosts'), key="hosts")
         super().on_mount()
 
     def sources(self) -> list:
@@ -274,7 +281,7 @@ class ListsPane(Pane):
         rows = [(i["name"], i["name"], i.get("count", 0), *(CHECK if i.get(c) else EMPTY for c in self.COLUMNS)) for i in items]
         fill(self.query_one("#ls-table", DataTable), rows)
         if self.app.error("lists"):
-            self.query_one("#ls-note", Static).update(f"Не удалось получить списки: {self.app.error('lists')}")
+            self.query_one("#ls-note", Static).update(_tr('tui.panes.could_not_load_lists', p0=self.app.error('lists')))
 
     def _cell(self):
         t = self.query_one("#ls-table", DataTable)
@@ -287,11 +294,12 @@ class ListsPane(Pane):
     def _toggle(self, name: str, column: int) -> None:
         app, items = self.app, self.app.data("lists") or []
         if column == 4:
-            app.status("Привязка списков к провайдерам hosts — на вкладке Hosts.")
+            app.status(_tr('tui.panes.assign_lists_to_hosts_providers_on_the_hosts_tab'))
             return
         if column not in (2, 3):
             return
-        flag, method, title = ("winws", "winws_set_lists", "Списки обхода") if column == 2 else ("proxy", "proxy_set_lists", "Списки прокси")
+        flag, method, title = ("winws", "winws_set_lists", _tr('tui.panes.bypass_lists')) if column == 2 else (
+            "proxy", "proxy_set_lists", _tr('tui.panes.proxy_lists'))
         names = [i["name"] for i in items if i.get(flag)]
         names = [n for n in names if n != name] if name in names else [*names, name]
         app.act(f"{title}: {name}", method, names, journal=f"{'winws' if column == 2 else 'proxy'} lists {' '.join(names)}")
@@ -313,27 +321,28 @@ class ListsPane(Pane):
 
 # --- прокси -----------------------------------------------------------------------------------------------
 
-MODES = (("pac", "PAC (без прав администратора)"), ("split", "Выборочный TUN (приложения)"), ("tun", "TUN (весь трафик)"))
+MODES = (("pac", _tr('tui.panes.pac_no_administrator_rights')), ("split", _tr('tui.panes.selective_tun_applications')),
+         ("tun", _tr('tui.panes.tun_all_traffic')))
 
 
 class ProxyPane(Pane):
     KEYS = ("proxy",)
-    BINDINGS = [*Pane.BINDINGS, Binding("delete", "remove_app", "Убрать приложение")]
+    BINDINGS = [*Pane.BINDINGS, Binding("delete", "remove_app", _tr('tui.panes.remove_application'))]
 
     def compose(self) -> ComposeResult:
         yield Static("…", id="px-head", markup=False)
         with Horizontal(classes="row"):
-            yield Button("Запустить", id="px-toggle")
-        yield Static("Режим", markup=False, classes="dim")
+            yield Button(_tr('tui.panes.start'), id="px-toggle")
+        yield Static(_tr('tui.panes.mode_241'), markup=False, classes="dim")
         with RadioSet(id="px-mode"):
             for mode, title in MODES:
                 yield RadioButton(title, id=f"mode-{mode}")
-        yield Static("Приложения для выборочного TUN (Delete — убрать)", markup=False, classes="dim")
+        yield Static(_tr('tui.panes.applications_for_selective_tun_delete_to_remove'), markup=False, classes="dim")
         yield DataTable(id="px-apps", cursor_type="row")
-        yield Input(placeholder="Добавить приложение, например Discord.exe", id="px-add")
+        yield Input(placeholder=_tr('tui.panes.add_an_application_e_g_discord_exe'), id="px-add")
 
     def on_mount(self) -> None:
-        self.query_one("#px-apps", DataTable).add_column("Образ", key="app")
+        self.query_one("#px-apps", DataTable).add_column(_tr('tui.panes.image'), key="app")
         super().on_mount()
 
     def focus_primary(self) -> None:
@@ -342,20 +351,20 @@ class ProxyPane(Pane):
     def render_state(self) -> None:
         p = self.app.data("proxy")
         if p is None:
-            self.query_one("#px-head", Static).update("Нет данных о прокси.")
+            self.query_one("#px-head", Static).update(_tr('tui.panes.no_proxy_data'))
             return
-        head = f"{tag(p.get('running'))}, режим {p.get('mode', 'pac')}"
+        head = _tr('tui.panes.mode', p0=tag(p.get('running')), p1=p.get('mode', 'pac'))
         if p.get("external"):
-            head += " (запущен не из Chimera)"
+            head += _tr('tui.panes.started_outside_chimera')
         core = p.get("core") or {}
-        head += " · ядро sing-box: " + (core.get("version") or "есть" if core.get("present") else "не скачано")
-        head += f" · доменов {p.get('domains', 0)}, подсетей {p.get('ips', 0)}"
+        head += _tr('tui.panes.sing_box_core') + (core.get("version") or _tr('tui.panes.present') if core.get("present") else _tr('tui.panes.not_downloaded'))
+        head += _tr('tui.panes.domains_subnets', p0=p.get('domains', 0), p1=p.get('ips', 0))
         if p.get("parsed"):
             head += f" · {p['parsed'].get('protocol')} → {p['parsed'].get('server')}"
         if p.get("error"):
-            head += f" · ошибка: {p['error']}"
+            head += _tr('tui.panes.error', p0=p['error'])
         self.query_one("#px-head", Static).update(head)
-        self.query_one("#px-toggle", Button).label = "Остановить" if p.get("running") else "Запустить"
+        self.query_one("#px-toggle", Button).label = _tr('tui.panes.stop') if p.get("running") else _tr('tui.panes.start')
         mode = p.get("mode", "pac")
         btn = self.query_one(f"#mode-{mode}", RadioButton) if mode in dict(MODES) else None
         if btn is not None and not btn.value:
@@ -367,15 +376,15 @@ class ProxyPane(Pane):
             return
         event.stop()
         if (self.app.data("proxy") or {}).get("running"):
-            self.app.act("Остановка прокси", "proxy_stop", journal="proxy stop")
+            self.app.act(_tr('tui.panes.stopping_proxy'), "proxy_stop", journal="proxy stop")
         else:
-            self.app.act("Запуск прокси", "proxy_start", journal="proxy start")
+            self.app.act(_tr('tui.panes.starting_proxy'), "proxy_start", journal="proxy start")
 
     def on_radio_set_changed(self, event: RadioSet.Changed) -> None:
         event.stop()
         mode = (event.pressed.id or "")[5:]
         if mode and mode != (self.app.data("proxy") or {}).get("mode", "pac"):
-            self.app.act(f"Режим прокси: {mode}", "proxy_set_mode", mode, journal=f"proxy mode {mode}")
+            self.app.act(_tr('tui.panes.proxy_mode', p0=mode), "proxy_set_mode", mode, journal=f"proxy mode {mode}")
 
     def _apps(self) -> list:
         return list((self.app.data("proxy") or {}).get("apps") or [])
@@ -388,12 +397,12 @@ class ProxyPane(Pane):
         event.input.value = ""
         apps = self._apps()
         if name.lower() not in (a.lower() for a in apps):
-            self.app.act(f"Приложение {name}", "proxy_set_apps", [*apps, name], journal=f"proxy apps +{name}")
+            self.app.act(_tr('tui.panes.application', p0=name), "proxy_set_apps", [*apps, name], journal=f"proxy apps +{name}")
 
     def action_remove_app(self) -> None:
         name = selected_key(self.query_one("#px-apps", DataTable))
         if name:
-            self.app.act(f"Убрать {name}", "proxy_set_apps", [a for a in self._apps() if a != name], journal=f"proxy apps -{name}")
+            self.app.act(_tr('tui.panes.remove', p0=name), "proxy_set_apps", [a for a in self._apps() if a != name], journal=f"proxy apps -{name}")
 
 
 # --- hosts -----------------------------------------------------------------------------------------------------
@@ -404,16 +413,16 @@ class HostsPane(Pane):
     def compose(self) -> ComposeResult:
         yield Static("…", id="hs-head", markup=False)
         with Horizontal(classes="row"):
-            yield Static("Подмена hosts", markup=False, classes="name")
+            yield Static(_tr('tui.panes.hosts_override'), markup=False, classes="name")
             yield Switch(id="hs-enabled")
-        yield Static("Провайдеры и привязанные к ним списки (Enter — выбрать списки)", markup=False, classes="dim")
+        yield Static(_tr('tui.panes.providers_and_their_assigned_lists_enter_to_sele'), markup=False, classes="dim")
         yield DataTable(id="hs-table", cursor_type="row", zebra_stripes=True)
 
     def on_mount(self) -> None:
         t = self.query_one("#hs-table", DataTable)
-        t.add_column("Провайдер", key="name")
-        t.add_column("Тип", key="type")
-        t.add_column("Списки", key="lists")
+        t.add_column(_tr('tui.panes.provider'), key="name")
+        t.add_column(_tr('tui.panes.type'), key="type")
+        t.add_column(_tr('tui.panes.lists'), key="lists")
         super().on_mount()
 
     def sources(self) -> list:
@@ -428,9 +437,9 @@ class HostsPane(Pane):
     def render_state(self) -> None:
         st = self.app.data("hosts_state")
         if st is not None:
-            applied = "применено" if st.get("applied") else "не применено"
+            applied = _tr('tui.panes.applied') if st.get("applied") else _tr('tui.panes.not_applied')
             self.query_one("#hs-head", Static).update(
-                f"{tag(st.get('enabled'), 'включено', 'выключено')}, {applied}, записей: {st.get('count', 0)}")
+                _tr('tui.panes.entries', p0=tag(st.get('enabled'), _tr('tui.panes.enabled'), _tr('tui.panes.disabled')), p1=applied, p2=st.get('count', 0)))
             sw = self.query_one("#hs-enabled", Switch)
             if sw.value != bool(st.get("enabled")):
                 with sw.prevent(Switch.Changed):
@@ -445,7 +454,7 @@ class HostsPane(Pane):
         event.stop()
         want = event.value
         if want != bool((self.app.data("hosts_state") or {}).get("enabled")):
-            self.app.act("Включение hosts" if want else "Выключение hosts", "hosts_set_enabled", want,
+            self.app.act(_tr('tui.panes.enabling_hosts') if want else _tr('tui.panes.disabling_hosts'), "hosts_set_enabled", want,
                          journal="hosts on" if want else "hosts off")
 
     def on_data_table_row_selected(self, event: DataTable.RowSelected) -> None:
@@ -457,10 +466,10 @@ class HostsPane(Pane):
             if result is None:
                 return
             mapping = {**self._assignments(), pid: result}
-            self.app.act(f"Списки провайдера {pid}", "hosts_set_assignments", {k: v for k, v in mapping.items() if v},
+            self.app.act(_tr('tui.panes.lists_for_provider', p0=pid), "hosts_set_assignments", {k: v for k, v in mapping.items() if v},
                          journal=f"hosts assign {pid}={','.join(result)}")
 
-        self.app.push_screen(ListPicker(f"Списки для провайдера {pid}", names, self._assignments().get(pid) or []), chosen)
+        self.app.push_screen(ListPicker(_tr('tui.panes.lists_for_provider_255', p0=pid), names, self._assignments().get(pid) or []), chosen)
 
 
 # --- DNS -----------------------------------------------------------------------------------------------------------
@@ -470,27 +479,27 @@ TRIAL_SECONDS = 15
 
 class DnsPane(Pane):
     KEYS = ("dns",)
-    BINDINGS = [*Pane.BINDINGS, Binding("r", "reset", "Сбросить на DHCP")]
+    BINDINGS = [*Pane.BINDINGS, Binding("r", "reset", _tr('tui.panes.reset_to_dhcp'))]
 
     def compose(self) -> ComposeResult:
         yield Static("", id="dn-trial", markup=False)
         with Horizontal(id="dn-buttons", classes="row hidden"):
-            yield Button("Оставить", id="dn-keep")
-            yield Button("Вернуть сейчас", id="dn-revert")
-        yield Static("Адаптеры (r — сбросить выбранный на DHCP)", markup=False, classes="dim")
+            yield Button(_tr('tui.panes.keep'), id="dn-keep")
+            yield Button(_tr('tui.panes.restore_now'), id="dn-revert")
+        yield Static(_tr('tui.panes.adapters_r_to_reset_the_selected_adapter_to_dhcp'), markup=False, classes="dim")
         yield DataTable(id="dn-adapters", cursor_type="row")
-        yield Static(f"Провайдеры (Enter — применить к выбранному адаптеру с откатом через {TRIAL_SECONDS} с)", markup=False, classes="dim")
+        yield Static(_tr('tui.panes.providers_enter_to_apply_with_rollback_after_s', p0=TRIAL_SECONDS), markup=False, classes="dim")
         yield DataTable(id="dn-providers", cursor_type="row", zebra_stripes=True)
 
     def on_mount(self) -> None:
         a = self.query_one("#dn-adapters", DataTable)
         a.add_column("№", key="i", width=4)
-        a.add_column("Адаптер", key="name")
-        a.add_column("Состояние", key="status")
+        a.add_column(_tr('tui.panes.adapter'), key="name")
+        a.add_column(_tr('tui.panes.state'), key="status")
         a.add_column("DNS", key="dns")
         p = self.query_one("#dn-providers", DataTable)
-        p.add_column("Провайдер", key="name")
-        p.add_column("Серверы", key="servers")
+        p.add_column(_tr('tui.panes.provider'), key="name")
+        p.add_column(_tr('tui.panes.servers'), key="servers")
         super().on_mount()
 
     def sources(self) -> list:
@@ -510,10 +519,13 @@ class DnsPane(Pane):
         trials = d.get("trials") or []
         self.query_one("#dn-buttons").set_class(not trials, "hidden")
         self.query_one("#dn-trial", Static).update(
-            "\n".join(f"Проба DNS на адаптере {t.get('adapter')}: {t.get('provider')}, до отката {t.get('seconds_left')} с — "
-                      "оставьте или верните" for t in trials))
+            "\n".join(_tr('tui.panes.dns_trial_on_adapter_rollback_in_s_keep_or_resto',
+                p0=t.get('adapter'),
+                p1=t.get('provider'),
+                p2=t.get('seconds_left'),
+            ) for t in trials))
         if self.app.error("dns"):
-            self.query_one("#dn-trial", Static).update(f"Не удалось получить DNS: {self.app.error('dns')}")
+            self.query_one("#dn-trial", Static).update(_tr('tui.panes.could_not_load_dns', p0=self.app.error('dns')))
 
     def _adapter(self):
         key = selected_key(self.query_one("#dn-adapters", DataTable))
@@ -525,26 +537,26 @@ class DnsPane(Pane):
             return
         adapter, pid = self._adapter(), event.row_key.value
         if adapter is None:
-            self.app.status("Сначала выберите адаптер в верхней таблице.", error=True)
+            self.app.status(_tr('tui.panes.select_an_adapter_in_the_top_table_first'), error=True)
             return
-        self.app.confirm(f"Поставить DNS «{pid}» на адаптер {adapter}? Если не подтвердить за {TRIAL_SECONDS} с, вернётся прежний.",
-                         lambda: self.app.act(f"DNS {pid} на адаптере {adapter}", "dns_set_trial", adapter, pid, TRIAL_SECONDS,
+        self.app.confirm(_tr('tui.panes.set_dns_on_adapter_if_not_confirmed_within_s_the', p0=pid, p1=adapter, p2=TRIAL_SECONDS),
+                         lambda: self.app.act(_tr('tui.panes.dns_on_adapter', p0=pid, p1=adapter), "dns_set_trial", adapter, pid, TRIAL_SECONDS,
                                               journal=f"dns trial {adapter} {pid}"))
 
     def action_reset(self) -> None:
         adapter = self._adapter()
         if adapter is None:
             return
-        self.app.confirm(f"Вернуть DNS адаптера {adapter} на автоматический (DHCP)?",
-                         lambda: self.app.act(f"Сброс DNS адаптера {adapter}", "dns_reset", adapter, journal=f"dns reset {adapter}"))
+        self.app.confirm(_tr('tui.panes.reset_dns_for_adapter_to_automatic_dhcp', p0=adapter),
+                         lambda: self.app.act(_tr('tui.panes.reset_dns_for_adapter', p0=adapter), "dns_reset", adapter, journal=f"dns reset {adapter}"))
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "dn-keep":
             event.stop()
-            self.app.act("DNS оставлен", "dns_trial_confirm", journal="dns trial-confirm")
+            self.app.act(_tr('tui.panes.dns_kept'), "dns_trial_confirm", journal="dns trial-confirm")
         elif event.button.id == "dn-revert":
             event.stop()
-            self.app.act("DNS возвращён", "dns_trial_revert", journal="dns trial-revert")
+            self.app.act(_tr('tui.panes.dns_restored'), "dns_trial_revert", journal="dns trial-revert")
 
 
 # --- Telegram-прокси ---------------------------------------------------------------------------------------------------------
@@ -555,7 +567,7 @@ class TgPane(Pane):
     def compose(self) -> ComposeResult:
         yield Static("…", id="tg-head", markup=False)
         with Horizontal(classes="row"):
-            yield Button("Запустить", id="tg-toggle")
+            yield Button(_tr('tui.panes.start'), id="tg-toggle")
         yield Static("", id="tg-info", markup=False)
         yield Static("", id="tg-stats", markup=False, classes="dim")
 
@@ -572,23 +584,27 @@ class TgPane(Pane):
         """Ссылка без секрета: секрет в TUI не показывается никогда (полная — `chimera tg link --show-secrets`)."""
         if not t.get("link"):
             return "—"
-        return f"tg://proxy?server={t.get('host')}&port={t.get('port')}&secret=…(скрыто)"
+        return _tr('tui.panes.tg_proxy_server_port_secret_hidden', p0=t.get('host'), p1=t.get('port'))
 
     def render_state(self) -> None:
         t = self.app.data("tg")
         if t is None:
-            self.query_one("#tg-head", Static).update("Нет данных о Telegram-прокси.")
+            self.query_one("#tg-head", Static).update(_tr('tui.panes.no_telegram_proxy_data'))
             return
         head = tag(t.get("running"))
         if t.get("version"):
-            head += f" · ядро {t['version']}"
+            head += _tr('tui.panes.core', p0=t['version'])
         if t.get("error"):
-            head += f" · ошибка: {t['error']}"
+            head += _tr('tui.panes.error', p0=t['error'])
         self.query_one("#tg-head", Static).update(head)
-        self.query_one("#tg-toggle", Button).label = "Остановить" if t.get("running") else "Запустить"
+        self.query_one("#tg-toggle", Button).label = _tr('tui.panes.stop') if t.get("running") else _tr('tui.panes.start')
         self.query_one("#tg-info", Static).update(
-            f"Адрес: {t.get('host')}:{t.get('port')} · автозапуск: {'да' if t.get('autostart') else 'нет'}\n"
-            f"Ссылка: {self.masked_link(t)}\nПолная ссылка: chimera tg link --show-secrets")
+            _tr('tui.panes.address_autostart_link_full_link_chimera_tg_link',
+                p0=t.get('host'),
+                p1=t.get('port'),
+                p2=_tr('tui.panes.yes') if t.get('autostart') else _tr('tui.panes.no'),
+                p3=self.masked_link(t),
+            ))
         stats = self.app.data("tg_stats")
         if stats and t.get("running"):
             from modules.cli.commands import render
@@ -601,9 +617,9 @@ class TgPane(Pane):
             return
         event.stop()
         if (self.app.data("tg") or {}).get("running"):
-            self.app.act("Остановка Telegram-прокси", "tg_stop", journal="tg stop")
+            self.app.act(_tr('tui.panes.stopping_telegram_proxy'), "tg_stop", journal="tg stop")
         else:
-            self.app.act("Запуск Telegram-прокси", "tg_start", journal="tg start")
+            self.app.act(_tr('tui.panes.starting_telegram_proxy'), "tg_start", journal="tg start")
 
 
 # --- логи ---------------------------------------------------------------------------------------------------------------------------
@@ -659,7 +675,7 @@ class LogsPane(Pane):
 
 # --- настройки -----------------------------------------------------------------------------------------------------------------------------
 
-THEMES = (("system", "Как в системе"), ("light", "Светлая"), ("dark", "Тёмная"))
+THEMES = (("system", _tr('tui.panes.system')), ("light", _tr('tui.panes.light')), ("dark", _tr('tui.panes.dark')))
 
 
 class SettingsPane(Pane):
@@ -668,11 +684,15 @@ class SettingsPane(Pane):
     def compose(self) -> ComposeResult:
         with VerticalScroll():
             yield Static("", id="se-info", markup=False)
-            yield Static("Тема окна Chimera", markup=False, classes="dim")
+            yield Static(_tr('tui.panes.chimera_window_theme'), markup=False, classes="dim")
             with RadioSet(id="se-theme"):
                 for value, title in THEMES:
                     yield RadioButton(title, id=f"theme-{value}")
             yield Static("", id="se-lang", markup=False)
+            with RadioSet(id="se-language", classes="hidden"):
+                for value, key in (("auto", "tui.settings.language.auto"), ("ru", "tui.settings.language.ru"),
+                                   ("en", "tui.settings.language.en")):
+                    yield RadioButton(_tr(key), id=f"lang-{value}")
 
     def sources(self) -> list:
         return [("config", "config_read", (), 5)]
@@ -683,19 +703,36 @@ class SettingsPane(Pane):
     def render_state(self) -> None:
         a, cfg = self.app.data("app") or {}, self.app.data("config") or {}
         self.query_one("#se-info", Static).update(
-            f"Версия Chimera: {a.get('version', '?')}\nПрава администратора: {'да' if a.get('admin') else 'нет'}\n"
-            f"Режим интерфейса: {cfg.get('interface', '?')}")
+            _tr('tui.panes.chimera_version_administrator_rights_interface_m',
+                p0=a.get('version', '?'),
+                p1=_tr('tui.panes.yes') if a.get('admin') else _tr('tui.panes.no'),
+                p2=cfg.get('interface', '?'),
+            ))
         theme = cfg.get("theme", "system")
         btn = self.query_one(f"#theme-{theme}", RadioButton) if theme in dict(THEMES) else None
         if btn is not None and not btn.value:
             btn.value = True
         lang = self.query_one("#se-lang", Static)
-        lang.update(f"Язык: {cfg['language']}" if "language" in cfg else "")
-        lang.set_class("language" not in cfg, "hidden")
+        setting = cfg.get("lang", cfg.get("language"))
+        lang.update(_tr('tui.panes.language', p0=setting) if setting is not None else "")
+        lang.set_class(setting is None, "hidden")
+        choices = self.query_one("#se-language", RadioSet)
+        choices.set_class("lang" not in cfg, "hidden")
+        if setting in ("auto", "ru", "en") and "lang" in cfg:
+            selected = self.query_one(f"#lang-{setting}", RadioButton)
+            if not selected.value:
+                selected.value = True
 
     def on_radio_set_changed(self, event: RadioSet.Changed) -> None:
         event.stop()
-        theme = (event.pressed.id or "")[6:]
+        pressed = event.pressed.id or ""
+        if pressed.startswith("lang-"):
+            language = pressed[5:]
+            if language != (self.app.data("config") or {}).get("lang", "auto"):
+                self.app.act(_tr("tui.settings.language_changed", setting=language),
+                             "config_set", "lang", language, journal=f"config set lang {language}")
+            return
+        theme = pressed[6:]
         if theme and theme != (self.app.data("config") or {}).get("theme", "system"):
-            self.app.act(f"Тема окна: {theme}", "config_set", "theme", theme, journal=f"config set theme {theme}")
+            self.app.act(_tr('tui.panes.window_theme', p0=theme), "config_set", "theme", theme, journal=f"config set theme {theme}")
 

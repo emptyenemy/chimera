@@ -9,6 +9,10 @@
 Настройки (host/port/secret/autostart) — в state.json рядом с модулем.
 """
 
+from modules.i18n import t as _tr
+
+from modules.errors import ChimeraRuntimeError, ChimeraValueError
+
 import json
 import logging
 import os
@@ -55,18 +59,18 @@ def _validate_domain(domain) -> str:
     буквы/цифры/дефис без дефиса по краям, TLD от 2 символов с буквой."""
     d = str(domain).strip().lower()
     if not d or len(d) > 253 or d.startswith(".") or d.endswith("."):
-        raise ValueError(f"Некорректный домен: {domain!r}")
+        raise ChimeraValueError('err.tgproxy.manager.invalid_domain', p0=f'{domain!r}')
     labels = d.split(".")
     if len(labels) < 2:
-        raise ValueError(f"Некорректный домен: {domain!r}")
+        raise ChimeraValueError('err.tgproxy.manager.invalid_domain', p0=f'{domain!r}')
     for label in labels:
         if not label or len(label) > 63 or label[0] == "-" or label[-1] == "-":
-            raise ValueError(f"Некорректный домен: {domain!r}")
+            raise ChimeraValueError('err.tgproxy.manager.invalid_domain', p0=f'{domain!r}')
         if not all(ch.isalnum() or ch == "-" for ch in label):
-            raise ValueError(f"Некорректный домен: {domain!r}")
+            raise ChimeraValueError('err.tgproxy.manager.invalid_domain', p0=f'{domain!r}')
     tld = labels[-1]
     if len(tld) < 2 or not any(ch.isalpha() for ch in tld):
-        raise ValueError(f"Некорректный домен: {domain!r}")
+        raise ChimeraValueError('err.tgproxy.manager.invalid_domain', p0=f'{domain!r}')
     return d
 
 
@@ -80,7 +84,7 @@ def _normalize_domains(value) -> list:
     elif isinstance(value, (list, tuple)):
         items = list(value)
     else:
-        raise ValueError("Список доменов — строка или список строк")
+        raise ChimeraValueError('err.tgproxy.manager.domain_lists_must_be_a_string_or_a_list_of_strin')
     seen = set()
     out = []
     for raw in items:
@@ -96,17 +100,17 @@ def _validate_dc_redirects(value) -> dict:
     """{dc: ip} -> {str(dc): ip}, как parse_dc_ip_list апстрима (--dc-ip DC:IP),
     но на входе уже разобранный объект, а не список "DC:IP" строк."""
     if not isinstance(value, dict):
-        raise ValueError("dc_redirects — объект {номер DC: IP}")
+        raise ChimeraValueError('err.tgproxy.manager.dc_redirects_must_be_an_object_mapping_dc_number')
     result = {}
     for dc_raw, ip_raw in value.items():
         try:
             dc_n = int(dc_raw)
         except (TypeError, ValueError):
-            raise ValueError(f"Неверный номер DC: {dc_raw!r}") from None
+            raise ChimeraValueError('err.tgproxy.manager.invalid_dc_number', p0=f'{dc_raw!r}') from None
         try:
             socket.inet_pton(socket.AF_INET, str(ip_raw))
         except OSError:
-            raise ValueError(f"Неверный IP для DC{dc_n}: {ip_raw!r}") from None
+            raise ChimeraValueError('err.tgproxy.manager.invalid_ip_for_dc', p0=dc_n, p1=f'{ip_raw!r}') from None
         result[str(dc_n)] = str(ip_raw)
     return result
 
@@ -115,10 +119,7 @@ def _import_core():
     """Подцепляет пакет proxy из сабмодуля. У сабмодуля есть свои ui/ и utils/,
     поэтому путь добавляется в КОНЕЦ sys.path — наши одноимённые пакеты в приоритете."""
     if not (UPSTREAM / "proxy" / "__init__.py").exists():
-        raise RuntimeError(
-            "Сабмодуль tg-ws-proxy не подтянут. Выполни: "
-            "git submodule update --init upstream/tg-ws-proxy"
-        )
+        raise ChimeraRuntimeError('err.tgproxy.manager.the_tg_ws_proxy_submodule_is_missing_run_git_sub')
     if str(UPSTREAM) not in sys.path:
         sys.path.append(str(UPSTREAM))
     import proxy  # noqa: F401  (пакет из сабмодуля)
@@ -135,7 +136,7 @@ def _normalize_secret(value: str) -> str:
     if len(s) == 34 and s[:2] in ("dd", "ee"):
         s = s[2:]
     if not _SECRET_RE.match(s):
-        raise ValueError("Секрет — 32 hex-символа (или 34 с префиксом dd)")
+        raise ChimeraValueError('err.tgproxy.manager.the_secret_must_contain_32_hex_characters_or_34')
     return s
 
 
@@ -172,7 +173,7 @@ class TgProxy:
         host = str(host).strip() or "127.0.0.1"
         port = int(port)
         if not 1 <= port <= 65535:
-            raise ValueError("Порт — число от 1 до 65535")
+            raise ChimeraValueError('err.tgproxy.manager.the_port_must_be_a_number_from_1_to_65535')
         self.config.update({
             "host": host,
             "port": port,
@@ -204,7 +205,7 @@ class TgProxy:
         запущенный прокси эффекта нет — restart_required в ответе подсказывает, что
         нужен перезапуск (tg_stop/tg_start), сама его не перезапускает."""
         if not isinstance(options, dict):
-            raise ValueError("options — объект настроек")
+            raise ChimeraValueError('err.tgproxy.manager.options_must_be_a_settings_object')
         updates = {}
         for key in _ADV_BOOL_KEYS:
             if key in options:
@@ -251,8 +252,7 @@ class TgProxy:
             loop.run_until_complete(_run(stop_event=self._stop_event))
         except Exception as exc:
             if "10048" in str(exc) or "Address already in use" in str(exc):
-                self._error = (f"Порт {self.config['port']} уже занят другим "
-                               "приложением — смени порт или закрой его.")
+                self._error = (_tr('msg.modules.tgproxy.manager.port_is_occupied_by_another_application_change_t', p0=f"{self.config['port']}"))
             else:
                 self._error = str(exc)
         finally:
@@ -311,7 +311,7 @@ class TgProxy:
         while time.monotonic() < deadline:
             if not self._thread.is_alive():
                 self._thread = None
-                raise RuntimeError(self._error or "Прокси не запустился")
+                raise RuntimeError(self._error or _tr('msg.modules.tgproxy.manager.proxy_could_not_start'))
             if self._server_up():
                 break
             time.sleep(0.05)

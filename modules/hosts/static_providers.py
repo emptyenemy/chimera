@@ -12,6 +12,10 @@ DoH/UDP), static-провайдер отдаёт фиксированный на
 применении, никаких падений.
 """
 
+from modules.i18n import t as _tr
+
+from modules.errors import ChimeraFileNotFoundError, ChimeraKeyError
+
 from .. import paths
 
 FLOWSEAL_HOSTS_PATH = paths.APP_DIR / "upstream" / "zapret-discord-youtube" / ".service" / "hosts"
@@ -58,7 +62,7 @@ def providers() -> list[dict]:
             "id": p["id"], "name": p["name"], "type": "static", "unblock": True,
             "available": available,
             "reason": None if available else
-            "сабмодуль zapret-discord-youtube не найден рядом с программой",
+            _tr('msg.modules.hosts.static_providers.the_zapret_discord_youtube_submodule_was_not_fou'),
         })
     return out
 
@@ -68,7 +72,7 @@ def get(provider_id: str) -> dict:
     for p in _STATIC:
         if p["id"] == provider_id:
             return p
-    raise KeyError(f"static-провайдер {provider_id!r} не найден")
+    raise ChimeraKeyError('err.hosts.static_providers.static_provider_was_not_found', p0=f'{provider_id!r}')
 
 
 def read_entries(provider_id: str) -> list[dict]:
@@ -79,9 +83,6 @@ def read_entries(provider_id: str) -> list[dict]:
     """
     p = get(provider_id)
     if not p["path"].exists():
-        raise FileNotFoundError(
-            f"{p['name']}: файл не найден ({p['path']}) — "
-            "сабмодуль zapret-discord-youtube отсутствует рядом с программой"
-        )
+        raise ChimeraFileNotFoundError('err.hosts.static_providers.file_not_found_the_zapret_discord_youtube_submod', p0=p['name'], p1=p['path'])
     text = p["path"].read_text(encoding="utf-8", errors="replace")
     return parse_hosts_text(text)

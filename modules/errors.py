@@ -45,3 +45,23 @@ def localized(result: dict) -> str:
 
 class ChimeraValueError(ChimeraError, ValueError):
     """Неверное значение параметра. Остаётся ValueError: так его ловили до кодов ошибок."""
+
+
+class ChimeraRuntimeError(ChimeraError, RuntimeError):
+    """Ошибка операции с сохранением типа RuntimeError."""
+
+
+class ChimeraOSError(ChimeraError, OSError):
+    """Ошибка соединения или файловой операции."""
+
+
+class ChimeraPermissionError(ChimeraError, PermissionError):
+    """Недостаточно прав для операции."""
+
+
+class ChimeraFileNotFoundError(ChimeraError, FileNotFoundError):
+    """Нужный файл отсутствует."""
+
+
+class ChimeraKeyError(ChimeraError, KeyError):
+    """Неизвестный идентификатор."""

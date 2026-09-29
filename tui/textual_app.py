@@ -11,6 +11,8 @@ tui/remote.py теми же методами, что у командной ст�
 опрос продолжается и подключается заново сам.
 """
 
+from modules.i18n import t as _tr
+
 import json
 import os
 import shlex
@@ -30,11 +32,11 @@ from tui.screens import ConfirmScreen, HelpScreen
 BASE_SOURCES = (("app", "app_info"), ("winws", "winws_state"), ("proxy", "proxy_state"),
                 ("tg", "tg_state"), ("hosts_state", "hosts_state"))
 
-TABS = (("overview", "Обзор", panes.OverviewPane), ("strategies", "Стратегии", panes.StrategiesPane),
-        ("lists", "Списки", panes.ListsPane), ("proxy", "Прокси", panes.ProxyPane),
+TABS = (("overview", _tr('tui.textual_app.overview'), panes.OverviewPane), ("strategies", _tr('tui.textual_app.strategies'), panes.StrategiesPane),
+        ("lists", _tr('tui.textual_app.lists'), panes.ListsPane), ("proxy", _tr('tui.textual_app.proxy'), panes.ProxyPane),
         ("hosts", "Hosts", panes.HostsPane), ("dns", "DNS", panes.DnsPane),
-        ("tg", "Telegram", panes.TgPane), ("logs", "Логи", panes.LogsPane),
-        ("settings", "Настройки", panes.SettingsPane))
+        ("tg", "Telegram", panes.TgPane), ("logs", _tr('tui.textual_app.logs'), panes.LogsPane),
+        ("settings", _tr('tui.textual_app.settings'), panes.SettingsPane))
 
 # Спокойная тёмная схема без цветного акцента (цветной акцент появится вместе с темами).
 THEME = Theme(name="chimera", primary="#b9bdc5", secondary="#8d929b", accent="#b9bdc5", warning="#c2ae7d",
@@ -82,11 +84,11 @@ class ChimeraTui(App):
     ENABLE_COMMAND_PALETTE = False
     CSS = CSS
     BINDINGS = [
-        Binding("q", "quit", "Выход"),
-        Binding("ctrl+c", "quit", "Выход", show=False, priority=True),
-        Binding("question_mark", "help", "Подсказка"),
-        Binding("tab", "tab_step(1)", "Вкладка", show=False, priority=True),
-        Binding("shift+tab", "tab_step(-1)", "Вкладка назад", show=False, priority=True),
+        Binding("q", "quit", _tr('tui.textual_app.quit')),
+        Binding("ctrl+c", "quit", _tr('tui.textual_app.quit'), show=False, priority=True),
+        Binding("question_mark", "help", _tr('tui.textual_app.help')),
+        Binding("tab", "tab_step(1)", _tr('tui.textual_app.next_tab'), show=False, priority=True),
+        Binding("shift+tab", "tab_step(-1)", _tr('tui.textual_app.previous_tab'), show=False, priority=True),
         *[Binding(str(i), f"goto({i})", TABS[i - 1][1], show=False) for i in range(1, len(TABS) + 1)],
     ]
 
@@ -161,9 +163,11 @@ class ChimeraTui(App):
     def _update_top(self) -> None:
         app = self._state.get("app") or {}
         ver = f" {app['version']}" if app.get("version") else ""
-        note = {True: "связь с Chimera есть", None: "подключаюсь к Chimera…"}.get(self.link)
+        note = {True: _tr('tui.textual_app.connected_to_chimera'), None: _tr('tui.textual_app.connecting_to_chimera')}.get(self.link)
         if self.link is False:
-            note = "нет связи с Chimera" + (f" ({self.link_note})" if self.link_note and self.link_note != "нет связи с Chimera" else "")
+            note = _tr('tui.textual_app.no_connection_to_chimera')
+            if self.link_note and self.link_note != note:
+                note += f" ({self.link_note})"
         self._top.update(f"Chimera{ver} · {note}")
         self._top.set_class(self.link is False, "offline")
 
@@ -293,9 +297,9 @@ class ChimeraTui(App):
         was = self.link
         self.link, self.link_note = online, note
         if online is False and was is not False:
-            self.status("Нет связи с Chimera: показаны последние известные данные, подключаюсь заново.", error=True)
+            self.status(_tr('tui.textual_app.no_connection_to_chimera_showing_the_last_known'), error=True)
         elif online and was is False:
-            self.status("Связь с Chimera восстановлена.")
+            self.status(_tr('tui.textual_app.connection_to_chimera_restored'))
             self._force = True
         self._update_top()
 
@@ -310,7 +314,7 @@ class ChimeraTui(App):
     def act(self, title: str, method: str, *args, journal: str | None = None, after=None) -> None:
         """Действие в фоне: метод Api через канал, результат в строке состояния."""
         if self.link is not True:
-            self.status(f"Нет связи с Chimera: «{title}» не выполнено.", error=True)
+            self.status(_tr('tui.textual_app.no_connection_to_chimera_was_not_performed', p0=title), error=True)
             self.resync()
             return
         self.status(f"{title}…")
@@ -330,11 +334,11 @@ class ChimeraTui(App):
     def _act_done(self, title, result, error, offline, after) -> None:
         if offline:
             self._set_link(False, error)
-            self.status(f"Нет связи с Chimera: «{title}» не выполнено.", error=True)
+            self.status(_tr('tui.textual_app.no_connection_to_chimera_was_not_performed', p0=title), error=True)
         elif error:
             self.status(f"{title}: {error}", error=True)
         else:
-            self.status(f"{title}: готово.")
+            self.status(_tr('tui.textual_app.done', p0=title))
             if after:
                 after(result)
         self._full_render = True
@@ -346,7 +350,7 @@ class ChimeraTui(App):
         """Правка lists/<имя>.txt во внешнем редакторе. Применение делает наблюдатель за файлами."""
         from modules import domains
         if not domains.NAME_RE.match(name):
-            self.status(f"Недопустимое имя списка: {name}", error=True)
+            self.status(_tr('tui.textual_app.invalid_list_name', p0=name), error=True)
             return
         path = (self._lists_dir or domains.LISTS_DIR) / f"{name}.txt"
         try:
@@ -356,7 +360,7 @@ class ChimeraTui(App):
             except SuspendNotSupported:   # драйвер не умеет отдавать терминал (тесты, некоторые оболочки)
                 self.editor(path)
         except Exception as e:  # noqa: BLE001 — нет редактора, консоль не отдали: сообщаем, а не роняем интерфейс
-            self.status(f"Редактор не открылся: {e}", error=True)
+            self.status(_tr('tui.textual_app.could_not_open_the_editor', p0=e), error=True)
             return
-        self.status(f"Список «{name}»: изменения применяются автоматически.")
+        self.status(_tr('tui.textual_app.list_changes_are_applied_automatically', p0=name))
         self.refresh_now(force=True)

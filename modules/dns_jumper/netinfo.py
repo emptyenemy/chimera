@@ -25,6 +25,8 @@
   даёт обратный результат. Некритично — это только суффикс "· вирт." в UI.
 """
 
+from modules.errors import ChimeraOSError
+
 import ctypes
 import ctypes.wintypes as wintypes
 import socket
@@ -181,8 +183,8 @@ def _get_adapters_addresses() -> ctypes.Array:
         if ret == _ERROR_BUFFER_OVERFLOW:
             buf = ctypes.create_string_buffer(size.value)
             continue
-        raise OSError(f"GetAdaptersAddresses вернул код {ret}")
-    raise OSError("GetAdaptersAddresses: не удалось подобрать размер буфера")
+        raise ChimeraOSError('err.dns_jumper.netinfo.getadaptersaddresses_returned_code', p0=ret)
+    raise ChimeraOSError('err.dns_jumper.netinfo.getadaptersaddresses_could_not_determine_the_buf')
 
 
 def adapters() -> list[dict]:

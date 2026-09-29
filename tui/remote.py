@@ -9,6 +9,8 @@ Remote.call() блокирующий: его зовут из фоновых во
 RemoteError (Chimera ответила, но метод вернул ошибку).
 """
 
+from modules.i18n import t as _tr
+
 import http.client
 from datetime import datetime
 
@@ -47,7 +49,7 @@ class Remote:
             data = self._client.api(method, *args, reveal=False)
         except cl.NotRunning as e:
             self._client = None
-            raise Offline("нет связи с Chimera") from e
+            raise Offline(_tr('tui.remote.no_connection_to_chimera')) from e
         except CliError as e:
             if e.exit_code == 3:   # файл связи устарел, ответ непонятный или программа старая
                 self._client = None
@@ -55,7 +57,7 @@ class Remote:
             raise RemoteError(e.message) from e
         except (OSError, http.client.HTTPException) as e:
             self._client = None
-            raise Offline("нет связи с Chimera") from e
+            raise Offline(_tr('tui.remote.no_connection_to_chimera')) from e
         return control.redact(data)
 
     def ensure_running(self, progress=None) -> bool:
@@ -63,11 +65,10 @@ class Remote:
         if self._discover() is not None:
             return False
         if progress:
-            progress("Chimera не запущена, запускаю её в трее…")
+            progress(_tr('tui.remote.chimera_is_not_running_starting_it_in_the_tray'))
         self._launch()
         if not self._wait(lambda: self._discover() is not None, commands.WAIT_START, 0.5):
-            raise Offline("не удалось дождаться запуска Chimera (если был запрос прав администратора, "
-                          "подтвердите его и откройте TUI снова)")
+            raise Offline(_tr('tui.remote.timed_out_waiting_for_chimera_to_start_if_admini'))
         return True
 
     def record(self, label: str, ok: bool) -> None:

@@ -12,6 +12,8 @@ __init__ и гасит в shutdown().
 синхронно, резолвер/чекер/проба провайдера — инжектируемые функции.
 """
 
+from modules.i18n import t as _tr
+
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -244,7 +246,7 @@ class HostsBackground:
             st["assignments"] = assignments
             event = {
                 "from": pid, "to": nxt, "when": time.time(),
-                "reason": f"деградация: {health['alive']}/{health['total']} живы",
+                "reason": _tr('msg.modules.hosts.background.degraded_alive', p0=f"{health['alive']}", p1=f"{health['total']}"),
             }
             log = st.get("switch_log", []) + [event]
             st["switch_log"] = log[-20:]  # не растим файл бесконечно

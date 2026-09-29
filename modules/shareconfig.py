@@ -18,6 +18,8 @@
 делает объект ops (см. ui/api.py: ShareOps), поэтому логика проверяется тестами.
 """
 
+from modules.i18n import LazyMap, t as _tr
+
 import ipaddress
 import json
 import re
@@ -32,10 +34,7 @@ SCHEMA = 1
 SECTIONS = ("lists", "proxy", "hosts", "dns", "telegram", "winws")
 DEFAULT_SECTIONS = ("lists", "proxy", "hosts", "dns", "telegram")
 PROVIDER_DEPENDENT = ("winws",)   # настройки обхода DPI зависят от провайдера пользователя
-TITLES = {
-    "lists": "Списки доменов", "proxy": "Прокси", "hosts": "Hosts", "dns": "DNS-провайдеры",
-    "telegram": "Telegram-прокси", "winws": "Обход DPI",
-}
+TITLES = LazyMap(SECTIONS, "msg.share.section")
 
 MAX_TEXT = 2 * 1024 * 1024        # размер файла целиком
 MAX_LISTS = 200
@@ -115,14 +114,14 @@ def _referenced_lists(sections: dict) -> list[str]:
 
 def _names(value, where, invalid) -> list[str] | None:
     if not isinstance(value, list):
-        invalid.append(f"{where}: ожидался список названий")
+        invalid.append(_tr('msg.modules.shareconfig.expected_a_list_of_names', p0=f'{where}'))
         return None
     out = []
     for n in value:
         if isinstance(n, str) and domains.NAME_RE.match(n):
             out.append(n)
         else:
-            invalid.append(f"{where}: недопустимое имя «{n}»")
+            invalid.append(_tr('msg.modules.shareconfig.invalid_name', p0=f'{where}', p1=f'{n}'))
     return out
 
 
@@ -147,11 +146,11 @@ def _entries(text: str) -> list[str]:
 
 def _clean_provider(p, where, invalid):
     if not isinstance(p, dict):
-        invalid.append(f"{where}: ожидался объект")
+        invalid.append(_tr('msg.modules.shareconfig.expected_an_object', p0=f'{where}'))
         return None
     name = str(p.get("name") or "").strip()
     if not name or len(name) > 64:
-        invalid.append(f"{where}: нет названия")
+        invalid.append(_tr('msg.modules.shareconfig.missing_name', p0=f'{where}'))
         return None
     try:
         servers = parse_servers(p.get("servers") or [])
@@ -162,7 +161,7 @@ def _clean_provider(p, where, invalid):
         invalid.append(f"{where} «{name}»: {e}")
         return None
     if not (servers or ipv6 or doh or dot):
-        invalid.append(f"{where} «{name}»: нет ни IP-адреса, ни DoH/DoT")
+        invalid.append(_tr('msg.modules.shareconfig.missing_ip_address_and_doh_dot', p0=f'{where}', p1=f'{name}'))
         return None
     pid = p.get("id") if isinstance(p.get("id"), str) and _ID_RE.match(p["id"]) else ""
     return {"id": pid, "name": name, "servers": servers, "ipv6": ipv6, "doh": doh, "dot": dot,
@@ -176,7 +175,7 @@ def _unknown(section: dict, allowed) -> list[str]:
 def _clean_section(sid: str, raw, invalid) -> tuple[dict, list[str]]:
     """(нормализованный раздел, неизвестные поля). raw — объект из файла."""
     if not isinstance(raw, dict):
-        invalid.append(f"{sid}: ожидался объект")
+        invalid.append(_tr('msg.modules.shareconfig.expected_an_object', p0=f'{sid}'))
         return {}, []
     out, unknown = {}, []
 
@@ -187,17 +186,17 @@ def _clean_section(sid: str, raw, invalid) -> tuple[dict, list[str]]:
         if isinstance(items, dict):
             for name, text in list(items.items())[:MAX_LISTS]:
                 if not (isinstance(name, str) and domains.NAME_RE.match(name)):
-                    invalid.append(f"список «{name}»: недопустимое имя")
+                    invalid.append(_tr('msg.modules.shareconfig.list_invalid_name', p0=f'{name}'))
                     continue
                 if not isinstance(text, str) or text.count("\n") > MAX_LIST_LINES:
-                    invalid.append(f"список «{name}»: неверное или слишком большое содержимое")
+                    invalid.append(_tr('msg.modules.shareconfig.list_invalid_or_oversized_content', p0=f'{name}'))
                     continue
                 cleaned, dropped = _clean_list_text(text)
                 if dropped:
-                    invalid.append(f"список «{name}»: отброшено строк с недопустимыми символами: {dropped}")
+                    invalid.append(_tr('msg.modules.shareconfig.list_lines_with_invalid_characters_dropped', p0=f'{name}', p1=f'{dropped}'))
                 clean[name] = cleaned
         elif items is not None:
-            invalid.append("lists.items: ожидался объект")
+            invalid.append(_tr('msg.modules.shareconfig.lists_items_expected_an_object'))
         out["items"] = clean
 
     elif sid == "proxy":
@@ -206,7 +205,7 @@ def _clean_section(sid: str, raw, invalid) -> tuple[dict, list[str]]:
             if raw["mode"] in _MODES:
                 out["mode"] = raw["mode"]
             else:
-                invalid.append(f"proxy.mode: неизвестный режим «{raw['mode']}»")
+                invalid.append(_tr('msg.modules.shareconfig.proxy_mode_unknown_mode', p0=f"{raw['mode']}"))
         if "lists" in raw:
             names = _names(raw["lists"], "proxy.lists", invalid)
             if names is not None:
@@ -219,10 +218,10 @@ def _clean_section(sid: str, raw, invalid) -> tuple[dict, list[str]]:
                             and not any(c in a for c in '\\/:*?"<>|')):
                         apps.append(a)
                     else:
-                        invalid.append(f"proxy.apps: недопустимое имя «{a}»")
+                        invalid.append(_tr('msg.modules.shareconfig.proxy_apps_invalid_name', p0=f'{a}'))
                 out["apps"] = apps
             else:
-                invalid.append("proxy.apps: ожидался список")
+                invalid.append(_tr('msg.modules.shareconfig.proxy_apps_expected_a_list'))
 
     elif sid in ("hosts", "dns"):
         unknown = _unknown(raw, ("assignments", "providers") if sid == "hosts" else ("providers",))
@@ -233,20 +232,20 @@ def _clean_section(sid: str, raw, invalid) -> tuple[dict, list[str]]:
                 if clean:
                     provs.append(clean)
         elif "providers" in raw:
-            invalid.append(f"{sid}.providers: ожидался список")
+            invalid.append(_tr('msg.modules.shareconfig.providers_expected_a_list', p0=f'{sid}'))
         out["providers"] = provs
         if sid == "hosts":
             assign = {}
             if isinstance(raw.get("assignments"), dict):
                 for pid, lst in raw["assignments"].items():
                     if not (isinstance(pid, str) and _ID_RE.match(pid)):
-                        invalid.append(f"hosts.assignments: недопустимый провайдер «{pid}»")
+                        invalid.append(_tr('msg.modules.shareconfig.hosts_assignments_invalid_provider', p0=f'{pid}'))
                         continue
                     names = _names(lst, f"hosts.assignments[{pid}]", invalid)
                     if names:
                         assign[pid] = names
             elif "assignments" in raw:
-                invalid.append("hosts.assignments: ожидался объект")
+                invalid.append(_tr('msg.modules.shareconfig.hosts_assignments_expected_an_object'))
             out["assignments"] = assign
 
     elif sid == "telegram":
@@ -256,7 +255,7 @@ def _clean_section(sid: str, raw, invalid) -> tuple[dict, list[str]]:
             if isinstance(port, int) and not isinstance(port, bool) and 1 <= port <= 65535:
                 out["port"] = port
             else:
-                invalid.append(f"telegram.port: недопустимый порт «{port}»")
+                invalid.append(_tr('msg.modules.shareconfig.telegram_port_invalid_port', p0=f'{port}'))
         adv_raw = raw.get("advanced")
         if isinstance(adv_raw, dict):
             adv = {}
@@ -267,20 +266,20 @@ def _clean_section(sid: str, raw, invalid) -> tuple[dict, list[str]]:
                     if isinstance(adv_raw[k], bool):
                         adv[k] = adv_raw[k]
                     else:
-                        invalid.append(f"telegram.advanced.{k}: ожидалось да/нет")
+                        invalid.append(_tr('msg.modules.shareconfig.telegram_advanced_expected_yes_no', p0=f'{k}'))
             for k in _TG_DOMAINS:
                 if k in adv_raw:
                     v = adv_raw[k]
                     if isinstance(v, list) and all(isinstance(d, str) for d in v):
                         adv[k] = list(v)
                     else:
-                        invalid.append(f"telegram.advanced.{k}: ожидался список доменов")
+                        invalid.append(_tr('msg.modules.shareconfig.telegram_advanced_expected_a_list_of_domains', p0=f'{k}'))
             if "fake_tls_domain" in adv_raw:
                 v = adv_raw["fake_tls_domain"]
                 if isinstance(v, str):
                     adv["fake_tls_domain"] = v.strip()
                 else:
-                    invalid.append("telegram.advanced.fake_tls_domain: ожидалась строка")
+                    invalid.append(_tr('msg.modules.shareconfig.telegram_advanced_fake_tls_domain_expected_a_str'))
             if "dc_redirects" in adv_raw:
                 v = adv_raw["dc_redirects"]
                 ok = isinstance(v, dict)
@@ -293,13 +292,13 @@ def _clean_section(sid: str, raw, invalid) -> tuple[dict, list[str]]:
                                 raise ValueError
                             clean[str(dc)] = str(ip)
                         except ValueError:
-                            invalid.append(f"telegram.advanced.dc_redirects: «{dc}: {ip}» не подходит")
+                            invalid.append(_tr('msg.modules.shareconfig.telegram_advanced_dc_redirects_invalid', p0=f'{dc}', p1=f'{ip}'))
                     adv["dc_redirects"] = clean
                 else:
-                    invalid.append("telegram.advanced.dc_redirects: ожидался объект")
+                    invalid.append(_tr('msg.modules.shareconfig.telegram_advanced_dc_redirects_expected_an_objec'))
             out["advanced"] = adv
         elif "advanced" in raw:
-            invalid.append("telegram.advanced: ожидался объект")
+            invalid.append(_tr('msg.modules.shareconfig.telegram_advanced_expected_an_object'))
 
     elif sid == "winws":
         from .winws import filters
@@ -309,7 +308,7 @@ def _clean_section(sid: str, raw, invalid) -> tuple[dict, list[str]]:
             if isinstance(s, str) and _ID_RE.match(s):
                 out["strategy"] = s
             else:
-                invalid.append(f"winws.strategy: недопустимое имя «{s}»")
+                invalid.append(_tr('msg.modules.shareconfig.winws_strategy_invalid_name', p0=f'{s}'))
         if "lists" in raw:
             names = _names(raw["lists"], "winws.lists", invalid)
             if names is not None:
@@ -320,7 +319,7 @@ def _clean_section(sid: str, raw, invalid) -> tuple[dict, list[str]]:
             if game.get("mode") in filters.GAME_MODES:
                 g["mode"] = game["mode"]
             elif "mode" in game:
-                invalid.append(f"winws.game.mode: недопустимое значение «{game['mode']}»")
+                invalid.append(_tr('msg.modules.shareconfig.winws_game_mode_invalid_value', p0=f"{game['mode']}"))
             for k in ("tcp", "udp"):
                 if k in game:
                     try:
@@ -329,12 +328,12 @@ def _clean_section(sid: str, raw, invalid) -> tuple[dict, list[str]]:
                         invalid.append(f"winws.game.{k}: {e}")
             out["game"] = g
         elif "game" in raw:
-            invalid.append("winws.game: ожидался объект")
+            invalid.append(_tr('msg.modules.shareconfig.winws_game_expected_an_object'))
         if "ipset" in raw:
             if raw["ipset"] in _IPSET_MODES:
                 out["ipset"] = raw["ipset"]
             else:
-                invalid.append(f"winws.ipset: недопустимый режим «{raw['ipset']}»")
+                invalid.append(_tr('msg.modules.shareconfig.winws_ipset_invalid_mode', p0=f"{raw['ipset']}"))
 
     return out, unknown
 
@@ -346,30 +345,28 @@ def parse(text: str, current_version: str | None = None) -> dict:
     res = {"doc": None, "error": None, "too_new": False, "unknown_sections": [],
            "unknown_fields": {}, "invalid": [], "app_version": None}
     if not isinstance(text, str) or len(text) > MAX_TEXT:
-        res["error"] = "Файл слишком большой для конфига Chimera."
+        res["error"] = _tr('msg.modules.shareconfig.the_file_is_too_large_for_a_chimera_configuratio')
         return res
     try:
         raw = json.loads(text)
     except ValueError:
-        res["error"] = "Это не конфиг Chimera: файл не удалось прочитать."
+        res["error"] = _tr('msg.modules.shareconfig.not_a_chimera_configuration_could_not_read_the_f')
         return res
     if not isinstance(raw, dict) or not isinstance(raw.get("schema"), int) or isinstance(raw.get("schema"), bool):
-        res["error"] = "Это не конфиг Chimera: нет версии схемы."
+        res["error"] = _tr('msg.modules.shareconfig.not_a_chimera_configuration_missing_schema_versi')
         return res
     schema = raw["schema"]
     res["app_version"] = raw.get("app_version") if isinstance(raw.get("app_version"), str) else None
     if schema > SCHEMA:
-        res.update(too_new=True, error=f"Конфиг создан более новой версией Chimera (схема {schema}). "
-                                       "Обновите программу, чтобы его применить.")
+        res.update(too_new=True, error=_tr('msg.modules.shareconfig.this_configuration_was_created_by_a_newer_chimer', p0=f'{schema}'))
         return res
     if schema < 1:
-        res["error"] = "Неизвестная версия схемы конфига."
+        res["error"] = _tr('msg.modules.shareconfig.unknown_configuration_schema_version')
         return res
     min_v = raw.get("min_app_version")
     if isinstance(min_v, str) and version.parse(min_v) and version.parse(current_version) \
             and version.is_newer(min_v, current_version):
-        res.update(too_new=True, error=f"Конфиг требует Chimera {min_v} или новее (у вас {current_version}). "
-                                       "Обновите программу.")
+        res.update(too_new=True, error=_tr('msg.modules.shareconfig.the_configuration_requires_chimera_or_newer_curr', p0=f'{min_v}', p1=f'{current_version}'))
         return res
 
     sections_raw = raw.get("sections")
@@ -433,38 +430,38 @@ def preview(parsed: dict, current: dict) -> dict:
             mine = current.get("lists") or {}
             for name, text in (data.get("items") or {}).items():
                 if name not in mine:
-                    changes.append(f"новый список «{name}»: {len(_entries(text))} записей")
+                    changes.append(_tr('msg.modules.shareconfig.new_list_entries', p0=f'{name}', p1=f'{len(_entries(text))}'))
                 else:
                     extra = [e for e in _entries(text) if e not in set(_entries(mine[name]))]
                     if extra:
-                        changes.append(f"«{name}»: добавится {len(extra)} записей")
+                        changes.append(_tr('msg.modules.shareconfig.entries_will_be_added', p0=f'{name}', p1=f'{len(extra)}'))
         elif sid == "proxy":
             cur = current.get("proxy") or {}
             if "mode" in data and data["mode"] != cur.get("mode"):
-                changes.append(f"режим: {cur.get('mode')} → {data['mode']}")
+                changes.append(_tr('msg.modules.shareconfig.mode', p0=f"{cur.get('mode')}", p1=f"{data['mode']}"))
             for n in data.get("lists") or []:
                 if n not in have_lists:
-                    skipped.append(f"список «{n}» отсутствует у вас и не приложен")
+                    skipped.append(_tr('msg.modules.shareconfig.list_is_missing_and_was_not_included', p0=f'{n}'))
             if "lists" in data and sorted(data["lists"]) != sorted(cur.get("lists") or []):
-                changes.append("выбранные списки: " + (", ".join(data["lists"]) or "ничего"))
+                changes.append(_tr('msg.modules.shareconfig.selected_lists') + (", ".join(data["lists"]) or _tr('msg.modules.shareconfig.none')))
             if "apps" in data and sorted(data["apps"]) != sorted(cur.get("apps") or []):
-                changes.append("приложения: " + (", ".join(data["apps"]) or "ничего"))
+                changes.append(_tr('msg.modules.shareconfig.applications') + (", ".join(data["apps"]) or _tr('msg.modules.shareconfig.none')))
         elif sid in ("hosts", "dns"):
             mine = (current.get(sid) or {}).get("providers") or []
             for p in data.get("providers") or []:
                 if not any(_same_provider(p, m) for m in mine):
-                    confirm.append(f"чужой провайдер {_provider_line(p)}: подменяет ответы DNS")
+                    confirm.append(_tr('msg.modules.shareconfig.external_provider_overrides_dns_responses', p0=f'{_provider_line(p)}'))
             if sid == "hosts":
                 imported_ids = {p["id"] for p in data.get("providers") or [] if p.get("id")}
                 for pid, lst in (data.get("assignments") or {}).items():
                     if pid not in set(known.get("provider_ids") or []) | imported_ids:
-                        skipped.append(f"привязка к неизвестному провайдеру «{pid}»")
+                        skipped.append(_tr('msg.modules.shareconfig.assignment_to_unknown_provider', p0=f'{pid}'))
                     else:
                         changes.append(f"«{pid}» ← {', '.join(lst)}")
         elif sid == "telegram":
             cur = current.get("telegram") or {}
             if "port" in data and data["port"] != cur.get("port"):
-                changes.append(f"порт: {cur.get('port')} → {data['port']}")
+                changes.append(_tr('msg.modules.shareconfig.port_54', p0=f"{cur.get('port')}", p1=f"{data['port']}"))
             adv, cadv = data.get("advanced") or {}, cur.get("advanced") or {}
             for k in _TG_BOOLS:
                 if k in adv and adv[k] != cadv.get(k):
@@ -472,23 +469,26 @@ def preview(parsed: dict, current: dict) -> dict:
             for k in _TG_DOMAINS + ("fake_tls_domain",):
                 if adv.get(k) and adv.get(k) != cadv.get(k):
                     val = ", ".join(adv[k]) if isinstance(adv[k], list) else adv[k]
-                    confirm.append(f"домены-ретрансляторы ({k}): {val}")
+                    confirm.append(_tr('msg.modules.shareconfig.relay_domains', p0=f'{k}', p1=f'{val}'))
             if adv.get("dc_redirects") and adv["dc_redirects"] != cadv.get("dc_redirects"):
-                confirm.append("адреса дата-центров: " + ", ".join(f"{k}→{v}" for k, v in adv["dc_redirects"].items()))
+                confirm.append(_tr('msg.modules.shareconfig.datacenter_addresses') + ", ".join(f"{k}→{v}" for k, v in adv["dc_redirects"].items()))
         elif sid == "winws":
             cur = current.get("winws") or {}
             s = data.get("strategy")
             if s:
                 if s not in set(known.get("strategies") or []):
-                    skipped.append(f"стратегия «{s}» отсутствует в вашей версии")
+                    skipped.append(_tr('msg.modules.shareconfig.strategy_is_missing_from_this_version', p0=f'{s}'))
                 elif s != cur.get("strategy"):
-                    changes.append(f"стратегия: {cur.get('strategy') or 'не выбрана'} → {s} (выбор, без запуска)")
+                    changes.append(_tr('msg.modules.shareconfig.strategy_selection_without_starting',
+                        p0=f"{cur.get('strategy') or _tr('msg.modules.shareconfig.not_selected')}",
+                        p1=f'{s}',
+                    ))
             for n in data.get("lists") or []:
                 if n not in have_lists:
-                    skipped.append(f"список «{n}» отсутствует у вас и не приложен")
+                    skipped.append(_tr('msg.modules.shareconfig.list_is_missing_and_was_not_included', p0=f'{n}'))
             g = data.get("game") or {}
             if g and g != {k: (cur.get("game") or {}).get(k) for k in g}:
-                changes.append(f"игровой фильтр: {g.get('mode', '—')}")
+                changes.append(_tr('msg.modules.shareconfig.game_filter', p0=f"{g.get('mode', '—')}"))
             if "ipset" in data and data["ipset"] != cur.get("ipset"):
                 changes.append(f"ipset: {cur.get('ipset')} → {data['ipset']}")
         add(sid, changes, confirm, skipped)
@@ -533,7 +533,7 @@ def apply(parsed: dict, sections, confirmed: bool, ops, backup_root: Path | None
     result = {"applied": {}, "skipped": {}, "errors": [], "backup": None}
     doc = parsed.get("doc")
     if not doc:
-        result["errors"].append(parsed.get("error") or "Нечего применять.")
+        result["errors"].append(parsed.get("error") or _tr('msg.modules.shareconfig.nothing_to_apply'))
         return result
 
     chosen = [s for s in SECTIONS if s in set(sections) and s in doc["sections"]]
@@ -545,7 +545,7 @@ def apply(parsed: dict, sections, confirmed: bool, ops, backup_root: Path | None
     try:
         result["backup"] = _backup(ops.backup_files(chosen, touched), backup_root)
     except OSError as e:
-        result["errors"].append(f"снимок файлов не создан: {e}")
+        result["errors"].append(_tr('msg.modules.shareconfig.could_not_create_a_file_snapshot', p0=f'{e}'))
 
     def record(sid, key, line):
         result[key].setdefault(sid, []).append(line)
@@ -565,7 +565,7 @@ def apply(parsed: dict, sections, confirmed: bool, ops, backup_root: Path | None
                 if name not in mine_lists:
                     ops.list_write(name, text)
                     mine_lists[name] = text
-                    record("lists", "applied", f"создан список «{name}»")
+                    record("lists", "applied", _tr('msg.modules.shareconfig.created_list', p0=f'{name}'))
                 else:
                     have = set(_entries(mine_lists[name]))
                     extra = [e for e in _entries(text) if e not in have]
@@ -573,7 +573,7 @@ def apply(parsed: dict, sections, confirmed: bool, ops, backup_root: Path | None
                         merged = mine_lists[name].rstrip("\n") + "\n" + "\n".join(extra) + "\n"
                         ops.list_write(name, merged)
                         mine_lists[name] = merged
-                        record("lists", "applied", f"«{name}»: добавлено {len(extra)}")
+                        record("lists", "applied", _tr('msg.modules.shareconfig.added', p0=f'{name}', p1=f'{len(extra)}'))
                 written_lists.add(name)
         step("lists", do_lists)
 
@@ -585,11 +585,11 @@ def apply(parsed: dict, sections, confirmed: bool, ops, backup_root: Path | None
                 id_map[p.get("id") or p["name"]] = same.get("id") or p["name"]
                 continue
             if not confirmed:
-                record(sid, "skipped", f"пропущен чужой провайдер «{p['name']}»: нужно подтверждение")
+                record(sid, "skipped", _tr('msg.modules.shareconfig.skipped_external_provider_confirmation_required', p0=f"{p['name']}"))
                 continue
             new_id = ops.add_provider({**p, "unblock": unblock_key})
             id_map[p.get("id") or p["name"]] = new_id
-            record(sid, "applied", f"добавлен провайдер «{p['name']}»")
+            record(sid, "applied", _tr('msg.modules.shareconfig.added_provider', p0=f"{p['name']}"))
 
     if "dns" in chosen:
         step("dns", lambda: add_providers("dns", False))
@@ -602,7 +602,7 @@ def apply(parsed: dict, sections, confirmed: bool, ops, backup_root: Path | None
             for pid, lst in (doc["sections"]["hosts"].get("assignments") or {}).items():
                 target = id_map.get(pid, pid if pid in ids else None)
                 if target is None:
-                    record("hosts", "skipped", f"привязка к неизвестному провайдеру «{pid}»")
+                    record("hosts", "skipped", _tr('msg.modules.shareconfig.assignment_to_unknown_provider', p0=f'{pid}'))
                     continue
                 for n in lst:
                     for other in merged:      # один список — один провайдер: приходящая привязка главнее
@@ -612,7 +612,7 @@ def apply(parsed: dict, sections, confirmed: bool, ops, backup_root: Path | None
                 changed = True
             if changed:
                 ops.set_assignments({k: v for k, v in merged.items() if v})
-                record("hosts", "applied", "привязки списков обновлены")
+                record("hosts", "applied", _tr('msg.modules.shareconfig.list_assignments_updated'))
         step("hosts", do_hosts)
 
     if "proxy" in chosen:
@@ -624,9 +624,9 @@ def apply(parsed: dict, sections, confirmed: bool, ops, backup_root: Path | None
                 lists = [n for n in d["lists"] if n in available]
                 for n in d["lists"]:
                     if n not in available:
-                        record("proxy", "skipped", f"список «{n}» отсутствует и не приложен")
+                        record("proxy", "skipped", _tr('msg.modules.shareconfig.list_is_missing_and_was_not_included_45', p0=f'{n}'))
             ops.set_proxy(d.get("mode"), lists, d.get("apps") if "apps" in d else None)
-            record("proxy", "applied", "режим, списки и приложения прокси")
+            record("proxy", "applied", _tr('msg.modules.shareconfig.proxy_mode_lists_and_applications'))
         step("proxy", do_proxy)
 
     if "telegram" in chosen:
@@ -634,15 +634,15 @@ def apply(parsed: dict, sections, confirmed: bool, ops, backup_root: Path | None
             d = doc["sections"]["telegram"]
             if "port" in d:
                 ops.tg_set_port(d["port"])
-                record("telegram", "applied", f"порт {d['port']}")
+                record("telegram", "applied", _tr('msg.modules.shareconfig.port', p0=f"{d['port']}"))
             adv = dict(d.get("advanced") or {})
             if not confirmed:
                 for k in _TG_DOMAINS + ("fake_tls_domain", "dc_redirects"):
                     if adv.pop(k, None):
-                        record("telegram", "skipped", f"{k}: нужно подтверждение")
+                        record("telegram", "skipped", _tr('msg.modules.shareconfig.confirmation_required', p0=f'{k}'))
             if adv:
                 ops.tg_set_advanced(adv)
-                record("telegram", "applied", "продвинутые настройки")
+                record("telegram", "applied", _tr('msg.modules.shareconfig.advanced_settings'))
         step("telegram", do_telegram)
 
     if "winws" in chosen:
@@ -652,16 +652,16 @@ def apply(parsed: dict, sections, confirmed: bool, ops, backup_root: Path | None
             if d.get("strategy"):
                 if d["strategy"] in set(known.get("strategies") or []):
                     ops.winws_select(d["strategy"])
-                    record("winws", "applied", f"выбрана стратегия «{d['strategy']}» (без запуска)")
+                    record("winws", "applied", _tr('msg.modules.shareconfig.selected_strategy_without_starting', p0=f"{d['strategy']}"))
                 else:
-                    record("winws", "skipped", f"стратегия «{d['strategy']}» отсутствует в вашей версии")
+                    record("winws", "skipped", _tr('msg.modules.shareconfig.strategy_is_missing_from_this_version', p0=f"{d['strategy']}"))
             if "lists" in d:
                 ops.winws_set_lists([n for n in d["lists"] if n in available])
-                record("winws", "applied", "списки обхода DPI")
+                record("winws", "applied", _tr('msg.modules.shareconfig.dpi_bypass_lists'))
             g = d.get("game") or {}
             if g.get("mode"):
                 ops.game_set(g["mode"], g.get("tcp"), g.get("udp"))
-                record("winws", "applied", f"игровой фильтр: {g['mode']}")
+                record("winws", "applied", _tr('msg.modules.shareconfig.game_filter', p0=f"{g['mode']}"))
             if d.get("ipset"):
                 ops.ipset_set(d["ipset"])
                 record("winws", "applied", f"ipset: {d['ipset']}")

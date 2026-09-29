@@ -8,6 +8,10 @@ winws2.exe требует прав администратора (манифес�
 поднимается под админом ради hosts/DNS, поэтому Popen стартует без лишнего UAC.
 """
 
+from modules.i18n import t as _tr
+
+from modules.errors import ChimeraFileNotFoundError, ChimeraRuntimeError, ChimeraValueError
+
 import atexit
 import json
 import re
@@ -199,7 +203,7 @@ class WinwsManager:
         """Запоминает стратегию как последнюю, ничего не запуская и не перезапуская
         (например, при импорте чужого конфига: запуск — решение пользователя)."""
         if not (STRATEGIES_DIR / f"{strategy_id}.txt").exists():
-            raise FileNotFoundError(f"Нет стратегии «{strategy_id}»")
+            raise ChimeraFileNotFoundError('err.winws.manager.no_strategy', p0=strategy_id)
         self.config["last_strategy"] = strategy_id
         self._save()
         return self.state()
@@ -235,10 +239,10 @@ class WinwsManager:
 
     def _strategy_path(self, strategy_id: str) -> Path:
         if not re.fullmatch(r"[A-Za-z0-9._-]+", strategy_id or ""):
-            raise ValueError("Недопустимый id стратегии")
+            raise ChimeraValueError('err.winws.manager.invalid_strategy_id')
         path = STRATEGIES_DIR / f"{strategy_id}.txt"
         if not path.exists():
-            raise FileNotFoundError(f"Стратегия {strategy_id!r} не найдена")
+            raise ChimeraFileNotFoundError('err.winws.manager.strategy_was_not_found', p0=f'{strategy_id!r}')
         return path
 
     def _parse_meta(self, path: Path) -> dict:
@@ -349,9 +353,7 @@ class WinwsManager:
                 # переиспользует. Иначе delete+пересоздание драйвера флакает.
                 self.stop(clean_divert=False)
             if not WINWS_EXE.exists():
-                raise FileNotFoundError(
-                    "winws2.exe не найден в бандле. Проверь bin/zapret-win-bundle/zapret-winws."
-                )
+                raise ChimeraFileNotFoundError('err.winws.manager.winws2_exe_was_not_found_check_bin_zapret_win_bu')
             args = self.build_args(strategy_id)
             self._error = None
             # вывод winws2 — в файл, не в PIPE: процесс долгоживущий и болтливый,
@@ -368,7 +370,7 @@ class WinwsManager:
             except OSError as e:
                 self._close_log()
                 self._proc = None
-                raise RuntimeError(f"Не удалось запустить winws2: {e}") from e
+                raise ChimeraRuntimeError('err.winws.manager.could_not_start_winws2', p0=e) from e
             self._current = strategy_id
             # ловим мгновенную смерть (битые аргументы, нет прав, занят драйвер)
             time.sleep(1.0)
@@ -396,8 +398,8 @@ class WinwsManager:
         diag = [ln.strip() for ln in lines if ln.strip().lower().startswith("winws2:")]
         if not diag:  # неизвестный формат — отдаём последние непустые строки
             diag = [ln.strip() for ln in lines if ln.strip()][-4:]
-        detail = " | ".join(diag) if diag else "нет вывода"
-        return f"winws2 завершился (код {code}). {detail}"
+        detail = " | ".join(diag) if diag else _tr('msg.modules.winws.manager.no_output')
+        return _tr('msg.modules.winws.manager.winws2_exited_code', p0=f'{code}', p1=f'{detail}')
 
     def log_read(self, offset: int = 0) -> dict:
         """Инкрементальное чтение лога winws2 (живой стрим в UI)."""

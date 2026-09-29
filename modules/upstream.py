@@ -20,6 +20,10 @@ GitHub (`git ls-remote`, без токена) параллельно; для с�
 совместимости (схема конфига sing-box ездит от версии к версии).
 """
 
+from modules.i18n import LazySeq, t as _tr
+
+from modules.errors import ChimeraRuntimeError, ChimeraValueError
+
 import importlib.util
 import io
 import json
@@ -63,26 +67,30 @@ JETBRAINS_MONO_VERSION = "2.304"
 # kind: tag — сабмодуль по тегам; commit — git-клон по коммитам; pin — пиннутый
 #       бинарь/ассет (версия в коде, src["version"]); service — онлайн-сервис;
 #       python — интерпретатор (python.org).
-_SOURCES = [
-    {"name": "Python", "kind": "python",
-     "repo": "https://www.python.org/downloads/"},
-    {"name": "Стратегии (Flowseal)", "kind": "tag", "path": "upstream/zapret-discord-youtube",
-     "repo": "https://github.com/Flowseal/zapret-discord-youtube"},
-    {"name": "Движок zapret2 (winws2)", "kind": "tag", "path": "upstream/zapret2",
-     "repo": "https://github.com/bol-van/zapret2"},
-    {"name": "TG-прокси (Flowseal)", "kind": "tag", "path": "upstream/tg-ws-proxy",
-     "repo": "https://github.com/Flowseal/tg-ws-proxy"},
-    {"name": "winws-бандл (bol-van)", "kind": "commit", "path": "bin/zapret-win-bundle",
-     "repo": "https://github.com/bol-van/zapret-win-bundle"},
-    {"name": "Прокси-ядро (sing-box)", "kind": "pin", "version": SINGBOX_VERSION,
-     "repo": "https://github.com/SagerNet/sing-box"},
-    {"name": "Шрифт Inter", "kind": "pin", "version": INTER_VERSION,
-     "repo": "https://github.com/rsms/inter"},
-    {"name": "Шрифт JetBrains Mono", "kind": "pin", "version": JETBRAINS_MONO_VERSION,
-     "repo": "https://github.com/JetBrains/JetBrainsMono"},
-    {"name": "CheburCheck (реестр РКН)", "kind": "service",
-     "repo": "https://cheburcheck.ru"},
-]
+def _source_specs():
+    return [
+        {"name": "Python", "kind": "python",
+         "repo": "https://www.python.org/downloads/"},
+        {"name": _tr('msg.modules.upstream.strategies_flowseal'), "kind": "tag", "path": "upstream/zapret-discord-youtube",
+         "repo": "https://github.com/Flowseal/zapret-discord-youtube"},
+        {"name": _tr('msg.modules.upstream.zapret2_engine_winws2'), "kind": "tag", "path": "upstream/zapret2",
+         "repo": "https://github.com/bol-van/zapret2"},
+        {"name": _tr('msg.modules.upstream.tg_proxy_flowseal'), "kind": "tag", "path": "upstream/tg-ws-proxy",
+         "repo": "https://github.com/Flowseal/tg-ws-proxy"},
+        {"name": _tr('msg.modules.upstream.winws_bundle_bol_van'), "kind": "commit", "path": "bin/zapret-win-bundle",
+         "repo": "https://github.com/bol-van/zapret-win-bundle"},
+        {"name": _tr('msg.modules.upstream.proxy_core_sing_box'), "kind": "pin", "version": SINGBOX_VERSION,
+         "repo": "https://github.com/SagerNet/sing-box"},
+        {"name": _tr('msg.modules.upstream.inter_font'), "kind": "pin", "version": INTER_VERSION,
+         "repo": "https://github.com/rsms/inter"},
+        {"name": _tr('msg.modules.upstream.jetbrains_mono_font'), "kind": "pin", "version": JETBRAINS_MONO_VERSION,
+         "repo": "https://github.com/JetBrains/JetBrainsMono"},
+        {"name": _tr('msg.modules.upstream.cheburcheck_rkn_registry'), "kind": "service",
+         "repo": "https://cheburcheck.ru"},
+    ]
+
+
+_SOURCES = LazySeq(_source_specs)
 
 
 # --- git-хелперы ------------------------------------------------------------
@@ -208,7 +216,7 @@ def _current(src: dict) -> str:
     if kind == "python":
         return platform.python_version()
     if kind == "service":
-        return "онлайн-сервис"
+        return _tr('msg.modules.upstream.online_service')
     return "—"
 
 
@@ -240,7 +248,7 @@ def _check_one(src: dict) -> dict:
         latest = _latest_tag(repo)
         if latest is None:
             return {**base, "current": cur, "latest": None, "update": False,
-                    "error": "не удалось проверить (нет сети?)"}
+                    "error": _tr('msg.modules.upstream.could_not_check_no_network')}
         return {**base, "current": cur, "latest": latest,
                 "update": cur != "—" and _key(cur) < _key(latest), "error": None}
 
@@ -249,7 +257,7 @@ def _check_one(src: dict) -> dict:
         latest = _latest_python_stable()
         if latest is None:
             return {**base, "current": cur, "latest": None, "update": False,
-                    "error": "не удалось проверить (нет сети?)"}
+                    "error": _tr('msg.modules.upstream.could_not_check_no_network')}
         return {**base, "current": cur, "latest": latest,
                 "update": _key(cur) < _key(latest), "error": None}
 
@@ -259,7 +267,7 @@ def _check_one(src: dict) -> dict:
         loc, rem = _local_head(path), _remote_head(repo)
         if rem is None or loc is None:
             return {**base, "current": cur, "latest": None, "update": False,
-                    "error": "не удалось проверить (нет сети?)"}
+                    "error": _tr('msg.modules.upstream.could_not_check_no_network')}
         return {**base, "current": cur, "latest": rem[:7], "update": loc != rem,
                 "error": None}
 
@@ -268,14 +276,14 @@ def _check_one(src: dict) -> dict:
             from modules import cheburcheck
             st = cheburcheck.status(force=True)
             cur = st.get("version") or "live"
-            note = f"реестр обновлён: {st.get('last_update') or '—'}"
+            note = _tr('msg.modules.upstream.registry_updated', p0=f"{st.get('last_update') or '—'}")
             return {**base, "current": cur, "latest": cur, "update": False,
                     "note": note, "error": None}
         except Exception:
             return {**base, "current": "—", "latest": None, "update": False,
-                    "error": "сервис недоступен"}
+                    "error": _tr('msg.modules.upstream.service_unavailable')}
 
-    return {**base, "current": "—", "latest": None, "update": False, "error": "неизвестный тип"}
+    return {**base, "current": "—", "latest": None, "update": False, "error": _tr('msg.modules.upstream.unknown_type')}
 
 
 def check_updates(on_result=None) -> list[dict]:
@@ -303,7 +311,7 @@ def _source(name: str) -> dict:
     for s in _SOURCES:
         if s["name"] == name:
             return s
-    raise ValueError(f"Неизвестный источник: {name!r}")
+    raise ChimeraValueError('err.upstream.unknown_source', p0=f'{name!r}')
 
 
 def check_one(name: str) -> dict:
@@ -322,15 +330,15 @@ def _regen_strategies() -> str:
     """
     script = ROOT / "tools" / "port_flowseal.py"
     if not script.exists():
-        return "генератор стратегий недоступен — стратегии не перегенерированы"
+        return _tr('msg.modules.upstream.strategy_generator_unavailable_strategies_were_n')
     spec = importlib.util.spec_from_file_location("port_flowseal", script)
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     buf = io.StringIO()
     with redirect_stdout(buf):  # генератор пишет отчёт в stdout, окну он не нужен
         mod.main()
-    changed = [ln for ln in buf.getvalue().splitlines() if ln.startswith(("СИНХР", "ПРОПУСК"))]
-    return "стратегии перегенерированы" + (f" ({len(changed)} ресурсов обновлено)" if changed else "")
+    changed = [ln for ln in buf.getvalue().splitlines() if ln.startswith((_tr('msg.modules.upstream.sync'), _tr('msg.modules.upstream.skip')))]
+    return _tr('msg.modules.upstream.strategies_regenerated') + (_tr('msg.modules.upstream.resources_updated', p0=f'{len(changed)}') if changed else "")
 
 
 def _winws_running() -> bool:
@@ -343,10 +351,10 @@ def _winws_running() -> bool:
 
 def _fail(r, what: str) -> None:
     if r is None:
-        raise RuntimeError(f"{what}: не удалось запустить git")
+        raise ChimeraRuntimeError('err.upstream.could_not_run_git', p0=what)
     if r.returncode != 0:
         msg = (r.stderr or r.stdout or "").strip().splitlines()
-        raise RuntimeError(f"{what}: {msg[-1] if msg else 'ошибка git'}")
+        raise ChimeraRuntimeError('err.upstream.result', p0=what, p1=msg[-1] if msg else _tr('msg.modules.upstream.git_error'))
 
 
 def update_one(name: str) -> dict:
@@ -359,8 +367,7 @@ def update_one(name: str) -> dict:
     """
     src = _source(name)
     if not _updatable(src):
-        raise RuntimeError(f"{name}: обновляется не из программы "
-                           "(нет рабочей копии git рядом либо версия пиннута в коде)")
+        raise ChimeraRuntimeError('err.upstream.cannot_be_updated_from_the_application_no_git_wo', p0=name)
     path = ROOT / src["path"]
     before = _current(src)
 
@@ -369,15 +376,15 @@ def update_one(name: str) -> dict:
               "fetch")
         latest = _latest_tag(src["repo"])
         if latest is None:
-            raise RuntimeError("не удалось получить список тегов (нет сети?)")
+            raise ChimeraRuntimeError('err.upstream.could_not_fetch_tags_no_network')
         if _key(before) >= _key(latest) and before != "—":
-            return {**_check_one(src), "changed": False, "note": "уже актуально"}
+            return {**_check_one(src), "changed": False, "note": _tr('msg.modules.upstream.already_up_to_date')}
         _fail(_git(["checkout", "--force", latest], cwd=path, timeout=120), "checkout")
     else:  # commit
         # бандл — это живые winws2.exe и WinDivert: пока стратегия работает, файлы
         # заняты, и reset свалится на середине, оставив половину бандла старой
         if src["path"].endswith("zapret-win-bundle") and _winws_running():
-            raise RuntimeError("сначала останови стратегию — winws2 держит файлы бандла")
+            raise ChimeraRuntimeError('err.upstream.stop_the_strategy_first_winws2_is_holding_the_bu')
         _fail(_git(["fetch", "--force", "origin"], cwd=path, timeout=600), "fetch")
         r = _git(["symbolic-ref", "--short", "refs/remotes/origin/HEAD"], cwd=path, timeout=15)
         branch = (r.stdout.strip() if r and r.returncode == 0 else "") or "origin/master"

@@ -9,6 +9,8 @@
 Версия показывается в UI и берётся прямо из /status (не из нашего кода).
 """
 
+from modules.errors import ChimeraValueError
+
 import json
 import time
 import urllib.parse
@@ -53,7 +55,7 @@ def check(target: str) -> dict:
     """
     target = (target or "").strip()
     if not target:
-        raise ValueError("Пустой домен")
+        raise ChimeraValueError('err.cheburcheck.empty_domain')
     d = None
     for attempt in range(3):
         try:

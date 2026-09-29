@@ -20,6 +20,10 @@ Fake replace: ACTIVE_DISCORD_UDP.bin и ACTIVE_GAME_UDP.bin — не блобы,
 как в service.bat Flowseal (:replace_active_fakes).
 """
 
+from modules.i18n import t as _tr
+
+from modules.errors import ChimeraFileNotFoundError, ChimeraRuntimeError, ChimeraValueError
+
 import hashlib
 import re
 import shutil
@@ -56,7 +60,7 @@ def game_mode() -> str:
 
 def set_game_mode(mode: str) -> str:
     if mode not in GAME_MODES:
-        raise ValueError("Режим game-фильтра: off / all / tcp / udp")
+        raise ChimeraValueError('err.winws.filters.game_filter_mode_off_all_tcp_udp')
     appconfig.set_value("game_filter", mode)
     return mode
 
@@ -68,20 +72,17 @@ def validate_game_range(value: str) -> str:
     (без пробелов) либо бросает ValueError с описанием, что не так."""
     s = "".join(str(value).split())
     if not s:
-        raise ValueError("Диапазон портов не может быть пустым")
+        raise ChimeraValueError('err.winws.filters.the_port_range_cannot_be_empty')
     for item in s.split(","):
         m = _GAME_RANGE_ITEM_RE.match(item)
         if not m:
-            raise ValueError(
-                f"Неверный формат диапазона портов: {item!r} "
-                "(пример: 1024-1934,1936-65535)"
-            )
+            raise ChimeraValueError('err.winws.filters.invalid_port_range_example_1024_1934_1936_65535', p0=f'{item!r}')
         start_s, _, end_s = item.partition("-")
         start, end = int(start_s), int(end_s or start_s)
         if start > 65535 or end > 65535:
-            raise ValueError(f"Порт вне диапазона 1..65535: {item!r}")
+            raise ChimeraValueError('err.winws.filters.port_outside_the_range_1_65535', p0=f'{item!r}')
         if start > end:
-            raise ValueError(f"Начало диапазона больше конца: {item!r}")
+            raise ChimeraValueError('err.winws.filters.range_start_is_greater_than_its_end', p0=f'{item!r}')
     return s
 
 
@@ -163,7 +164,7 @@ def ipset_stored() -> int:
 
 def set_ipset_mode(mode: str) -> dict:
     if mode not in IPSET_STATES:
-        raise ValueError("Состояние IPSet: any / none / loaded")
+        raise ChimeraValueError('err.winws.filters.ipset_state_any_none_loaded')
     cur = ipset_state()
     if mode == "loaded":
         if cur == "loaded":
@@ -171,7 +172,7 @@ def set_ipset_mode(mode: str) -> dict:
         elif IPSET_BACKUP.exists():
             shutil.copyfile(IPSET_BACKUP, IPSET_FILE)
         else:
-            raise FileNotFoundError("Нет сохранённого списка — сначала нажми «Обновить список».")
+            raise ChimeraFileNotFoundError('err.winws.filters.no_saved_list_click_update_list_first')
     else:
         if cur == "loaded":  # уходим с реального списка — сохраним его
             shutil.copyfile(IPSET_FILE, IPSET_BACKUP)
@@ -193,7 +194,7 @@ def update_ipset() -> dict:
         data = resp.read().decode("utf-8", "replace")
     lines = [ln.strip() for ln in data.splitlines() if ln.strip()]
     if not lines:
-        raise RuntimeError("Скачанный список пуст")
+        raise ChimeraRuntimeError('err.winws.filters.the_downloaded_list_is_empty')
     text = "\n".join(lines) + "\n"
     IPSET_BACKUP.write_text(text, encoding="utf-8")          # всегда — в запас
     if ipset_state() == "loaded":                            # активен «Список» — освежим
@@ -248,10 +249,10 @@ def set_fake(slot: str, name: str) -> dict:
     """Кладёт кандидата в слот. Применится при следующем запуске стратегии
     (winws2 читает блоб один раз при старте — запущенную стратегию перезапускает Api.fake_set)."""
     if slot not in FAKE_SLOTS:
-        raise ValueError("Слот фейка: %s" % " / ".join(FAKE_SLOTS))
+        raise ValueError(_tr('msg.modules.winws.filters.fake_slot_s') % " / ".join(FAKE_SLOTS))
     src = ASSETS_DIR / ("%s.bin" % name)
     if name.startswith(ACTIVE_PREFIX) or not src.exists():
-        raise FileNotFoundError("Нет такого блоба: %s" % name)
+        raise FileNotFoundError(_tr('msg.modules.winws.filters.no_such_blob_s') % name)
     shutil.copyfile(src, ASSETS_DIR / FAKE_SLOTS[slot][0])
     return fakes_state()
 

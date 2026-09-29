@@ -5,6 +5,10 @@ PowerShell-командлеты DnsClient (нужны права админис�
 Пинг — замер времени ответа на A-запрос через наш резолвер.
 """
 
+from modules.i18n import t as _tr
+
+from modules.errors import ChimeraValueError
+
 import json
 import re
 import subprocess
@@ -35,7 +39,7 @@ def _ps(cmd: str) -> str:
         creationflags=subprocess.CREATE_NO_WINDOW,
     )
     if res.returncode != 0:
-        raise RuntimeError(res.stderr.strip() or "Ошибка PowerShell")
+        raise RuntimeError(res.stderr.strip() or _tr('msg.modules.dns_jumper.manager.powershell_error'))
     return res.stdout.strip()
 
 
@@ -112,7 +116,7 @@ class DnsJumper:
         idx = int(adapter_index)
         all_ips = list(p.get("servers", [])) + list(p.get("ipv6", []))
         if not all_ips:
-            raise ValueError("У провайдера нет IP-серверов — нечего ставить системным DNS")
+            raise ChimeraValueError('err.dns_jumper.manager.the_provider_has_no_ip_servers_to_use_for_system')
         doh = p.get("doh", "")
         cmds = []
         if doh:
