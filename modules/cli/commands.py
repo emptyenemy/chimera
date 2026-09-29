@@ -11,9 +11,8 @@ import subprocess
 import sys
 import time
 from dataclasses import dataclass, field
-from datetime import datetime
 
-from modules import control, paths
+from modules import changelog, control, paths
 from modules.cli import client as cl
 from modules.cli import pathenv
 from modules.cli.client import CliError, Usage
@@ -122,11 +121,7 @@ def record_change(act, argv: list[str], ok: bool) -> None:
         return
     if act.group == "service" and (len(argv) < 2 or argv[1] in ("status", "run")):
         return  # `service run` зовёт планировщик при старте системы: это не правка пользователя
-    try:
-        with open(CHANGES_LOG, "a", encoding="utf-8") as f:
-            f.write(f"{datetime.now():%Y-%m-%d %H:%M:%S}\tcli\t{loggable(act, argv)}\t{'ok' if ok else 'error'}\n")
-    except OSError:
-        pass  # журнал вспомогательный: не мешаем команде
+    changelog.record("cli", loggable(act, argv), ok, CHANGES_LOG)
 
 
 # --- общий путь -----------------------------------------------------------------------------
