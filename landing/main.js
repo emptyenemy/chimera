@@ -107,3 +107,38 @@
     })
     .catch(function () {});
 })();
+
+// «Что нового»: последние версии с GitHub. Не получилось (нет сети, лимит запросов) —
+// остаётся ссылка на страницу релизов.
+(function () {
+  const box = document.getElementById('news-list');
+  if (!box) return;
+  const fallback = function () {
+    box.innerHTML = '<p class="fine">Список версий не загрузился. Он есть на <a href="https://github.com/emptyenemy/chimera/releases" rel="noopener">странице релизов</a>.</p>';
+  };
+  const esc = function (s) { return String(s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); };
+  // из автоматического описания релиза берём строки-пункты, убираем ссылки и служебное
+  const points = function (body) {
+    return String(body || '').split(/\r?\n/)
+      .map(function (l) { return l.trim(); })
+      .filter(function (l) { return /^[-*] /.test(l); })
+      .map(function (l) { return l.replace(/^[-*] /, '').replace(/ by @\S+.*$/, '').replace(/https?:\/\/\S+/g, '').trim(); })
+      .filter(Boolean).slice(0, 6);
+  };
+  if (!window.fetch) return fallback();
+  fetch('https://api.github.com/repos/emptyenemy/chimera/releases?per_page=5', { headers: { Accept: 'application/vnd.github+json' } })
+    .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
+    .then(function (list) {
+      const rels = list.filter(function (r) { return !r.draft; });
+      if (!rels.length) return fallback();
+      box.innerHTML = rels.map(function (r) {
+        const date = r.published_at ? new Date(r.published_at).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' }) : '';
+        const pts = points(r.body);
+        return '<article class="rel"><h3><a href="' + esc(r.html_url) + '" rel="noopener">' + esc(r.name || r.tag_name) + '</a>' +
+          (r.prerelease ? ' <span class="tag">бета</span>' : '') + '</h3>' +
+          '<p class="fine">' + esc(date) + '</p>' +
+          (pts.length ? '<ul>' + pts.map(function (p) { return '<li>' + esc(p) + '</li>'; }).join('') + '</ul>' : '') + '</article>';
+      }).join('');
+    })
+    .catch(fallback);
+})();
