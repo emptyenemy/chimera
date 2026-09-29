@@ -1,0 +1,4 @@
+# ai
+fal.ai
+fal.media
+elevenlabs.io
