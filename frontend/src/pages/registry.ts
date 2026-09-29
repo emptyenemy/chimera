@@ -18,7 +18,9 @@ import {
 
 import type { ModuleKey } from "@/lib/types"
 import { DashboardPage } from "@/pages/dashboard"
+import { SettingsPage } from "@/pages/settings"
 import { StubPage } from "@/pages/stub"
+import { TelegramPage } from "@/pages/telegram"
 
 export interface PageDef {
   id: string
@@ -39,12 +41,12 @@ export const PAGES: PageDef[] = [
   { id: "dashboard", titleKey: "nav.dashboard", icon: LayoutDashboardIcon, groupKey: "", component: DashboardPage },
   { id: "strategies", titleKey: "nav.strategies", icon: ShieldIcon, groupKey: "nav.group.bypass", dot: "winws", component: stub("strategies") },
   { id: "proxy", titleKey: "nav.proxy", icon: GlobeIcon, groupKey: "nav.group.bypass", dot: "proxy", component: stub("proxy") },
-  { id: "telegram", titleKey: "nav.telegram", icon: SendIcon, groupKey: "nav.group.bypass", dot: "tg", component: stub("telegram") },
+  { id: "telegram", titleKey: "nav.telegram", icon: SendIcon, groupKey: "nav.group.bypass", dot: "tg", component: TelegramPage },
   { id: "hosts", titleKey: "nav.hosts", icon: ServerIcon, groupKey: "nav.group.network", dot: "hosts", component: stub("hosts") },
   { id: "dns", titleKey: "nav.dns", icon: NetworkIcon, groupKey: "nav.group.network", component: stub("dns") },
   { id: "lists", titleKey: "nav.lists", icon: ListIcon, groupKey: "nav.group.data", component: stub("lists") },
   { id: "checks", titleKey: "nav.checks", icon: ScanSearchIcon, groupKey: "nav.group.data", component: stub("checks") },
-  { id: "settings", titleKey: "nav.settings", icon: SettingsIcon, groupKey: "nav.group.system", component: stub("settings") },
+  { id: "settings", titleKey: "nav.settings", icon: SettingsIcon, groupKey: "nav.group.system", component: SettingsPage },
 ]
 
 export const PAGE_IDS = PAGES.map((p) => p.id)
