@@ -32,3 +32,14 @@ def test_release_runs_tools_scripts():
     # проверка выше имеет смысл, пока скрипты tools/ запускаются в этом workflow
     assert "tools/fetch_bins.py" in RELEASE
     assert "tools/smoke_build.py" in RELEASE
+
+
+def test_release_installs_node_before_build_bat():
+    # build.bat собирает новый фронт (npm ci + npm run build), а без node молча пропускает
+    assert RELEASE.index("actions/setup-node") < RELEASE.index("call build.bat")
+
+
+def test_ci_checks_new_frontend():
+    ci = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+    assert "actions/setup-node" in ci
+    assert ci.index("npm ci") < ci.index("npm run typecheck") < ci.index("npm run build") < ci.index("-m pytest")

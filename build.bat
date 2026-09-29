@@ -13,6 +13,10 @@ REM never sees its imports: every stdlib module it uses is listed explicitly
 REM below (tests/test_build_bat.py checks the list against the core's imports).
 REM lists/ and Flowseal's hosts file are read at runtime from next to the exe.
 REM
+REM The new frontend (frontend/, Vite + React) is built first with `npm ci` and
+REM `npm run build` into ui/web-next, and only that folder goes into the exe next to the
+REM legacy ui/web (see the WEBNEXT variable below). config.json -> "frontend" picks one.
+REM
 REM --remove-output drops build\main.build (generated C and objects) afterwards;
 REM rebuilds stay fast through Nuitka's own cache in %LOCALAPPDATA%\Nuitka.
 REM
@@ -62,6 +66,32 @@ if not defined FILEVER (
 )
 echo Version: %FILEVER%
 
+REM New frontend: frontend/ (Vite + React) is built into ui/web-next, which is git-ignored;
+REM the exe gets only that finished folder, never frontend/ or node_modules. Skipped
+REM (with a warning) when there is no node - the build then ships the legacy ui/web only.
+set WEBNEXT=
+if not exist frontend\package.json goto after_frontend
+where node >nul 2>&1
+if errorlevel 1 (
+    echo [!] node not found - the new frontend is not built, this build has only the legacy ui/web.
+    goto after_frontend
+)
+pushd frontend
+call npm ci
+if errorlevel 1 goto frontend_failed
+call npm run build
+if errorlevel 1 goto frontend_failed
+popd
+if exist ui\web-next\index.html set WEBNEXT=--include-data-dir=ui/web-next=ui/web-next
+goto after_frontend
+
+:frontend_failed
+popd
+echo [!] Could not build the new frontend (npm ci / npm run build in frontend\), see output above.
+exit /b 1
+
+:after_frontend
+
 python -m nuitka ^
     --standalone ^
     --enable-plugin=pyside6 ^
@@ -76,6 +106,7 @@ python -m nuitka ^
     --output-dir=build ^
     --remove-output ^
     --include-data-dir=ui/web=ui/web ^
+    %WEBNEXT% ^
     --include-data-dir=strategies=strategies ^
     --include-data-dir=lists=lists ^
     --include-data-files=upstream/zapret-discord-youtube/.service/hosts=upstream/zapret-discord-youtube/.service/hosts ^
