@@ -2,7 +2,6 @@
 
 import pytest
 
-from modules import control
 from modules.cli import client as cl
 from modules.cli import commands, registry
 from modules.cli.app import main as cli_main

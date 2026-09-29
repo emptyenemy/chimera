@@ -10,7 +10,7 @@
 на hosts) остальным не мешает и возвращается списком ошибок [{"module", "error"}].
 """
 
-from typing import Callable, Iterable
+from collections.abc import Callable, Iterable
 
 
 def apply_safely(errors: list, module: str, fn: Callable) -> None:
@@ -41,7 +41,7 @@ def _uses(names: Iterable[str], winws, proxy, hosts) -> tuple[bool, bool, bool]:
 def consumers(names: Iterable[str], winws, proxy, hosts) -> list[str]:
     """Какие модули используют хотя бы один из списков."""
     used = _uses(names, winws, proxy, hosts)
-    return [m for m, u in zip(("winws", "proxy", "hosts"), used) if u]
+    return [m for m, u in zip(("winws", "proxy", "hosts"), used, strict=True) if u]
 
 
 def lists_changed(names: Iterable[str], winws, proxy, hosts) -> list:

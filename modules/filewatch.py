@@ -16,7 +16,7 @@ PAC, логи), лежит в других папках и сюда не поп�
 
 import threading
 from pathlib import Path
-from typing import Callable
+from collections.abc import Callable
 
 from modules import applog, changelog, domains
 

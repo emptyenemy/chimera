@@ -270,7 +270,7 @@ def h_config_set(ctx, act, ns):
         try:
             return Result(appconfig.set_value(key, value))
         except ValueError as e:
-            raise CliError(str(e), "invalid", 1)
+            raise CliError(str(e), "invalid", 1) from e
     return Result(ctx.call("config_set", key, value))
 
 

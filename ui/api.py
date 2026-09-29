@@ -11,7 +11,24 @@ import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
-from modules import appconfig, applog, autostart, blockcheck, cheburcheck, control, doctor, domainrec, domains, filewatch, liveapply, paths, service, shareconfig, upstream, winproc
+from modules import (
+    appconfig,
+    applog,
+    autostart,
+    blockcheck,
+    cheburcheck,
+    control,
+    doctor,
+    domainrec,
+    domains,
+    filewatch,
+    liveapply,
+    paths,
+    service,
+    shareconfig,
+    upstream,
+    winproc,
+)
 from modules import discord as discord_cache
 from modules.dns_jumper import DnsJumper
 from modules.hosts import HostsManager

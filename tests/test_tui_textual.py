@@ -8,7 +8,6 @@
 import asyncio
 import time
 
-import pytest
 from textual.widgets import Button, DataTable, RadioButton, RichLog, Static, Switch
 
 from modules import control
