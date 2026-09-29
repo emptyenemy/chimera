@@ -19,6 +19,8 @@
   <a href="https://github.com/emptyenemy/chimera/issues/new">Сообщить о проблеме</a>
 </p>
 
+<p align="center"><b>Русский</b> · <a href="README.en.md">English</a></p>
+
 ---
 
 **Chimera** — одно окно вместо набора скриптов для обхода блокировок в России (ТСПУ Роскомнадзора). Стратегии, прокси, Telegram, hosts и DNS собраны в одном приложении для Windows, а общий список сайтов работает сразу во всех способах. Исходный код открыт, лицензия MIT.
@@ -32,6 +34,11 @@
 ## Возможности
 
 Способы независимы друг от друга и работают поверх общего слоя списков доменов:
+
+- **Настройка через агента** — скилл, инструкция, диагностика и CLI с JSON: агент может настроить Chimera по вашей просьбе;
+- **Обмен конфигом** — экспорт выбранных разделов в `.chimera`, просмотр до импорта. Ссылка прокси и секрет Telegram не экспортируются;
+- **Списки на лету** — правки через окно, CLI или `lists/*.txt` автоматически подхватываются работающей программой;
+- **CLI и TUI** — команды и полноэкранный интерфейс в терминале, работа с приложением или службой;
 
 - **Стратегии (zapret2 / winws2)** — обход DPI через [bol-van/zapret2](https://github.com/bol-van/zapret2), стратегии портированы из [Flowseal/zapret-discord-youtube](https://github.com/Flowseal/zapret-discord-youtube);
 - **Прокси (sing-box)** — выборочный VLESS/Trojan/SS/VMess только для доменов из списков (режим PAC без админа или TUN);
@@ -51,7 +58,7 @@
 ├── config.json        # interface (ui|tui|service), ui_backend (pyside6|pywebview|browser) + общие настройки
 ├── data/              # рантайм-данные модулей (state/логи/сгенерированные конфиги, не в git) — modules/paths.py
 ├── modules/           # вся логика: winws, proxy, tgproxy, hosts, dns_jumper, domains, ...
-├── ui/                # api.py (методы для фронта) + hub.py (пуш состояния) + backend_* + web/ (прежний фронт) + web-next/ (сборка нового, не в git)
+├── ui/                # api.py (методы для фронта) + hub.py (пуш состояния) + backend_* + web-next/ (собранный фронт, не в git)
 ├── frontend/          # исходники нового фронта: Vite + React + TypeScript + shadcn/ui (npm run build -> ui/web-next)
 ├── lists/             # списки доменов по сервисам (общий слой для всех модулей)
 ├── strategies/        # стратегии winws2 (*.txt) + assets/ (fake-блобы) + hostlists/
@@ -76,6 +83,11 @@ git clone --recurse-submodules <repo-url>
 git submodule update --init
 
 pip install -r requirements.txt
+python tools/fetch_bins.py
+cd frontend
+npm ci
+npm run build
+cd ..
 python main.py
 ```
 
@@ -97,6 +109,8 @@ npm run build       # сборка в ui/web-next
 ### Командная строка
 
 Собранная программа — заодно команда `chimera`: `chimera --help`, `chimera status`, `chimera winws start`, `chimera docs`. Всё, что есть в интерфейсе, делается командой; `--json` — для скриптов и агентов. Таблица «интерфейс → команда», коды возврата и формат вывода — в [docs/CLI.md](docs/CLI.md), документация именно вашей версии — `chimera docs`. Команды говорят с уже работающей Chimera (`chimera start` запустит её в трее); списки, настройки, проверки доменов и логи работают и без неё. Окно открывают `chimera --window` и `chimera --browser`; двойной клик по `Chimera.exe` открывает окно, как раньше. Чтобы писать `chimera` из любой папки: `Chimera.exe path add`.
+
+Агент может настроить Chimera по вашей просьбе: сначала сверить версию, прочитать скилл, провести диагностику, затем применить настройки и проверить результат.
 
 Для агентов: [AGENTS.md](AGENTS.md) — указатель, правила поведения — [skills/chimera](skills/chimera/SKILL.md). Оба лежат и в релизе рядом с программой.
 
@@ -143,7 +157,7 @@ ruff check .              # линт (правила и исключения —
 ## Режимы запуска (`config.json` → `interface`)
 
 - **`ui`** (по умолчанию) — окно, как описано выше.
-- **`tui`** — терминальное меню без окна: статус модулей, старт/стоп winws/прокси/TG, hosts, DNS, хвост логов. Работает через тот же класс `Api`, что и фронт. Запуск — `python main.py` с `"interface": "tui"` в конфиге.
+- **`tui`** — полноэкранный Textual-клиент работающей Chimera или службы, девять вкладок. Запуск — `chimera tui`; простое меню — `chimera tui --simple`. Выход из полноэкранного TUI не останавливает Chimera.
 - **`service`** — фоновый процесс без окна и без трея, поднимает то, что помечено автозапуском (tg/winws/proxy), и держит это между перезагрузками. Управление — отдельной командой, независимо от `interface` в конфиге:
 
   ```powershell
