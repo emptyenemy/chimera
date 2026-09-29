@@ -30,7 +30,7 @@ from collections import deque
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
-from . import theme
+from . import frontend, theme
 from .api import WEB_DIR, Api
 
 HOST = "127.0.0.1"
@@ -142,9 +142,13 @@ class _Handler(BaseHTTPRequestHandler):
             events, seq = self.server.hub.poll(cursor, POLL_TIMEOUT)
             return self._json({"events": events, "seq": seq})
 
+        # каталог фронта задаёт run(); выбран новый без сборки — вместо страницы подсказка
+        web_dir = getattr(self.server, "web_dir", None) or WEB_DIR
+        if getattr(self.server, "missing_next", False) and url.path in ("/", ""):
+            return self._send(200, frontend.missing_page(), "text/html; charset=utf-8")
         rel = "index.html" if url.path in ("/", "") else url.path.lstrip("/")
-        path = (WEB_DIR / rel).resolve()
-        if not path.is_file() or WEB_DIR.resolve() not in path.parents:
+        path = (web_dir / rel).resolve()
+        if not path.is_file() or web_dir.resolve() not in path.parents:
             if url.path == "/favicon.ico":
                 return self._send(204, b"", "image/x-icon")  # своей иконки нет — молча, без 404 в консоли
             return self._send(404, b"not found", "text/plain; charset=utf-8")
@@ -202,6 +206,10 @@ def run():
     server = ThreadingHTTPServer((HOST, port), _Handler)
     server.daemon_threads = True
     server.api, server.hub, server.token = api, hub, secrets.token_urlsafe(24)
+    server.missing_next = frontend.next_missing()
+    server.web_dir = frontend.NEXT_DIR if frontend.selected() == "next" else frontend.LEGACY_DIR
+    if server.missing_next:
+        print(frontend.MISSING_TEXT)
 
     url = f"http://{HOST}:{server.server_address[1]}/?t={server.token}"
     print(f"Chimera открыта в браузере: {url}\nЗакрой вкладку или нажми Ctrl+C, чтобы выйти.")

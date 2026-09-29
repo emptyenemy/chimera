@@ -56,6 +56,23 @@ def test_runtime_data_is_in_build():
     assert files.get(hosts) == hosts
 
 
+def test_new_frontend_is_built_before_nuitka_and_only_the_build_ships():
+    # ui/web-next не в git: build.bat собирает его из frontend/ (npm ci + npm run build),
+    # а в exe кладёт готовую папку — ни исходники frontend/, ни node_modules
+    ci, build, nuitka = (BUILD_BAT.index(s) for s in ("npm ci", "npm run build", "python -m nuitka"))
+    assert ci < build < nuitka
+    assert "where node" in BUILD_BAT  # без node сборка не падает, а кладёт только прежний фронт
+    dirs = _data_dirs()
+    assert "ui/web-next" in dirs and "ui/web" in dirs
+    assert not any(d.startswith(("frontend", "node_modules")) for d in dirs)
+    assert "%WEBNEXT%" in BUILD_BAT.split("python -m nuitka", 1)[1]
+
+
+def test_new_frontend_build_is_git_ignored():
+    ignore = (ROOT / ".gitignore").read_text(encoding="utf-8").splitlines()
+    assert "ui/web-next/" in ignore and "node_modules/" in ignore
+
+
 def _tg_core_imports() -> set[str]:
     """Абсолютные импорты ядра tg-ws-proxy. Оно лежит в сборке исходниками и грузится
     во время работы (modules/tgproxy/manager.py), поэтому Nuitka его импортов не видит."""

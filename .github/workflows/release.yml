@@ -48,6 +48,14 @@ jobs:
           python tools/set_version.py "$GITHUB_REF_NAME"
           echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
 
+      # Node нужен build.bat (новый фронт собирается из frontend/ в ui/web-next) и
+      # дымовому тесту сборки
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
       - name: Бинарники (sing-box, winws2)
         run: python tools/fetch_bins.py
 
@@ -66,10 +74,6 @@ jobs:
       # Собранная программа начисто, как у пользователя: запуск без окна и вызовы
       # всех модулей через её же интерфейс (tools/smoke_build.py). Ловит то, что
       # тестам исходников не видно, — модуль или файл, не попавший в exe.
-      - uses: actions/setup-node@v7
-        with:
-          node-version: "22"
-
       - name: Дымовой тест сборки
         run: python tools/smoke_build.py build\Chimera --full
 

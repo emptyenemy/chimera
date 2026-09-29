@@ -42,16 +42,17 @@
 
 ## Стек
 
-- **Python 3** + фронт на HTML/CSS/JS в `ui/web/`, бэкенд в `modules/`. Движок интерфейса выбирается в `config.json` (`ui_backend`): [PySide6](https://doc.qt.io/qtforpython/) (окно с `QWebEngineView`, свой Chromium, мост `QWebChannel`), [pywebview](https://pywebview.flowrl.com/) (окно на системном WebView2, мост `js_api`) или `browser` — своего окна нет вообще, интерфейс открывается вкладкой в браузере по умолчанию (локальный HTTP-сервер на стандартной библиотеке, мост — JSON-RPC + long-poll, доступ по одноразовому токену). Фронтенд один и тот же, мост определяет сам.
+- **Python 3** + фронт, бэкенд в `modules/`. Фронта два, выбор — `frontend` в `config.json`: прежний на чистых HTML/CSS/JS в `ui/web/` (по умолчанию) и новый на настоящем shadcn/ui — React, TypeScript, Tailwind v4, исходники в `frontend/`, сборка в `ui/web-next/` (см. [docs/FRONTEND.md](docs/FRONTEND.md)). Для программы Node не нужен, только для разработки нового интерфейса. Движок интерфейса выбирается в `config.json` (`ui_backend`): [PySide6](https://doc.qt.io/qtforpython/) (окно с `QWebEngineView`, свой Chromium, мост `QWebChannel`), [pywebview](https://pywebview.flowrl.com/) (окно на системном WebView2, мост `js_api`) или `browser` — своего окна нет вообще, интерфейс открывается вкладкой в браузере по умолчанию (локальный HTTP-сервер на стандартной библиотеке, мост — JSON-RPC + long-poll, доступ по одноразовому токену). Мост фронт определяет сам, у обоих фронтов он одинаковый.
 - Логика — в `modules/`, интерфейс (`ui/api.py`) — тонкий JS-мост. Внешние проекты подключены git-сабмодулями в `upstream/` и используются как есть.
 
 ```
 .
 ├── main.py            # вход: UAC-элевация, выбор режима из config.json
-├── config.json        # interface (ui|tui|service), ui_backend (pyside6|pywebview|browser) + общие настройки
+├── config.json        # interface (ui|tui|service), ui_backend (pyside6|pywebview|browser), frontend (legacy|next) + общие настройки
 ├── data/              # рантайм-данные модулей (state/логи/сгенерированные конфиги, не в git) — modules/paths.py
 ├── modules/           # вся логика: winws, proxy, tgproxy, hosts, dns_jumper, domains, ...
-├── ui/                # api.py (методы для фронта) + hub.py (пуш состояния) + backend_* + web/ (фронт: js/core.js, js/pages/, css/)
+├── ui/                # api.py (методы для фронта) + hub.py (пуш состояния) + backend_* + web/ (прежний фронт) + web-next/ (сборка нового, не в git)
+├── frontend/          # исходники нового фронта: Vite + React + TypeScript + shadcn/ui (npm run build -> ui/web-next)
 ├── lists/             # списки доменов по сервисам (общий слой для всех модулей)
 ├── strategies/        # стратегии winws2 (*.txt) + assets/ (fake-блобы) + hostlists/
 ├── assets/logo/       # логотип: chimera.svg (основной), chimera-simple.svg (запасной), chimera.ico
@@ -79,6 +80,19 @@ python main.py
 ```
 
 Приложение само запросит права администратора (UAC) — они нужны для записи в hosts, смены DNS, запуска winws2 и режима TUN у прокси. Режим PAC у прокси и Telegram-прокси работают и без админа.
+
+### Разработка интерфейса
+
+Для нового интерфейса (`frontend/`) нужен Node 22+. Сборка и проверки:
+
+```powershell
+cd frontend
+npm ci              # зависимости по package-lock.json
+npm run typecheck   # типы
+npm run build       # сборка в ui/web-next
+```
+
+Включить его в программе: `"frontend": "next"` в `config.json` (без сборки программа откроет прежний интерфейс и напишет, что делать). Проверка без окна программы — `python tools/ui_preview.py shot <папка> --frontend next`. Подробности и как добавить страницу — [docs/FRONTEND.md](docs/FRONTEND.md). `build.bat` собирает фронт сам, если node есть.
 
 ### Командная строка
 

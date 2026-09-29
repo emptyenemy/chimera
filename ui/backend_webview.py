@@ -10,7 +10,8 @@ import json
 import webview
 
 from . import theme
-from .api import WEB_DIR, Api
+from .api import Api
+from .frontend import web_dir
 
 
 class JsApi:
@@ -34,7 +35,7 @@ def run():
     control.start_for(api)  # канал для `chimera ...` (modules/control.py)
     window = webview.create_window(
         "Chimera",
-        str(WEB_DIR / "index.html"),
+        str(web_dir() / "index.html"),
         js_api=JsApi(api),
         width=1080,
         height=720,

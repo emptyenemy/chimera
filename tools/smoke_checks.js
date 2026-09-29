@@ -18,14 +18,22 @@
 
   for (let i = 0; i < 150 && (typeof api !== "function" || typeof Bridge === "undefined"); i++) await sleep(100);
 
+  // Два фронта (config.json -> frontend): прежний ui/web и новый ui/web-next (React).
+  // Новый помечает <html data-frontend="next">; общий контракт — window.api, window.Pages
+  // и data-testid, поэтому проверки ниже одинаковы, отличаются только селекторы каркаса.
+  const next = document.documentElement.dataset.frontend === "next";
+  const skip = why => `пропуск: ${why}`;
+
   await step("интерфейс загрузился", async () => {
-    need(document.querySelector(".sidebar"), "нет сайдбара");
-    need(document.querySelector(".sb-logo svg"), "нет логотипа");
-    need(document.querySelectorAll("svg.icon").length > 5, "не отрисовались иконки");
+    need(document.querySelector(next ? '[data-testid="sidebar"]' : ".sidebar"), "нет сайдбара");
+    need(document.querySelector(next ? '[data-testid="brand-logo"]' : ".sb-logo svg"), "нет логотипа");
+    need(document.querySelectorAll(next ? "svg.lucide" : "svg.icon").length > 5, "не отрисовались иконки");
+    return next ? "новый фронт" : "прежний фронт";
   });
-  // выпадающие списки оформлены через customizable select (base.css); без него движок
-  // молча рисует системный список — ловим, если в сборку попал старый Chromium
+  // выпадающие списки прежнего фронта оформлены через customizable select (base.css); без
+  // него движок молча рисует системный список — ловим, если в сборку попал старый Chromium
   await step("выпадающие списки: base-select", async () => {
+    if (next) return skip("у нового фронта списки на компонентах shadcn");
     need(CSS.supports("appearance", "base-select"), "движок не поддерживает appearance: base-select");
   });
   await step("app_info", async () => (await api("app_info")).version);
@@ -47,7 +55,6 @@
   // должен трогать чужой обход — такие шаги при работающем модуле пропускаются.
   const winwsBusy = (await api("winws_state")).running;
   const proxyBusy = (await api("proxy_state")).running;
-  const skip = why => `пропуск: ${why}`;
 
   await step("списки для стратегий", async () => {
     if (winwsBusy) return skip("winws2 уже работает в системе");
@@ -127,10 +134,14 @@
   // пуши -> сведённая таблица; самый короткий список, чтобы не ждать
   await step("проверка сайтов: список", async () => {
     Pages.go("checks");
+    if (next && !document.querySelector('[data-testid="checks-list"]')) {
+      await sleep(300);
+      if (!document.querySelector('[data-testid="checks-list"]')) return skip("страница ещё не перенесена в новый фронт");
+    }
     const lists = await api("lists_all");
     const small = [...lists].sort((a, b) => a.count - b.count)[0];
-    for (let i = 0; i < 50 && !document.querySelector('[data-list] option[value="' + small.name + '"]'); i++) await sleep(100);
-    const sel = document.querySelector("[data-list]");
+    for (let i = 0; i < 50 && !document.querySelector('[data-testid="checks-list"] option[value="' + small.name + '"]'); i++) await sleep(100);
+    const sel = document.querySelector('[data-testid="checks-list"]');
     sel.value = small.name;
     sel.dispatchEvent(new Event("change", { bubbles: true }));
     let summary = "";
