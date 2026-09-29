@@ -7,6 +7,7 @@
 
 from modules.i18n import t as _tr
 
+import os
 import sys
 
 
@@ -28,6 +29,9 @@ def _interactive() -> bool:
 
 
 def run(simple: bool = False, *, interactive=None, remote=None) -> int:
+    if os.environ.get("CHIMERA_TUI_PROBE") == "1":
+        from tui.build_probe import run as probe
+        return probe()
     if simple:
         return run_simple()
     if not (interactive() if interactive else _interactive()):

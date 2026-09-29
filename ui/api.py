@@ -173,6 +173,9 @@ class Api:
         if watcher is not None:
             watcher.stop()  # применение правки не должно идти к уже погашенным модулям
         self.hosts.stop_background()
+        if getattr(self, "_smoke", False):
+            self.tg.stop()
+            return
         if service.is_running() and not getattr(self, "_service_owned", False):
             return
         try:

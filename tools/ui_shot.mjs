@@ -19,8 +19,8 @@
 //   { "key": "b", "ctrl": true }    — нажать клавишу (Ctrl+B — сайдбар); code берётся из буквы
 // Без сценария: обойти все страницы и снять каждую ({id}.png).
 //
-// Работает с обоими фронтами: прежним (ui/web) и новым (frontend/ -> ui/web-next). Оба
-// отдают window.api и window.Pages {go, list}; для новых страниц селекторы — data-testid,
+// Приложение (frontend/ -> ui/web-next) отдаёт window.api и window.Pages {go, list};
+// селекторы страниц — data-testid,
 // например { "click": "[data-testid=module-toggle-proxy]" }.
 // Ошибки JS и console.error печатаются с пометкой [ошибка страницы].
 
@@ -103,13 +103,11 @@ const dblclick = async (x, y) => {
 const shot = async (name, full = false) => {
   let clip;
   if (full) {
-    const h = await evaluate("Math.max(document.getElementById('main')?.scrollHeight || 0, innerHeight)");
-    await send("Emulation.setDeviceMetricsOverride", { width: W, height: h, deviceScaleFactor: 1, mobile: false });
-    await sleep(150);
+    const { cssContentSize } = await send("Page.getLayoutMetrics");
+    clip = { x: 0, y: 0, width: cssContentSize.width, height: cssContentSize.height, scale: 1 };
   }
-  const r = await send("Page.captureScreenshot", { format: "png", clip });
+  const r = await send("Page.captureScreenshot", { format: "png", clip, captureBeyondViewport: full });
   writeFileSync(join(outDir, name), Buffer.from(r.data, "base64"));
-  if (full) await send("Emulation.setDeviceMetricsOverride", { width: W, height: H, deviceScaleFactor: 1, mobile: false });
   console.log("снимок:", join(outDir, name));
 };
 

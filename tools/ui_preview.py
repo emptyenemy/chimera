@@ -65,6 +65,7 @@ class _QuietServer(ThreadingHTTPServer):
 
 def _serve(front: str = "next"):
     hub = _Hub()
+    os.environ["CHIMERA_SMOKE"] = "1"
     api = PreviewApi(push=hub.push)
     server = _QuietServer(("127.0.0.1", 0), _Handler)
     server.daemon_threads = True

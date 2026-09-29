@@ -87,6 +87,7 @@ def _cli_checks_while_running(app: Path, env: dict) -> list[dict]:
         _cli_step(app, env, "status --json (через канал)", ["status", "--json"], _json_ok),
         _cli_step(app, env, "winws state --json (через канал)", ["winws", "state", "--json"], _json_ok),
         _cli_step(app, env, "lists show --json", ["lists", "show", "--json"], _json_ok),
+        _cli_step(app, {**env, "CHIMERA_TUI_PROBE": "1"}, "Textual: девять вкладок без окна", ["tui"], _json_ok),
     ]
 
 
@@ -128,8 +129,10 @@ def run(build: Path, full: bool = False, front: str = "next", flavor: str = "qt"
             _wait_cdp(port, proc)
             command = ["node", str(CDP), str(port), str(CHECKS)]
         else:
-            from tools.ui_preview import _browser
-            browser = _browser()
+            browser = next((str(p) for p in (
+                Path(os.environ.get("ProgramFiles(x86)", "C:/Program Files (x86)")) / "Microsoft/Edge/Application/msedge.exe",
+                Path(os.environ.get("ProgramFiles", "C:/Program Files")) / "Google/Chrome/Application/chrome.exe",
+            ) if p.is_file()), None)
             if not browser:
                 raise RuntimeError("Headless Edge/Chrome is required")
             deadline = time.monotonic() + 60
