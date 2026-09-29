@@ -1,11 +1,12 @@
 """Документация из программы (chimera docs / agent-info) и docs/CLI.md строятся из кода и не отстают от него."""
 
 import json
+import re
 from pathlib import Path
 
 import pytest
 
-from modules import control, paths
+from modules import control, i18n, paths
 from modules.cli import app, commands, docs, registry
 from modules.cli import help as helptext
 
@@ -22,6 +23,21 @@ def run_json(capsys, *argv):
 def test_committed_cli_md_matches_generated():
     committed = (ROOT / "docs" / "CLI.md").read_text(encoding="utf-8").replace("\r\n", "\n")
     assert committed == docs.cli_md(), "docs/CLI.md устарел: выполните python tools/gen_cli_docs.py"
+
+
+def test_committed_english_cli_md_matches_generated():
+    committed = (ROOT / "docs" / "en" / "CLI.md").read_text(encoding="utf-8").replace("\r\n", "\n")
+    with i18n.using("en"):
+        assert committed == docs.cli_md(), "docs/en/CLI.md устарел: выполните python tools/gen_cli_docs.py"
+
+
+def test_english_cli_md_is_english_and_covers_every_action():
+    with i18n.using("en"):
+        text = docs.cli_md()
+        assert not re.search("[А-Яа-яЁё]", text)
+        for a in registry.ACTIONS:
+            assert a.ui in text and helptext.usage(a) in text, a.command
+    assert text.startswith("# The chimera command line")
 
 
 def test_cli_md_covers_every_action_and_exclusion():

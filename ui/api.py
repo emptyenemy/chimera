@@ -21,6 +21,8 @@ from modules import (
     doctor,
     domainrec,
     domains,
+    errors,
+    i18n,
     filewatch,
     liveapply,
     paths,
@@ -30,6 +32,7 @@ from modules import (
     winproc,
 )
 from modules import discord as discord_cache
+from modules.errors import ChimeraError
 from modules.dns_jumper import DnsJumper
 from modules.hosts import HostsManager
 from modules.proxy import ProxyManager
@@ -49,7 +52,9 @@ def _ok(data=None):
 
 
 def _err(e: Exception):
-    return {"ok": False, "error": str(e)}
+    # error — русский текст, как отдавали раньше (старый фронт и агенты читают его);
+    # code и params — для клиентов, которые собирают текст сами на выбранном языке
+    return {"ok": False, **errors.describe(e)}
 
 
 class Api:
@@ -183,7 +188,7 @@ class Api:
 
         def hosts_step():
             if not is_admin():
-                raise PermissionError("Нужны права администратора для записи в hosts")
+                raise ChimeraError("err.admin.hosts")
             self.hosts.set_enabled(False)
 
         def dns_step():
@@ -191,15 +196,17 @@ class Api:
             if not adapters:
                 return
             if not is_admin():
-                raise PermissionError("Нужны права администратора для сброса DNS")
-            errors = []
+                raise ChimeraError("err.admin.dns_reset")
+            failed_at, first_error = [], ""
             for idx in adapters:
                 try:
                     self.dns.reset_dns(idx)
                 except Exception as e:
-                    errors.append(f"адаптер {idx}: {e}")
-            if errors:
-                raise RuntimeError("; ".join(errors))
+                    failed_at.append(str(idx))
+                    first_error = first_error or str(e)
+            if failed_at:
+                raise ChimeraError("err.panic.dns", count=len(failed_at), adapters=", ".join(failed_at),
+                                   error=first_error)
 
         # служба первой: пока она жива, она перезапускала бы то, что мы гасим здесь.
         # Прокси останавливается до остального — его stop() заодно снимает системный PAC.
@@ -211,7 +218,7 @@ class Api:
                 fn()
                 report.append({"step": name, "ok": True})
             except Exception as e:
-                report.append({"step": name, "ok": False, "error": str(e)})
+                report.append({"step": name, "ok": False, **errors.describe(e)})
         failed = [r for r in report if not r["ok"]]
         applog.write("Выключить всё: " + ("готово" if not failed else
                      "не удалось: " + "; ".join(f"{r['step']} ({r['error']})" for r in failed)))
@@ -257,7 +264,7 @@ class Api:
         try:
             rec = getattr(self, "_domain_rec", None)
             if not rec:
-                raise RuntimeError("Запись не начата")
+                raise ChimeraError("err.record.not_started")
             after = domainrec.read_cache()
             self._domain_rec = None
             return _ok({"domains": domainrec.suggest(rec["before"], after), "flushed": rec["flushed"],
@@ -369,7 +376,7 @@ class Api:
         """Внешние ссылки из UI — в системный браузер."""
         try:
             if not str(url).startswith(("https://", "http://")):
-                raise ValueError("Только http(s)-ссылки")
+                raise ChimeraError("err.url.http_only")
             import webbrowser
             webbrowser.open(url)
             return _ok()
@@ -392,7 +399,7 @@ class Api:
         UI-потоке это фризило бы окно на всё время вызова."""
         fn = getattr(self, method, None)
         if fn is None or method.startswith("_"):
-            return json.dumps(_err(AttributeError(f"Неизвестный метод: {method}")))
+            return json.dumps(_err(ChimeraError("err.method.unknown", method=method)))
         try:
             args = json.loads(args_json)
             return json.dumps(fn(*args))
@@ -482,7 +489,7 @@ class Api:
         """Общий выключатель hosts-разблокировки (привязки сохраняются)."""
         try:
             if not is_admin():
-                raise PermissionError("Нужны права администратора для записи в hosts")
+                raise ChimeraError("err.admin.hosts")
             return _ok(self.hosts.set_enabled(value))
         except Exception as e:
             return _err(e)
@@ -576,7 +583,7 @@ class Api:
     def dns_set(self, adapter_index, provider_id):
         try:
             if not is_admin():
-                raise PermissionError("Нужны права администратора для смены DNS")
+                raise ChimeraError("err.admin.dns")
             return _ok(self.dns.set_dns(adapter_index, provider_id))
         except Exception as e:
             return _err(e)
@@ -587,7 +594,7 @@ class Api:
         бэкенде и не зависит от окна."""
         try:
             if not is_admin():
-                raise PermissionError("Нужны права администратора для смены DNS")
+                raise ChimeraError("err.admin.dns")
             return _ok(self.dns.set_dns_trial(adapter_index, provider_id, seconds))
         except Exception as e:
             return _err(e)
@@ -603,7 +610,7 @@ class Api:
         """Не ждать таймера: вернуть прежний DNS сразу."""
         try:
             if not is_admin():
-                raise PermissionError("Нужны права администратора для смены DNS")
+                raise ChimeraError("err.admin.dns")
             return _ok(self.dns.trial_revert(adapter_index))
         except Exception as e:
             return _err(e)
@@ -611,7 +618,7 @@ class Api:
     def dns_reset(self, adapter_index):
         try:
             if not is_admin():
-                raise PermissionError("Нужны права администратора для смены DNS")
+                raise ChimeraError("err.admin.dns")
             self.dns.reset_dns(adapter_index)
             return _ok()
         except Exception as e:
@@ -707,9 +714,9 @@ class Api:
             return
         if not self.winws._ours_alive:
             # остался от прошлой сессии: какую стратегию он гоняет, мы не знаем
-            raise RuntimeError("winws2 запущен не этой Chimera — перезапустите стратегию вручную")
+            raise ChimeraError("err.winws.foreign")
         if not is_admin():
-            raise PermissionError("Нужны права администратора для перезапуска zapret2")
+            raise ChimeraError("err.admin.winws_restart")
         self.winws.start(sid)
 
     def lists_rename(self, old, new):
@@ -752,7 +759,7 @@ class Api:
         except Exception as e:
             return _err(e)
         if not entries:
-            return _err(ValueError("В списке нет доменов"))
+            return _err(ChimeraError("err.list.empty"))
         threading.Thread(target=self._run_chebur, args=(entries,), daemon=True).start()
         return _ok({"total": len(entries)})
 
@@ -815,7 +822,7 @@ class Api:
         except Exception as e:
             return _err(e)
         if not entries:
-            return _err(ValueError("В списке нет доменов"))
+            return _err(ChimeraError("err.list.empty"))
         threading.Thread(target=self._run_blockcheck, args=(entries,), daemon=True).start()
         return _ok({"total": len(entries)})
 
@@ -847,7 +854,7 @@ class Api:
     def winws_start(self, strategy_id):
         try:
             if not is_admin():
-                raise PermissionError("Нужны права администратора для запуска zapret2")
+                raise ChimeraError("err.admin.winws")
             return _ok(self.winws.start(strategy_id))
         except Exception as e:
             return _err(e)
@@ -908,7 +915,9 @@ class Api:
         try:
             fn()
         except Exception as e:
-            data["apply_error"] = str(e)
+            info = errors.describe(e)
+            data["apply_error"] = info["error"]
+            data["apply_error_code"], data["apply_error_params"] = info["code"], info["params"]
 
     def ipset_set(self, mode):
         try:
@@ -1002,7 +1011,7 @@ class Api:
             import webbrowser
             link = self.tg.state().get("link")
             if not link:
-                raise RuntimeError("Ссылка недоступна")
+                raise ChimeraError("err.tg.no_link")
             webbrowser.open(link)
             return _ok()
         except Exception as e:
@@ -1057,10 +1066,7 @@ class Api:
         try:
             # админ нужен только для TUN (выборочного и полного); PAC работает без прав
             if self.proxy.needs_admin and not is_admin():
-                raise PermissionError(
-                    "Режим TUN требует прав администратора. Переключи на «Системный прокси (PAC)» "
-                    "или запусти программу от админа."
-                )
+                raise ChimeraError("err.admin.tun")
             return _ok(self.proxy.start())
         except Exception as e:
             return _err(e)
@@ -1097,6 +1103,24 @@ class Api:
         except Exception as e:
             return _err(e)
 
+    # --- язык (modules/i18n.py) ------------------------------------------------
+
+    def lang_get(self):
+        """Язык программы: что выбрано в настройках (auto | ru | en), что из этого получилось
+        сейчас и какой язык у системы."""
+        try:
+            return _ok(i18n.state())
+        except Exception as e:
+            return _err(e)
+
+    def i18n_get(self, lang=None):
+        """Каталог текстов языка целиком (поверх английского запасного) и правила множественных
+        форм: окно собирает текст само по кодам и параметрам. Без языка — текущий."""
+        try:
+            return _ok(i18n.frontend_payload(lang))
+        except Exception as e:
+            return _err(e)
+
     def autostart_get(self):
         """Включён ли автозапуск приложения вместе с Windows (задача в планировщике)."""
         try:
@@ -1108,7 +1132,7 @@ class Api:
         """Создаёт/удаляет задачу автозапуска. Нужны права администратора."""
         try:
             if not is_admin():
-                raise PermissionError("Нужны права администратора для настройки автозапуска")
+                raise ChimeraError("err.admin.autostart")
             # тот же вид, что у autostart_get: фронт кладёт ответ в своё состояние целиком
             return _ok({"enabled": autostart.set_enabled(bool(value)), "supported": autostart.is_supported()})
         except Exception as e:

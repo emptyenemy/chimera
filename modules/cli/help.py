@@ -1,35 +1,11 @@
-"""Справка chimera: генерируется из таблицы команд (registry), отдельных текстов нет."""
+"""Справка chimera: генерируется из таблицы команд (registry), тексты — в каталоге (ключи cli.help.*)."""
 
 from modules.cli.registry import ACTIONS, BY_GROUP, GROUPS, LEVEL_TITLES, Action, Arg
+from modules.i18n import LazySeq, t
 
-EXIT_CODES = (
-    (0, "успех"),
-    (1, "ошибка выполнения (отказ приложения, нет такого объекта, сбой сети)"),
-    (2, "неверные аргументы"),
-    (3, "Chimera не запущена, старая версия приложения или нет связи"),
-)
-
-MAIN_HELP = """\
-Chimera — обход блокировок из командной строки.
-
-Использование:
-  chimera <команда> [действие] [параметры]
-  chimera --window | --browser          открыть окно или вкладку браузера
-
-Команды:
-{commands}
-
-Общие параметры (можно ставить в любое место):
-  --json           машинный вывод: {{"schema": 1, "ok": …, "command": …, "level": …, "data": …}}
-  --show-secrets   показывать ссылки и секреты (по умолчанию скрыты)
-  -h, --help       эта справка; `chimera <команда> --help` — справка по команде
-  --version        версия
-
-Коды возврата:
-{codes}
-
-Подробнее: `chimera docs` (команды, раскладка папок, формат --json).
-"""
+EXIT_CODE_VALUES = (0, 1, 2, 3)
+# (код, описание); описание — на языке пользователя, берётся в момент чтения
+EXIT_CODES = LazySeq(lambda: tuple((c, t(f"cli.exit.{c}")) for c in EXIT_CODE_VALUES))
 
 
 def usage(act: Action) -> str:
@@ -44,7 +20,7 @@ def _metavar(a: Arg) -> str:
         return f"[--{a.name}]"
     if a.flag:
         return f"[--{a.name} <{a.name}>]"
-    name = a.name + ("…" if a.kind in ("names", "names1", "rest") else "")
+    name = a.label + ("…" if a.kind in ("names", "names1", "rest") else "")
     if a.kind == "bool":
         name = "on|off"
     elif a.kind == "choice" and a.choices:
@@ -55,7 +31,7 @@ def _metavar(a: Arg) -> str:
 def _params(act: Action) -> list[str]:
     rows = []
     for a in act.args:
-        label = f"--{a.name}" if a.flag else a.name
+        label = f"--{a.name}" if a.flag else a.label
         note = a.help + (f" ({', '.join(a.choices)})" if a.choices and a.kind == "choice" and not a.flag else "")
         rows.append(f"  {label:<14} {note}".rstrip())
     return rows
@@ -65,24 +41,30 @@ def action_help(act: Action) -> str:
     lines = [f"{usage(act)}", "", act.summary, ""]
     params = _params(act)
     if params:
-        lines += ["Параметры:"] + params + [""]
-    lines += [f"Уровень: {LEVEL_TITLES[act.level]}", f"В интерфейсе: {act.ui}", ""]
+        lines += [t("cli.help.params")] + params + [""]
+    lines += [t("cli.help.level", level=LEVEL_TITLES[act.level]), t("cli.help.ui", ui=act.ui), ""]
     if act.examples:
-        lines += ["Примеры:"] + [f"  {e}" for e in act.examples] + [""]
+        lines += [t("cli.help.examples")] + [f"  {e}" for e in act.examples] + [""]
     return "\n".join(lines).rstrip() + "\n"
+
+
+def _brief(summary: str) -> str:
+    """Первое предложение описания (точка внутри слова, вроде Discord.exe, его не обрывает)."""
+    end = summary.find(". ")
+    return (summary if end < 0 else summary[:end]).rstrip(".")
 
 
 def group_help(group: str) -> str:
     acts = list(BY_GROUP[group].values())
     if len(acts) == 1 and acts[0].name == "":
         return action_help(acts[0])
-    lines = [f"chimera {group} — {GROUPS[group]}", "", "Действия:"]
+    lines = [t("cli.help.group_title", group=group, summary=GROUPS[group]), "", t("cli.help.actions")]
     for act in acts:
-        lines.append(f"  {usage(act)[len('chimera '):]:<50} {act.summary.split('.')[0]}")
-    lines += ["", "Примеры:"]
+        lines.append(f"  {usage(act)[len('chimera '):]:<50} {_brief(act.summary)}")
+    lines += ["", t("cli.help.examples")]
     for act in acts:
         lines += [f"  {e}" for e in act.examples[:1]]
-    lines += ["", f"Справка по действию: chimera {group} <действие> --help"]
+    lines += ["", t("cli.help.action_hint", group=group)]
     return "\n".join(lines) + "\n"
 
 
@@ -93,7 +75,7 @@ def main_help() -> str:
         variants = "" if acts == [""] else " " + "|".join(acts)
         rows.append(f"  {group + variants:<46} {summary}")
     codes = "\n".join(f"  {code}  {text}" for code, text in EXIT_CODES)
-    return MAIN_HELP.format(commands="\n".join(rows), codes=codes)
+    return t("cli.help.main", commands="\n".join(rows), codes=codes)
 
 
 def all_actions() -> tuple[Action, ...]:

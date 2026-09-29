@@ -6,9 +6,11 @@ import os
 import re
 import sys
 
+from modules import i18n
 from modules.cli import commands, help as helptext
 from modules.cli.client import CliError, Usage
 from modules.cli.registry import ACTIONS, BY_GROUP, DEFAULT_ACTION, Action, Arg
+from modules.i18n import t
 
 SCHEMA = 1
 UI_FLAGS = ("--window", "--browser", "--tray")
@@ -18,27 +20,30 @@ _ONOFF = {"on": True, "true": True, "1": True, "yes": True, "да": True,
 
 # --- разбор аргументов ----------------------------------------------------------------------
 
-def _translate(message: str) -> str:
+def _translate(message: str) -> tuple[str, dict]:
+    """Сообщение argparse (оно всегда по-английски) -> (ключ каталога, параметры)."""
     m = re.match(r"the following arguments are required: (.+)", message)
     if m:
-        return f"не указан параметр: {m.group(1)}"
+        return "cli.usage.missing", {"names": m.group(1)}
     m = re.match(r"argument [^:]+: invalid choice: '?([^' ]*)'? \(choose from (.+)\)", message)
     if m:
         options = ", ".join(x.strip("' ") for x in m.group(2).split(","))
-        return f"недопустимое значение {m.group(1)!r}; допустимо: {options}"
+        return "cli.usage.invalid_choice", {"value": repr(m.group(1)), "options": options}
     m = re.match(r"unrecognized arguments: (.+)", message)
     if m:
-        return f"лишние параметры: {m.group(1)}"
+        return "cli.usage.unrecognized", {"args": m.group(1)}
     m = re.match(r"argument (--[\w-]+): expected one argument", message)
     if m:
-        return f"у {m.group(1)} нет значения"
+        return "cli.usage.no_value", {"flag": m.group(1)}
     m = re.match(r"argument [^:]+: (.+)", message)
-    return m.group(1) if m else message
+    return "cli.usage.plain", {"message": m.group(1) if m else message}
 
 
 class _Parser(argparse.ArgumentParser):
     def error(self, message):
-        raise Usage(f"{_translate(message)}. Справка: {self.prog} --help")
+        key, params = _translate(message)
+        params["prog"] = self.prog
+        raise Usage(t("cli.usage.with_help", message=t(key, **params), prog=self.prog), key, params)
 
 
 def _int(arg: Arg):
@@ -46,7 +51,8 @@ def _int(arg: Arg):
         try:
             return int(text)
         except ValueError:
-            raise argparse.ArgumentTypeError(f"{arg.name}: нужно целое число ({arg.help or arg.name})") from None
+            raise argparse.ArgumentTypeError(
+                t("cli.usage.need_int", name=arg.label, help=arg.help or arg.label)) from None
     return conv
 
 
@@ -54,7 +60,7 @@ def _bool(text):
     try:
         return _ONOFF[str(text).strip().lower()]
     except KeyError:
-        raise argparse.ArgumentTypeError("нужно on или off") from None
+        raise argparse.ArgumentTypeError(t("cli.usage.need_onoff")) from None
 
 
 def _value(text):
@@ -75,7 +81,7 @@ def build_parser(act: Action) -> argparse.ArgumentParser:
             p.add_argument(f"--{arg.name}", dest=dest, type=conv, default=None,
                            choices=arg.choices or None, metavar=arg.name)
         else:
-            kw = {"dest": dest, "metavar": arg.name}
+            kw = {"dest": dest, "metavar": arg.label}
             if arg.kind == "rest":
                 kw["nargs"] = argparse.REMAINDER
             elif arg.kind == "names":
@@ -114,7 +120,10 @@ def _emit_json(payload: dict) -> None:
 
 def _fail(e: CliError, command: str, as_json: bool) -> int:
     if as_json:
-        _emit_json({"ok": False, "command": command, "error": {"code": e.code, "message": e.message}})
+        error = {"code": e.code, "message": e.message}
+        if e.key:
+            error.update(key=e.key, params=e.params)
+        _emit_json({"ok": False, "command": command, "error": error})
     else:
         print(e.message, file=sys.stderr)
     return e.exit_code
@@ -125,7 +134,7 @@ def _fail(e: CliError, command: str, as_json: bool) -> int:
 def _resolve(argv: list[str]) -> tuple[Action, list[str]]:
     group, rest = argv[0], argv[1:]
     if group not in BY_GROUP:
-        raise Usage(f"Неизвестная команда {group!r}. Список команд: chimera --help")
+        raise Usage.of("cli.usage.unknown_command", group=repr(group))
     acts = BY_GROUP[group]
     if "" in acts:
         return acts[""], rest
@@ -135,8 +144,8 @@ def _resolve(argv: list[str]) -> tuple[Action, list[str]]:
     if default and rest and not rest[0].startswith("-"):
         return acts[default], rest
     if not rest:
-        raise Usage(f"Укажите действие для {group}: {', '.join(acts)}. Справка: chimera {group} --help")
-    raise Usage(f"У команды {group} нет действия {rest[0]!r}. Доступные: {', '.join(acts)}.")
+        raise Usage.of("cli.usage.need_action", group=group, actions=", ".join(acts))
+    raise Usage.of("cli.usage.no_action", group=group, action=repr(rest[0]), actions=", ".join(acts))
 
 
 def _wants_help(argv: list[str]) -> bool:
@@ -157,12 +166,47 @@ def _print_help(argv: list[str]) -> None:
         print(helptext.group_help(group), end="")
 
 
+def _take_lang(argv: list[str]) -> tuple[list[str], str | None]:
+    """Вынимает `--lang ru|en` (или `--lang=en`) из любого места; язык ставится на весь запуск."""
+    rest, lang, i = [], None, 0
+    while i < len(argv):
+        a = argv[i]
+        if a == "--lang" or a.startswith("--lang="):
+            if a == "--lang":
+                if i + 1 >= len(argv):
+                    raise Usage.of("cli.usage.lang_missing", options=", ".join(i18n.LANGS))
+                value, i = argv[i + 1], i + 1
+            else:
+                value = a.split("=", 1)[1]
+            if value not in i18n.LANGS:
+                raise Usage.of("cli.usage.lang_invalid", value=repr(value), options=", ".join(i18n.LANGS))
+            lang = value
+        else:
+            rest.append(a)
+        i += 1
+    return rest, lang
+
+
 def main(argv: list[str] | None = None) -> int:
     argv = list(sys.argv[1:] if argv is None else argv)
+    prev = i18n.override()      # `--lang` действует на один запуск (тесты зовут main много раз подряд)
+    try:
+        return _main(argv)
+    finally:
+        i18n.set_lang(prev)
+
+
+def _main(argv: list[str]) -> int:
     _setup_streams()
     as_json = "--json" in argv
     reveal = "--show-secrets" in argv
     argv = [a for a in argv if a not in ("--json", "--show-secrets")]
+    try:
+        argv, lang = _take_lang(argv)
+    except CliError as e:
+        return _fail(e, "", as_json)
+    if lang:
+        i18n.set_lang(lang)
     command = " ".join(a for a in argv if not a.startswith("-"))[:60]
 
     try:
@@ -191,14 +235,14 @@ def main(argv: list[str] | None = None) -> int:
             _emit_json({"ok": result.exit_code == 0, "command": act.command, "level": act.level,
                         "data": result.data})
         else:
-            lines = result.lines if result.lines is not None else (commands.render(result.data) or ["Готово."])
+            lines = result.lines if result.lines is not None else (commands.render(result.data) or [t("cli.done")])
             for line in lines:
                 print(line)
         return result.exit_code
     except CliError as e:
         return _fail(e, command, as_json)
     except KeyboardInterrupt:
-        return _fail(CliError("Прервано.", "interrupted", 1), command, as_json)
+        return _fail(CliError.of("cli.interrupted", "interrupted", 1), command, as_json)
 
 
 def all_actions() -> tuple[Action, ...]:

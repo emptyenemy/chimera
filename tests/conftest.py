@@ -19,6 +19,8 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 os.environ.setdefault("CHIMERA_DATA", tempfile.mkdtemp(prefix="chimera-tests-data-"))
+# тесты сверяют русские тексты, а язык системы у того, кто их запускает, может быть любым
+os.environ["CHIMERA_LANG"] = "ru"
 
 import modules.paths as _paths  # noqa: E402 - после правки sys.path/CHIMERA_DATA
 

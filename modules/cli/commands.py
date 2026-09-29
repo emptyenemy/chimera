@@ -12,11 +12,13 @@ import sys
 import time
 from dataclasses import dataclass, field
 
-from modules import changelog, control, paths
+from modules import changelog, control, errors, paths
 from modules.cli import client as cl
 from modules.cli import pathenv
 from modules.cli.client import CliError, Usage
 from modules.cli.registry import READ
+from modules.errors import ChimeraError
+from modules.i18n import t
 
 CHANGES_LOG = paths.data_path("changes.log")
 LOG_FILES = {"winws": paths.log_path("winws.log"), "proxy": paths.log_path("proxy.log"),
@@ -64,9 +66,9 @@ class Ctx:
 
 def _scalar(v) -> str:
     if v is True:
-        return "да"
+        return t("cli.val.yes")
     if v is False:
-        return "нет"
+        return t("cli.val.no")
     if v is None:
         return "—"
     return str(v)
@@ -158,27 +160,27 @@ def h_status(ctx, act, ns):
             "proxy": _state(ctx, "proxy_state"), "tg": _state(ctx, "tg_state"),
             "hosts": _state(ctx, "hosts_state")}
     data["winws"] = {k: v for k, v in data["winws"].items() if k != "strategies"}
-    app, w, p, t, h = (data[k] for k in ("app", "winws", "proxy", "tg", "hosts"))
+    app, w, p, tg, h = (data[k] for k in ("app", "winws", "proxy", "tg", "hosts"))
 
     def on(x):
-        return "работает" if x.get("running") else "остановлен"
+        return t("cli.status.running") if x.get("running") else t("cli.status.stopped")
 
-    lines = [f"Chimera {app.get('version', '?')}, права администратора: {_scalar(app.get('admin'))}",
-             f"Обход DPI (winws): {on(w)}" + (f", стратегия {w.get('current')}" if w.get("current") else ""),
-             f"Прокси: {on(p)}" + (f", режим {p.get('mode')}" if p.get("mode") else ""),
-             f"Telegram-прокси: {on(t)}",
-             f"hosts: {'применены' if h.get('applied') else 'не применены'}"
-             + (f", записей {h.get('count')}" if h.get("count") is not None else "")]
-    for name, st in (("winws", w), ("proxy", p), ("tg", t)):
+    lines = [t("cli.status.app", version=app.get("version", "?"), admin=_scalar(app.get("admin"))),
+             t("cli.status.winws", state=on(w)) + (t("cli.status.strategy", strategy=w.get("current")) if w.get("current") else ""),
+             t("cli.status.proxy", state=on(p)) + (t("cli.status.mode", mode=p.get("mode")) if p.get("mode") else ""),
+             t("cli.status.tg", state=on(tg)),
+             t("cli.status.hosts_on" if h.get("applied") else "cli.status.hosts_off")
+             + (t("cli.status.hosts_count", count=h.get("count")) if h.get("count") is not None else "")]
+    for name, st in (("winws", w), ("proxy", p), ("tg", tg)):
         if st.get("error"):
-            lines.append(f"  ошибка {name}: {st['error']}")
+            lines.append(t("cli.status.error", name=name, error=st["error"]))
     return Result(data, lines)
 
 
 def h_version(ctx, act, ns):
     from modules.version import VERSION
     return Result({"version": VERSION, "protocol": control.PROTOCOL},
-                  [f"Chimera {VERSION} (протокол командной строки {control.PROTOCOL})"])
+                  [t("cli.version", version=VERSION, protocol=control.PROTOCOL)])
 
 
 def launch_app() -> None:
@@ -200,12 +202,11 @@ def _wait(cond, timeout: float, step: float = 0.3) -> bool:
 
 def h_start(ctx, act, ns):
     if cl.discover() is not None:
-        return Result({"running": True, "started": False}, ["Chimera уже запущена."])
+        return Result({"running": True, "started": False}, [t("cli.msg.already_running")])
     launch_app()
     if not _wait(lambda: cl.discover() is not None, WAIT_START, 0.5):
-        raise CliError("Не удалось дождаться запуска Chimera. Если появился запрос прав администратора, "
-                       "подтвердите его и повторите `chimera start`.", "start_failed", 3)
-    return Result({"running": True, "started": True}, ["Chimera запущена."])
+        raise CliError.of("cli.err.start_wait", "start_failed", 3)
+    return Result({"running": True, "started": True}, [t("cli.msg.started")])
 
 
 def h_tui(ctx, act, ns):
@@ -218,22 +219,21 @@ def h_tui(ctx, act, ns):
 def h_stop(ctx, act, ns):
     c = cl.discover()
     if c is None:
-        return Result({"running": False}, ["Chimera не запущена."])
+        return Result({"running": False}, [t("cli.msg.not_running")])
     c.action("quit")
     if not _wait(lambda: cl.discover() is None, WAIT_STOP):
-        raise CliError("Chimera не закрылась за отведённое время.", "stop_timeout", 1)
-    return Result({"running": False}, ["Chimera закрыта."])
+        raise CliError.of("cli.err.stop_timeout", "stop_timeout", 1)
+    return Result({"running": False}, [t("cli.msg.stopped")])
 
 
 def h_restart(ctx, act, ns):
     c = ctx.client()
     c.action("restart")
     if not _wait(lambda: cl.discover() is None, WAIT_STOP):
-        raise CliError("Chimera не закрылась для перезапуска.", "stop_timeout", 1)
+        raise CliError.of("cli.err.restart_stop_timeout", "stop_timeout", 1)
     if WAIT_RESTART and not _wait(lambda: cl.discover() is not None, WAIT_RESTART, 0.5):
-        raise CliError("Chimera не поднялась после перезапуска. Запустите её командой `chimera start`.",
-                       "start_failed", 3)
-    return Result({"running": True, "restarted": True}, ["Chimera перезапущена."])
+        raise CliError.of("cli.err.restart_start_wait", "start_failed", 3)
+    return Result({"running": True, "restarted": True}, [t("cli.msg.restarted")])
 
 
 def h_sources_check(ctx, act, ns):
@@ -257,7 +257,7 @@ def h_config_get(ctx, act, ns):
     if key is None:
         return Result(cfg)
     if key not in cfg:
-        raise CliError(f"Нет настройки {key!r}. Доступные: {', '.join(cfg)}.", "not_found", 1)
+        raise CliError.of("cli.err.config_missing", "not_found", 1, key=repr(key), options=", ".join(cfg))
     return Result({"key": key, "value": cfg[key]}, [_scalar(cfg[key])])
 
 
@@ -266,27 +266,46 @@ def h_config_set(ctx, act, ns):
     key, value = ns["a0"], ns["a1"]
     if cl.discover() is None:
         if key not in control.CONFIG_KEYS_WRITABLE:
-            raise CliError(f"Настройку {key!r} через командную строку менять нельзя.", "forbidden", 1)
+            raise CliError.of("cli.err.config_forbidden", "forbidden", 1, key=repr(key))
         try:
             return Result(appconfig.set_value(key, value))
-        except ValueError as e:
-            raise CliError(str(e), "invalid", 1) from e
+        except ChimeraError as e:
+            raise CliError(e.message(), "invalid", 1, e.code, e.params) from e
     return Result(ctx.call("config_set", key, value))
+
+
+# --- язык -------------------------------------------------------------------------------------
+
+def h_lang_show(ctx, act, ns):
+    from modules import i18n
+    data = ctx.call_or_local("lang_get", (), i18n.state)
+    return Result(data, [t("cli.lang.show", setting=data["setting"], lang=data["lang"], system=data["system"])])
+
+
+def h_lang_set(ctx, act, ns):
+    res = h_config_set(ctx, act, {"a0": "lang", "a1": ns["a0"]})
+    return Result(res.data, [t("cli.lang.set", setting=ns["a0"])])
+
+
+def h_lang_catalog(ctx, act, ns):
+    from modules import i18n
+    lang = ns.get("a0")
+    data = ctx.call_or_local("i18n_get", (lang,), lambda: i18n.frontend_payload(lang))
+    return Result(data, [t("cli.lang.catalog", lang=data["lang"], count=len(data["catalog"]))])
 
 
 # --- обход, Telegram, hosts, DNS ----------------------------------------------------------------
 
 def h_winws_strategies(ctx, act, ns):
     items = ctx.call("winws_state").get("strategies") or []
-    return Result(items, [f"{s.get('id')} — {s.get('name', '')}" for s in items] or ["Стратегий нет."])
+    return Result(items, [f"{s.get('id')} — {s.get('name', '')}" for s in items] or [t("cli.winws.none")])
 
 
 def h_winws_start(ctx, act, ns):
     sid = ns.get("a0") or ctx.call("winws_state").get("last_strategy")
     if not sid:
-        raise CliError("Стратегия не выбрана и раньше не запускалась. Список: chimera winws strategies.",
-                       "not_found", 1)
-    return Result(ctx.call("winws_start", sid), [f"Стратегия {sid} запущена."])
+        raise CliError.of("cli.err.no_strategy", "not_found", 1)
+    return Result(ctx.call("winws_start", sid), [t("cli.winws.started", strategy=sid)])
 
 
 def h_proxy_link(ctx, act, ns):
@@ -296,17 +315,17 @@ def h_proxy_link(ctx, act, ns):
     elif link == "-":
         link = sys.stdin.read().strip()
     elif link is None:
-        raise Usage("Укажите ссылку (или `-` для чтения из stdin), либо --clear.")
-    return Result(ctx.call("proxy_set_link", link), ["Ссылка прокси удалена." if not link else "Ссылка прокси сохранена."])
+        raise Usage.of("cli.usage.link_needed")
+    return Result(ctx.call("proxy_set_link", link), [t("cli.proxy.link_cleared" if not link else "cli.proxy.link_saved")])
 
 
 def h_tg_link(ctx, act, ns):
     link = (ctx.call("tg_state") or {}).get("link")
     if not link:
-        raise CliError("Ссылка недоступна: ядро Telegram-прокси не загрузилось.", "not_found", 1)
+        raise CliError.of("cli.err.tg_no_link", "not_found", 1)
     lines = [link]
     if not ctx.reveal:
-        lines.append("Секрет скрыт. Полная ссылка: chimera tg link --show-secrets")
+        lines.append(t("cli.tg.secret_hidden"))
     return Result({"link": link}, lines)
 
 
@@ -325,7 +344,7 @@ def _kv(items: list[str]) -> dict:
     for item in items or []:
         key, sep, value = item.partition("=")
         if not sep or not key:
-            raise Usage(f"Нужно ключ=значение, получено {item!r}.")
+            raise Usage.of("cli.usage.need_kv", item=repr(item))
         out[key.strip()] = _parse_value(value)
     return out
 
@@ -346,7 +365,7 @@ def h_hosts_assign(ctx, act, ns):
     for item in ns.get("a0") or []:
         prov, sep, names = item.partition("=")
         if not sep or not prov:
-            raise Usage(f"Нужно провайдер=список,список, получено {item!r}.")
+            raise Usage.of("cli.usage.need_assign", item=repr(item))
         given[prov.strip()] = [n.strip() for n in names.split(",") if n.strip()]
     if ns.get("a1"):
         mapping = given
@@ -408,29 +427,29 @@ def h_lists_show(ctx, act, ns):
     if name is None:
         info = ctx.call_or_local("lists_all", (), lambda: _domains().list_info())
         rows = [f"{i['name']}: {i['count']}" for i in info]
-        return Result(info, rows or ["Списков нет."])
+        return Result(info, rows or [t("cli.lists.none")])
     text = _read_list(ctx, name)
-    return Result({"name": name, "domains": _entries(text), "content": text}, _entries(text) or ["Список пуст."])
+    return Result({"name": name, "domains": _entries(text), "content": text}, _entries(text) or [t("cli.lists.empty")])
 
 
 def h_lists_save(ctx, act, ns):
     name, path = ns["a0"], ns.get("a1")
     text = open(path, encoding="utf-8").read() if path else sys.stdin.read()
-    return Result(_save_list(ctx, name, text), [f"Список {name} сохранён."])
+    return Result(_save_list(ctx, name, text), [t("cli.lists.saved", name=name)])
 
 
 def h_lists_create(ctx, act, ns):
     name = ns["a0"]
     return Result(ctx.call_or_local("lists_create", (name,), lambda: _domains().create_list(name)),
-                  [f"Список {name} создан."])
+                  [t("cli.lists.created", name=name)])
 
 
 def h_lists_delete(ctx, act, ns):
-    return Result(ctx.call("lists_delete", ns["a0"]), [f"Список {ns['a0']} удалён."])
+    return Result(ctx.call("lists_delete", ns["a0"]), [t("cli.lists.deleted", name=ns["a0"])])
 
 
 def h_lists_rename(ctx, act, ns):
-    return Result(ctx.call("lists_rename", ns["a0"], ns["a1"]), [f"Список {ns['a0']} переименован в {ns['a1']}."])
+    return Result(ctx.call("lists_rename", ns["a0"], ns["a1"]), [t("cli.lists.renamed", old=ns["a0"], new=ns["a1"])])
 
 
 def h_lists_add(ctx, act, ns):
@@ -444,7 +463,8 @@ def h_lists_add(ctx, act, ns):
             fresh.append(d)
     if fresh:
         _save_list(ctx, name, text.rstrip("\n") + "\n" + "\n".join(fresh) + "\n")
-    lines = [f"Добавлено: {len(fresh)}" + (f" (уже были: {len(items) - len(fresh)})" if len(fresh) != len(items) else "")]
+    lines = [t("cli.lists.added", count=len(fresh))
+             + (t("cli.lists.added_skipped", count=len(items) - len(fresh)) if len(fresh) != len(items) else "")]
     return Result({"name": name, "added": fresh, "skipped": [d for d in items if d not in fresh]}, lines)
 
 
@@ -457,7 +477,7 @@ def h_lists_remove(ctx, act, ns):
         (removed if line.strip().lower() in drop else kept).append(line.strip() if line.strip().lower() in drop else line)
     if removed:
         _save_list(ctx, name, "\n".join(kept).rstrip("\n") + "\n")
-    return Result({"name": name, "removed": removed}, [f"Удалено: {len(removed)}"])
+    return Result({"name": name, "removed": removed}, [t("cli.lists.removed", count=len(removed))])
 
 
 def h_lists_validate(ctx, act, ns):
@@ -469,34 +489,36 @@ def h_lists_validate(ctx, act, ns):
             results.append(dm.validate_list(n))
         except (FileNotFoundError, ValueError) as e:
             if name:
-                raise CliError(str(e), "not_found", 1) from e
+                raise CliError(str(e), "not_found", 1, "err.raw", {"message": str(e)}) from e
             # файл с именем, которое программа не откроет (`a b.txt`): ошибка этого списка, остальные проверяем
             results.append({"name": n, "entries": 0, "domains": 0, "networks": 0, "warnings": [], "ok": False,
                             "errors": [{"line": None, "entry": "", "problem": str(e)}]})
     lines = []
     for r in results:
-        lines.append(f"{r['name']}: " + ("ошибок нет" if r["ok"] else f"ошибок {len(r['errors'])}")
-                     + f", записей {r['entries']} (доменов {r['domains']}, подсетей {r['networks']})"
-                     + (f", предупреждений {len(r['warnings'])}" if r["warnings"] else ""))
-        for kind, items in (("ошибка", r["errors"]), ("предупреждение", r["warnings"])):
+        lines.append(t("cli.lists.check_line", name=r["name"],
+                       errors=t("cli.lists.no_errors") if r["ok"] else t("cli.lists.n_errors", count=len(r["errors"])),
+                       entries=t("cli.lists.n_entries", count=r["entries"]),
+                       domains=t("cli.lists.n_domains", count=r["domains"]),
+                       networks=t("cli.lists.n_networks", count=r["networks"]),
+                       warnings=(", " + t("cli.lists.n_warnings", count=len(r["warnings"]))) if r["warnings"] else ""))
+        for kind, items in (("cli.lists.kind_error", r["errors"]), ("cli.lists.kind_warning", r["warnings"])):
             for p in items:
-                where = f"строка {p['line']}" if p["line"] else "файл"
-                lines.append(f"  {kind}, {where}: {p['problem']}" + (f" ({p['entry']})" if p["entry"] else ""))
+                where = t("cli.lists.at_line", line=p["line"]) if p["line"] else t("cli.lists.at_file")
+                lines.append(t("cli.lists.problem", kind=t(kind), where=where, problem=p["problem"])
+                             + (f" ({p['entry']})" if p["entry"] else ""))
     bad = sum(1 for r in results if not r["ok"])
-    return Result({"lists": results}, lines or ["Списков нет."], exit_code=1 if bad else 0)
+    return Result({"lists": results}, lines or [t("cli.lists.none")], exit_code=1 if bad else 0)
 
 
 def h_lists_apply(ctx, act, ns):
     from modules import service
     name = ns.get("a0")
     if cl.discover() is None and service.is_running():
-        raise CliError("Работает только фоновая служба, у неё нет канала управления, поэтому применить список "
-                       "отсюда нельзя. Служба следит за lists/*.txt сама: правка файла подхватывается в течение "
-                       "нескольких секунд, результат в data/changes.log.", "service_only", 3)
+        raise CliError.of("cli.err.service_only", "service_only", 3)
     res = ctx.call("lists_apply", name)
-    lines = [f"Применено: {', '.join(res['applied']) or 'нет списков'}."]
-    lines.append("Используют: " + (", ".join(res["modules"]) if res["modules"] else "ни один модуль (список нигде не подключён)"))
-    lines += [f"ошибка {e['module']}: {e['error']}" for e in res["apply_errors"]]
+    lines = [t("cli.lists.applied", names=", ".join(res["applied"]) or t("cli.lists.applied_none"))]
+    lines.append(t("cli.lists.used_by", modules=", ".join(res["modules"]) if res["modules"] else t("cli.lists.used_by_none")))
+    lines += [t("cli.lists.apply_error", module=e["module"], error=e["error"]) for e in res["apply_errors"]]
     return Result(res, lines, exit_code=1 if res["apply_errors"] else 0)
 
 
@@ -535,7 +557,7 @@ def h_check_list(ctx, act, ns):
     name, only = ns["a0"], ns.get("a1")
     entries = _entries(_read_list(ctx, name))
     if not entries:
-        raise CliError(f"В списке {name} нет доменов.", "not_found", 1)
+        raise CliError.of("cli.err.list_no_domains", "not_found", 1, name=name)
     with concurrent.futures.ThreadPoolExecutor(max_workers=8) as pool:
         results = list(pool.map(lambda d: _check_one(ctx, d, only), entries))
     return Result({"list": name, "results": results}, [f"{r['domain']}: {_short(r)}" for r in results])
@@ -559,7 +581,7 @@ def h_logs(ctx, act, ns):
         lines = path.read_text(encoding="utf-8", errors="replace").splitlines()[-tail:]
     except OSError:
         lines = []
-    return Result({"module": module, "file": str(path), "lines": lines}, lines or ["Лог пуст."])
+    return Result({"module": module, "file": str(path), "lines": lines}, lines or [t("cli.logs.empty")])
 
 
 def h_service(ctx, act, ns):
@@ -584,9 +606,9 @@ def h_agent_info(ctx, act, ns):
 def h_path_show(ctx, act, ns):
     d = pathenv.app_dir()
     inside = pathenv.contains(d)
-    lines = [f"Папка программы: {d}", "В PATH: " + ("да" if inside else "нет")]
+    lines = [t("cli.path.dir", dir=d), t("cli.path.in_path", value=t("cli.val.yes" if inside else "cli.val.no"))]
     if not paths.IS_FROZEN:
-        lines.append("Запуск из исходников: команда `chimera` появится только у собранной программы.")
+        lines.append(t("cli.path.from_source"))
     return Result({"dir": str(d), "in_path": inside, "frozen": bool(paths.IS_FROZEN)}, lines)
 
 
@@ -594,14 +616,14 @@ def h_path_add(ctx, act, ns):
     d = pathenv.app_dir()
     changed = pathenv.add(d)
     return Result({"dir": str(d), "changed": changed},
-                  [f"Добавлено в PATH: {d}. Откройте новый терминал." if changed else "Папка уже в PATH."])
+                  [t("cli.path.added", dir=d) if changed else t("cli.path.already")])
 
 
 def h_path_remove(ctx, act, ns):
     d = pathenv.app_dir()
     changed = pathenv.remove(d)
     return Result({"dir": str(d), "changed": changed},
-                  [f"Убрано из PATH: {d}." if changed else "Папки не было в PATH."])
+                  [t("cli.path.removed", dir=d) if changed else t("cli.path.not_there")])
 
 
 def _sections(text):
@@ -621,7 +643,7 @@ def h_doctor(ctx, act, ns):
     lines = [f"[{icons.get(c['status'], c['status'])}] {c['title']}: {c['message']}"
              + (f"\n       {c['hint']}" if c["status"] != "ok" and c.get("hint") else "") for c in res["checks"]]
     s = res["summary"]
-    lines.append(f"Итого: ok {s['ok']}, замечаний {s['warn']}, проблем {s['fail']}.")
+    lines.append(t("cli.doctor.summary", ok=s["ok"], warn=s["warn"], fail=s["fail"]))
     return Result(res, lines, exit_code=1 if s["fail"] else 0)
 
 
@@ -631,22 +653,22 @@ def h_config_export(ctx, act, ns):
     if path:
         with open(path, "w", encoding="utf-8") as f:
             f.write(text)
-        return Result({"file": path}, [f"Конфиг записан в {path}."])
+        return Result({"file": path}, [t("cli.config.written", path=path)])
     return Result({"config": text}, text.splitlines())
 
 
 def _preview_lines(pv):
     if not pv.get("ok"):
-        return [pv.get("error") or "Конфиг не подходит."]
+        return [errors.localized(pv) if pv.get("error") else t("cli.config.unfit")]
     out = []
     for s in pv["sections"]:
-        mark = " (зависит от провайдера)" if s.get("provider_dependent") else ""
+        mark = t("cli.config.provider_dependent") if s.get("provider_dependent") else ""
         out.append(f"{s['title']}{mark}:")
         out += [f"  {c}" for c in s["changes"]]
         out += [f"  ! {c}" for c in s["confirm"]]
-        out += [f"  пропущено: {c}" for c in s["skipped"]]
+        out += [t("cli.config.skipped_item", item=c) for c in s["skipped"]]
     if pv.get("needs_confirm"):
-        out.append("Есть пункты, требующие подтверждения (!): применяйте с --confirm, только если доверяете автору.")
+        out.append(t("cli.config.needs_confirm"))
     return out
 
 
@@ -665,16 +687,17 @@ def h_config_import(ctx, act, ns):
         sections = [s["id"] for s in pv["sections"] if not s.get("provider_dependent")]
     res = ctx.call("config_import_apply", text, sections, bool(ns.get("a2")))
     lines = [f"{sid}: {x}" for sid, items in res["applied"].items() for x in items]
-    lines += [f"пропущено, {sid}: {x}" for sid, items in res["skipped"].items() for x in items]
-    lines += [f"ошибка: {e}" for e in res["errors"]]
+    lines += [t("cli.config.skipped_in", section=sid, item=x) for sid, items in res["skipped"].items() for x in items]
+    lines += [t("cli.config.error_item", error=e) for e in res["errors"]]
     if res.get("backup"):
-        lines.append(f"Прежние файлы: {res['backup']}")
-    return Result(res, lines or ["Нечего применять."], exit_code=1 if res["errors"] else 0)
+        lines.append(t("cli.config.backup", path=res["backup"]))
+    return Result(res, lines or [t("cli.config.nothing")], exit_code=1 if res["errors"] else 0)
 
 
 HANDLERS = {
     "status": h_status, "version": h_version, "start": h_start, "tui": h_tui, "stop": h_stop, "restart": h_restart,
     "sources_check": h_sources_check, "config_get": h_config_get, "config_set": h_config_set,
+    "lang_show": h_lang_show, "lang_set": h_lang_set, "lang_catalog": h_lang_catalog,
     "winws_strategies": h_winws_strategies, "winws_start": h_winws_start, "proxy_link": h_proxy_link, "tg_link": h_tg_link,
     "tg_config": h_tg_config, "tg_advanced": h_tg_advanced, "hosts_assign": h_hosts_assign,
     "hosts_background": h_hosts_background, "dns_ping": h_dns_ping, "dns_probe_config": h_dns_probe_config,

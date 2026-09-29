@@ -17,7 +17,9 @@ from PySide6.QtWebEngineCore import QWebEngineScript
 from PySide6.QtWebEngineWidgets import QWebEngineView
 from PySide6.QtWidgets import QApplication, QMainWindow, QMenu, QSystemTrayIcon
 
-from modules import appconfig, control, instance
+from modules import appconfig, control, errors, i18n, instance
+from modules.errors import ChimeraError
+from modules.i18n import t
 
 from . import theme, tray_model
 from .api import Api
@@ -108,23 +110,25 @@ class Tray(QObject):
         self.icon = QSystemTrayIcon(QIcon(str(APP_ICON)), app)
         self.icon.setToolTip("Chimera")  # только имя: состояние — в меню, не в подсказке
         menu = QMenu()
-        menu.addAction("Открыть Chimera").triggered.connect(window.bring_to_front)
+        self.open_action = menu.addAction("")
+        self.open_action.triggered.connect(window.bring_to_front)
         menu.addSeparator()
         self.status = menu.addAction("")
         self.status.setEnabled(False)
         menu.addSeparator()
         self.toggles = {}
-        for key, label in tray_model.MODULES:
-            action = menu.addAction(label)
+        for key, _label in tray_model.MODULES:
+            action = menu.addAction("")
             action.setCheckable(True)
             # triggered (а не toggled) — только клик пользователя, не setChecked из refresh
             action.triggered.connect(lambda checked, k=key: self.toggle(k, checked))
             self.toggles[key] = action
         menu.addSeparator()
-        self.panic_action = menu.addAction(tray_model.PANIC_LABEL)
+        self.panic_action = menu.addAction("")
         self.panic_action.triggered.connect(lambda: self.panic())
         menu.addSeparator()
-        menu.addAction("Выход").triggered.connect(self.quit)
+        self.quit_action = menu.addAction("")
+        self.quit_action.triggered.connect(self.quit)
         menu.aboutToShow.connect(self.refresh)
         self.menu = menu  # иначе меню соберёт сборщик мусора
         self.icon.setContextMenu(menu)
@@ -133,6 +137,7 @@ class Tray(QObject):
         self.notified.connect(lambda title, text: self.icon.showMessage(
             title, text, QSystemTrayIcon.MessageIcon.Warning, 6000))
 
+        self._lang = None
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.refresh)
         self.timer.start(self.REFRESH_MS)
@@ -141,7 +146,18 @@ class Tray(QObject):
 
     # --- состояние ---------------------------------------------------------------
 
+    def retranslate(self):
+        """Подписи меню на текущем языке (язык могут сменить в настройках, пока трей живёт)."""
+        self._lang = i18n.current_lang()
+        self.open_action.setText(t("tray.open"))
+        for key, action in self.toggles.items():
+            action.setText(tray_model.module_label(key))
+        self.panic_action.setText(tray_model.panic_label())
+        self.quit_action.setText(t("tray.quit"))
+
     def refresh(self):
+        if self._lang != i18n.current_lang():
+            self.retranslate()
         states = self.api.hub.snapshot()
         self.status.setText(tray_model.summary(states)[2])
         for key, action in self.toggles.items():
@@ -151,8 +167,8 @@ class Tray(QObject):
     def toggle(self, key, on):
         try:
             method, args = tray_model.toggle_command(key, self.api.hub.snapshot().get(key), on)
-        except ValueError as e:
-            self.notified.emit("Chimera", str(e))
+        except ChimeraError as e:
+            self.notified.emit("Chimera", e.message())
             self.refresh()
             return
         self.busy.add(key)
@@ -164,8 +180,7 @@ class Tray(QObject):
         try:
             res = json.loads(self.api.dispatch(method, json.dumps(args)))
             if not res.get("ok"):
-                label = dict(tray_model.MODULES)[key]
-                self.notified.emit(f"{label}: не получилось", res.get("error") or "неизвестная ошибка")
+                self.notified.emit(t("tray.notify.failed", label=tray_model.module_label(key)), errors.localized(res))
         finally:
             self.busy.discard(key)
 
@@ -181,11 +196,11 @@ class Tray(QObject):
             method, args = tray_model.PANIC_COMMAND
             res = json.loads(self.api.dispatch(method, json.dumps(args)))
             if not res.get("ok"):
-                self.notified.emit("Выключить всё: не получилось", res.get("error") or "неизвестная ошибка")
+                self.notified.emit(t("tray.notify.panic_failed"), errors.localized(res))
                 return
             text = tray_model.panic_summary(res.get("data"))
             if text:
-                self.notified.emit("Выключить всё: не всё получилось", text)
+                self.notified.emit(t("tray.notify.panic_partial"), text)
         finally:
             self.busy.discard("panic")
             self.panic_action.setEnabled(True)
@@ -205,8 +220,7 @@ class Tray(QObject):
         if cfg.get("tray_hint_shown"):
             return
         appconfig.set_value("tray_hint_shown", True)
-        self.icon.showMessage("Chimera работает в трее",
-                              "Модули продолжают работать. Закрыть программу — «Выход» в меню значка.",
+        self.icon.showMessage(t("tray.hint.title"), t("tray.hint.text"),
                               QSystemTrayIcon.MessageIcon.Information, 6000)
 
     def quit(self):

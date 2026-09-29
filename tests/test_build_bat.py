@@ -52,6 +52,8 @@ def test_runtime_data_is_in_build():
     dirs = dict(re.findall(r"--include-data-dir=([^=\s]+)=([^\s^]+)", BUILD_BAT))
     files = dict(re.findall(r"--include-data-files=([^=\s]+)=([^\s^]+)", BUILD_BAT))
     assert dirs.get("lists") == "lists"
+    # каталоги текстов (modules/i18n.py) читаются из modules/locales рядом с программой
+    assert dirs.get("modules/locales") == "modules/locales"
     hosts = "upstream/zapret-discord-youtube/.service/hosts"
     assert files.get(hosts) == hosts
 

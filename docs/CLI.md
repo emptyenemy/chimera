@@ -10,6 +10,7 @@
 
 - `--json` — машинный вывод
 - `--show-secrets` — не скрывать секреты
+- `--lang` — язык вывода: ru или en (по умолчанию из настроек)
 - `-h/--help` — справка
 - `--version` — версия
 
@@ -29,7 +30,7 @@
 - `command` — команда без параметров, например `winws start`
 - `level` — read | app | system — что команда меняет (только при ok=true)
 - `data` — то, что вернул метод приложения, без потерь; у составных команд (status, check) — сводка
-- `error` — при ok=false: {code, message}; code — usage, not_running, app_too_old, remote_error, forbidden, …
+- `error` — при ok=false: {code, message, key, params}; code — usage, not_running, app_too_old, remote_error, forbidden, …; key и params — ключ сообщения в каталоге и его параметры (есть не у всех ошибок); message зависит от языка, code и key нет
 
 ## Уровни команд
 
@@ -60,6 +61,9 @@
 | Настройки → Источники и обновления → «Обновить» | `chimera sources update <имя>` | system |
 | Настройки | `chimera config get [ключ]` | read |
 | Настройки: переключатели и выбор | `chimera config set <ключ> <значение>` | app |
+| Настройки → Язык | `chimera lang show` | read |
+| Настройки → Язык | `chimera lang set <auto|ru|en>` | app |
+| Окно: загрузка текстов интерфейса | `chimera lang catalog [ru|en]` | read |
 | Стратегии: шапка, Обзор | `chimera winws state` | read |
 | Стратегии: список карточек | `chimera winws strategies` | read |
 | Стратегии → «Запустить» / Обзор → включатель | `chimera winws start [стратегия]` | system |
@@ -182,7 +186,7 @@ chimera start
 
 #### `chimera tui [--simple]`
 
-Полноэкранный терминальный интерфейс: вкладки Обзор, Стратегии, Списки, Прокси, Hosts, DNS, Telegram, Логи, Настройки. Работает с уже запущенной Chimera (не запущена — поднимет её без окна) теми же методами, что остальные команды; выход (q) Chimera не останавливает. Без терминала или без Textual откатывается на простое меню. --simple — старое меню цифрами со своим Api, без Textual. Уровень: изменение приложения. Работает и без запущенной Chimera.
+Полноэкранный терминальный интерфейс: вкладки Обзор, Стратегии, Списки, Прокси, Hosts, DNS, Telegram, Логи, Настройки. Работает с уже запущенной Chimera (не запущена — поднимет её без окна); выход (q) Chimera не останавливает. Без терминала или без Textual откатывается на простое меню. --simple — старое меню цифрами со своим Api. Уровень: изменение приложения. Работает и без запущенной Chimera.
 
 - `--simple` — простое меню цифрами вместо полноэкранного
 
@@ -340,7 +344,7 @@ chimera config get update_channel
 
 #### `chimera config set <ключ> <значение>`
 
-Изменить настройку. Доступно то, что меняет окно: ui_backend, auto_elevate, close_to_tray, update_channel, update_check, theme (system, light или dark). Остальное — правкой config.json. Уровень: изменение приложения. Работает и без запущенной Chimera.
+Изменить настройку. Доступно то, что меняет окно: ui_backend, auto_elevate, close_to_tray, update_channel, update_check, theme (system, light или dark), lang (auto, ru или en). Остальное — правкой config.json. Уровень: изменение приложения. Работает и без запущенной Chimera.
 
 - `ключ` — имя настройки
 - `значение` — true/false, число или строка
@@ -383,6 +387,40 @@ chimera config import-preview friend.chimera
 
 ```
 chimera config import friend.chimera --sections proxy,lists
+```
+
+### lang
+
+Язык программы.
+
+#### `chimera lang show`
+
+Язык программы: что выбрано в настройках, какой язык действует сейчас и какой у системы. Уровень: чтение. Работает и без запущенной Chimera.
+
+```
+chimera lang show
+chimera lang show --json
+```
+
+#### `chimera lang set <auto|ru|en>`
+
+Выбрать язык программы: auto (как в Windows), ru или en. Флаг `--lang` и переменная CHIMERA_LANG приоритетнее. Уровень: изменение приложения. Работает и без запущенной Chimera.
+
+- `значение` — auto, ru или en
+
+```
+chimera lang set en
+chimera lang set auto
+```
+
+#### `chimera lang catalog [ru|en]`
+
+Каталог текстов языка целиком (для окна и проверок): ключ → текст. Без языка — текущий. Уровень: чтение. Работает и без запущенной Chimera.
+
+- `язык` — ru или en; без него — текущий
+
+```
+chimera lang catalog en --json
 ```
 
 ### winws
