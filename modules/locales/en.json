@@ -608,5 +608,20 @@
   "err.tg.no_link": "The link is not available.",
   "err.unknown": "Unknown error",
   "err.url.http_only": "Only http(s) links are allowed.",
-  "err.winws.foreign": "winws2 was not started by this Chimera. Restart the strategy manually."
+  "err.winws.foreign": "winws2 was not started by this Chimera. Restart the strategy manually.",
+  "tray.hint.text": "The modules keep working. To quit the program, use “Exit” in the icon menu.",
+  "tray.hint.title": "Chimera is running in the tray",
+  "tray.module.hosts": "Hosts unblocking",
+  "tray.module.proxy": "Proxy",
+  "tray.module.tg": "Telegram proxy",
+  "tray.module.winws": "DPI bypass",
+  "tray.notify.failed": "{label}: failed",
+  "tray.notify.panic_failed": "Turn everything off: failed",
+  "tray.notify.panic_partial": "Turn everything off: not everything succeeded",
+  "tray.open": "Open Chimera",
+  "tray.panic": "Turn everything off",
+  "tray.quit": "Exit",
+  "tray.summary.guard": "Protection on · {n} of {total}",
+  "tray.summary.off": "Everything is off",
+  "tray.summary.some": "{n} of {total} on"
 }

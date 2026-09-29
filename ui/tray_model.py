@@ -4,19 +4,32 @@
 что видит окно. Правила «включён ли модуль» и «защита активна» повторяют
 ui/web/js/shell.js (Status), команды — дашборд (ui/web/js/pages/dashboard.js):
 трей, сайдбар и дашборд не должны расходиться в том, что считать включённым.
+
+Тексты меню и уведомлений — в каталоге (ключи tray.*), язык берётся в момент показа.
 """
 
-# (ключ источника хаба, подпись в меню)
+from modules import errors
+from modules.errors import ChimeraError
+from modules.i18n import t
+
+# (ключ источника хаба, ключ подписи в каталоге)
 MODULES = (
-    ("winws", "Обход DPI"),
-    ("proxy", "Прокси"),
-    ("tg", "Telegram-прокси"),
-    ("hosts", "Разблокировка hosts"),
+    ("winws", "tray.module.winws"),
+    ("proxy", "tray.module.proxy"),
+    ("tg", "tray.module.tg"),
+    ("hosts", "tray.module.hosts"),
 )
 
 
-PANIC_LABEL = "Выключить всё"
 PANIC_COMMAND = ("panic_all", [])   # тот же метод Api, что у кнопки на «Обзоре»
+
+
+def module_label(key: str) -> str:
+    return t(dict(MODULES)[key])
+
+
+def panic_label() -> str:
+    return t("tray.panic")
 
 
 def panic_summary(data: dict | None) -> str | None:
@@ -24,7 +37,7 @@ def panic_summary(data: dict | None) -> str | None:
     failed = [s for s in (data or {}).get("steps") or [] if not s.get("ok")]
     if not failed:
         return None
-    return "\n".join(f"{s.get('step')}: {s.get('error') or 'ошибка'}" for s in failed)
+    return "\n".join(f"{s.get('step')}: {errors.localized(s)}" for s in failed)
 
 
 def is_on(key: str, data: dict | None) -> bool:
@@ -40,7 +53,8 @@ def summary(states: dict) -> tuple[bool, int, str]:
     # «защита» — любой способ обхода, который реально трогает трафик (tg — нет)
     guard = on["winws"] or on["proxy"] or on["hosts"]
     total = len(MODULES)
-    text = f"Защита активна · {n} из {total}" if guard else (f"{n} из {total} включено" if n else "Всё выключено")
+    text = (t("tray.summary.guard", n=n, total=total) if guard
+            else (t("tray.summary.some", n=n, total=total) if n else t("tray.summary.off")))
     return guard, n, text
 
 
@@ -59,7 +73,7 @@ def toggle_command(key: str, data: dict | None, on: bool) -> tuple[str, list]:
             return "winws_stop", []
         strategy = winws_strategy(data)
         if not strategy:
-            raise ValueError("Нет стратегий — выбери одну во вкладке «Стратегии»")
+            raise ChimeraError("err.strategies.none")
         return "winws_start", [strategy]
     if key == "hosts":
         return "hosts_set_enabled", [on]

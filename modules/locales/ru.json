@@ -616,5 +616,20 @@
   "err.tg.no_link": "Ссылка недоступна",
   "err.unknown": "неизвестная ошибка",
   "err.url.http_only": "Только http(s)-ссылки",
-  "err.winws.foreign": "winws2 запущен не этой Chimera — перезапустите стратегию вручную"
+  "err.winws.foreign": "winws2 запущен не этой Chimera — перезапустите стратегию вручную",
+  "tray.hint.text": "Модули продолжают работать. Закрыть программу — «Выход» в меню значка.",
+  "tray.hint.title": "Chimera работает в трее",
+  "tray.module.hosts": "Разблокировка hosts",
+  "tray.module.proxy": "Прокси",
+  "tray.module.tg": "Telegram-прокси",
+  "tray.module.winws": "Обход DPI",
+  "tray.notify.failed": "{label}: не получилось",
+  "tray.notify.panic_failed": "Выключить всё: не получилось",
+  "tray.notify.panic_partial": "Выключить всё: не всё получилось",
+  "tray.open": "Открыть Chimera",
+  "tray.panic": "Выключить всё",
+  "tray.quit": "Выход",
+  "tray.summary.guard": "Защита активна · {n} из {total}",
+  "tray.summary.off": "Всё выключено",
+  "tray.summary.some": "{n} из {total} включено"
 }
