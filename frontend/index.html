@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="ru" data-frontend="next">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Chimera</title>
+    <link rel="icon" type="image/svg+xml" href="./logo.svg" />
+    <script>
+      /* Тема до первой отрисовки. Класс dark и data-theme ставит Python-часть (ui/theme.py);
+         если их нет (запуск npm run dev, старый бэкенд), по умолчанию тёмная. */
+      try {
+        var root = document.documentElement
+        if (!root.dataset.theme && !root.classList.contains("light")) root.classList.add("dark")
+      } catch (e) {}
+    </script>
+    <script src="./qwebchannel.js"></script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
