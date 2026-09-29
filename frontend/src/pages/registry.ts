@@ -19,6 +19,7 @@ import {
 import type { ModuleKey } from "@/lib/types"
 import { DashboardPage } from "@/pages/dashboard"
 import { StubPage } from "@/pages/stub"
+import { ChecksPage } from "@/pages/checks"
 
 export interface PageDef {
   id: string
@@ -43,7 +44,7 @@ export const PAGES: PageDef[] = [
   { id: "hosts", titleKey: "nav.hosts", icon: ServerIcon, groupKey: "nav.group.network", dot: "hosts", component: stub("hosts") },
   { id: "dns", titleKey: "nav.dns", icon: NetworkIcon, groupKey: "nav.group.network", component: stub("dns") },
   { id: "lists", titleKey: "nav.lists", icon: ListIcon, groupKey: "nav.group.data", component: stub("lists") },
-  { id: "checks", titleKey: "nav.checks", icon: ScanSearchIcon, groupKey: "nav.group.data", component: stub("checks") },
+  { id: "checks", titleKey: "nav.checks", icon: ScanSearchIcon, groupKey: "nav.group.data", component: ChecksPage },
   { id: "settings", titleKey: "nav.settings", icon: SettingsIcon, groupKey: "nav.group.system", component: stub("settings") },
 ]
 
