@@ -57,6 +57,7 @@ class Action:
 GROUPS: dict[str, str] = {
     "status": "что работает сейчас",
     "start": "запустить Chimera без окна (в трее)",
+    "tui": "полноэкранный терминальный интерфейс (вкладки, тумблеры, живое состояние)",
     "stop": "закрыть Chimera",
     "restart": "перезапустить Chimera",
     "version": "версия программы и протокола",
@@ -115,6 +116,13 @@ ACTIONS: tuple[Action, ...] = (
        examples=("chimera --version", "chimera version --json")),
     _a("start", "", "Запустить Chimera без окна, в трее. Права администратора запросит сама программа.",
        "Запуск программы / автозапуск", handler="start", level=APP, examples=("chimera start",)),
+    _a("tui", "", "Полноэкранный терминальный интерфейс: вкладки Обзор, Стратегии, Списки, Прокси, Hosts, DNS, "
+       "Telegram, Логи, Настройки. Работает с уже запущенной Chimera (не запущена — поднимет её без окна) теми же "
+       "методами, что остальные команды; выход (q) Chimera не останавливает. Без терминала или без Textual "
+       "откатывается на простое меню. --simple — старое меню цифрами со своим Api, без Textual.",
+       "Терминал: полноэкранный интерфейс", handler="tui", level=APP, offline=True,
+       args=(Arg("simple", "switch", "простое меню цифрами вместо полноэкранного", flag=True, default=False),),
+       examples=("chimera tui", "chimera tui --simple")),
     _a("stop", "", "Закрыть Chimera и погасить её модули.",
        "Меню значка → Выход", handler="stop", level=APP, examples=("chimera stop",)),
     _a("restart", "", "Перезапустить Chimera.",

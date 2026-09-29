@@ -117,7 +117,7 @@ def loggable(act, argv: list[str]) -> str:
 
 
 def record_change(act, argv: list[str], ok: bool) -> None:
-    if act.level == READ:
+    if act.level == READ or act.group == "tui":   # tui — интерактивная оболочка: её действия пишет сама (tui/remote.py)
         return
     if act.group == "service" and (len(argv) < 2 or argv[1] in ("status", "run")):
         return  # `service run` зовёт планировщик при старте системы: это не правка пользователя
@@ -206,6 +206,13 @@ def h_start(ctx, act, ns):
         raise CliError("Не удалось дождаться запуска Chimera. Если появился запрос прав администратора, "
                        "подтвердите его и повторите `chimera start`.", "start_failed", 3)
     return Result({"running": True, "started": True}, ["Chimera запущена."])
+
+
+def h_tui(ctx, act, ns):
+    if ctx.json:
+        raise Usage("У chimera tui нет вывода в JSON: это интерактивный интерфейс.")
+    from tui import launch
+    return Result(None, [], exit_code=launch.run(simple=bool(ns.get("a0"))))
 
 
 def h_stop(ctx, act, ns):
@@ -666,7 +673,7 @@ def h_config_import(ctx, act, ns):
 
 
 HANDLERS = {
-    "status": h_status, "version": h_version, "start": h_start, "stop": h_stop, "restart": h_restart,
+    "status": h_status, "version": h_version, "start": h_start, "tui": h_tui, "stop": h_stop, "restart": h_restart,
     "sources_check": h_sources_check, "config_get": h_config_get, "config_set": h_config_set,
     "winws_strategies": h_winws_strategies, "winws_start": h_winws_start, "proxy_link": h_proxy_link, "tg_link": h_tg_link,
     "tg_config": h_tg_config, "tg_advanced": h_tg_advanced, "hosts_assign": h_hosts_assign,

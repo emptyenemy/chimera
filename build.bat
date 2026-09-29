@@ -43,6 +43,11 @@ REM pywebview is deliberately left out of the build (it pulls WebView2 through
 REM .NET/clr_loader at runtime, invisible to the packager); picking "pywebview"
 REM in a built exe falls back to the browser engine.
 REM
+REM Textual (chimera tui) imports its widgets lazily by name (textual.widgets.__getattr__) and
+REM rich loads its Unicode width tables with importlib, so both go in with --include-package
+REM (+ --include-package-data for their non-code files); markdown-it-py comes with rich.
+REM The TUI keeps its CSS inside Python strings on purpose: no .tcss data files to lose.
+REM
 REM Same story for main.py's own mode dispatch: "interface" (ui/tui/service) is a
 REM string from config.json, invisible to static analysis - tui.app and
 REM modules.service need --include-module too, or a built exe would fail on
@@ -89,6 +94,10 @@ python -m nuitka ^
     --include-module=ui.backend_browser ^
     --include-module=modules.service ^
     --include-package=tui ^
+    --include-package=textual ^
+    --include-package-data=textual ^
+    --include-package=rich ^
+    --include-package=markdown_it ^
     --include-package=asyncio ^
     --include-package=logging ^
     --include-package=ctypes ^
