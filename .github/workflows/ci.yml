@@ -61,6 +61,10 @@ jobs:
         working-directory: frontend
         run: npm run build
 
+      - name: Лендинг — сборка
+        working-directory: frontend
+        run: npm run build:landing
+
       - name: ruff
         run: python -m ruff check .
 

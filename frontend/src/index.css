@@ -2,6 +2,9 @@
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
 
+@source "./components/ui";
+@source "./landing";
+
 /* Шрифты лежат в public/fonts (те же файлы, что у старого фронта в ui/web/fonts). */
 @font-face {
   font-family: "Inter Variable";
