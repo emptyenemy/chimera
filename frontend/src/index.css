@@ -162,3 +162,15 @@
   ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 999px; border: 2px solid transparent; background-clip: padding-box; }
   ::-webkit-scrollbar-thumb:hover { background-color: var(--input); }
 }
+
+/* Пока тянут ручку сайдбара: без анимации ширины и выделения текста, курсор на всём окне. */
+html.sb-resizing [data-slot="sidebar-container"],
+html.sb-resizing [data-slot="sidebar-gap"],
+html.sb-resizing [data-slot="sidebar-resizer"] {
+  transition: none !important;
+}
+html.sb-resizing,
+html.sb-resizing * {
+  cursor: col-resize !important;
+  user-select: none;
+}

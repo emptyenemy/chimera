@@ -47,3 +47,6 @@ export interface SelfUpdateState {
 
 /** Ключи стора, которые пушит хаб. */
 export type HubKey = "winws" | "proxy" | "tg" | "hosts" | "app" | "selfupdate"
+
+/** Модули с включателем: у каждого свой источник хаба и точка состояния в меню. */
+export type ModuleKey = "winws" | "proxy" | "tg" | "hosts"
