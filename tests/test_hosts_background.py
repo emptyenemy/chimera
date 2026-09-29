@@ -247,3 +247,46 @@ def test_start_stop_background_thread(hm):
     assert hm.background._thread is not None
     hm.stop_background()
     assert not hm.background._thread.is_alive() if hm.background._thread else True
+
+
+def test_checker_network_runs_outside_mutation_gate_and_discards_stale_result(hm, monkeypatch):
+    _seed_dns_assignment(hm, monkeypatch)
+    lock_held = []
+
+    class Gate:
+        def __enter__(self):
+            lock_held.append(True)
+        def __exit__(self, *args):
+            lock_held.pop()
+
+    def check(host):
+        assert not lock_held
+        hm.set_background({"check_enabled": False})
+        return False
+
+    bg = HostsBackground(hm, check_fn=check)
+    bg.mutation_lock = Gate()
+    bg._do_check(hm.background_options())
+    assert hm._load_state().get("health") is None
+
+
+def test_background_refresh_discards_result_after_foreground_changes_settings(hm, monkeypatch):
+    _seed_dns_assignment(hm, monkeypatch)
+    lock_held = []
+
+    class Gate:
+        def __enter__(self):
+            lock_held.append(True)
+        def __exit__(self, *args):
+            lock_held.pop()
+
+    def resolve(domains, doh, servers):
+        assert not lock_held
+        hm.set_enabled(False)
+        return [{"host": host, "ip": "8.8.8.8"} for host in domains]
+
+    bg = HostsBackground(hm, resolve_fn=resolve)
+    bg.mutation_lock = Gate()
+    bg._refresh()
+    assert not hm.state()["enabled"]
+    assert "example.com" not in hm._read_hosts()

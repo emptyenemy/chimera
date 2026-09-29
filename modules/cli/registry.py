@@ -322,6 +322,14 @@ ACTIONS: tuple[Action, ...] = (
              Arg("confirm", "switch", flag=True, default=False)),
        level=APP, examples=("chimera config import friend.chimera --sections proxy,lists",)),
 
+    _a("config", "backups", handler="config_backups", methods=("config_backups",),
+       examples=("chimera config backups", "chimera config backups --json")),
+    _a("config", "restore-preview", handler="config_restore_preview", methods=("config_backup_preview",),
+       args=(Arg("id", "str"),), examples=("chimera config restore-preview 20260930-120000-001-import",)),
+    _a("config", "restore", handler="config_restore", methods=("config_backup_restore",),
+       args=(Arg("id", "str"), Arg("confirm", "switch", flag=True, default=False)), level=SYSTEM,
+       examples=("chimera config restore 20260930-120000-001-import --confirm",)),
+
     # --- списки ----------------------------------------------------------------------
     _a("lists", "show", handler="lists_show", methods=("lists_all", "lists_read"), offline=True,
        args=(Arg("имя", "str", optional=True),),

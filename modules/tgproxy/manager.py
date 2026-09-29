@@ -169,6 +169,16 @@ class TgProxy:
             encoding="utf-8",
         )
 
+    def restore_config(self, config: dict) -> dict:
+        from modules.configbackups import normalize
+        target = normalize("telegram", config)
+        running = self.running
+        self.config = target
+        self._save()
+        if running:
+            self.restart()
+        return self.state()
+
     def set_config(self, host: str, port, secret: str, autostart: bool) -> dict:
         host = str(host).strip() or "127.0.0.1"
         port = int(port)

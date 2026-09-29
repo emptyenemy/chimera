@@ -14,7 +14,7 @@ import sys
 import time
 from dataclasses import dataclass, field
 
-from modules import changelog, control, errors, paths
+from modules import changelog, control, errors, i18n, paths
 from modules.cli import client as cl
 from modules.cli import pathenv
 from modules.cli.client import CliError, Usage
@@ -696,6 +696,38 @@ def h_config_import(ctx, act, ns):
     return Result(res, lines or [t("cli.config.nothing")], exit_code=1 if res["errors"] else 0)
 
 
+def h_config_backups(ctx, act, ns):
+    backups = ctx.call("config_backups", i18n.current_lang())
+    lines = [f"{b['id']}  {b.get('created_at') or '—'}  {', '.join(b['sections'])}" +
+             (f"  ! {b['error']}" if not b['valid'] else "") for b in backups]
+    return Result(backups, lines or [t("cli.backup.empty")])
+
+
+def h_config_restore_preview(ctx, act, ns):
+    pv = ctx.call("config_backup_preview", ns["a0"], i18n.current_lang())
+    lines = []
+    for section in pv.get("sections", []):
+        lines.append(f"{section['title']}:")
+        lines.extend(f"  {line}" for line in section["changes"])
+    lines.extend(f"! {line}" for line in pv.get("warnings", []))
+    lines.extend(t("cli.config.error_item", error=line) for line in pv.get("errors", []))
+    if pv.get("requires_admin"):
+        lines.append(t("msg.backup.admin_required"))
+    return Result(pv, lines or [t("cli.config.nothing")], exit_code=0 if pv.get("ok") else 1)
+
+
+def h_config_restore(ctx, act, ns):
+    res = ctx.call("config_backup_restore", ns["a0"], bool(ns.get("a1")), i18n.current_lang())
+    lines = [t("cli.backup.restored", sections=", ".join(res["restored"]))] if res["restored"] else []
+    lines.extend(t("cli.config.error_item", error=line) for line in res["errors"])
+    lines.extend(t("cli.config.error_item", error=line) for line in res["rollback_errors"])
+    if res["rolled_back"]:
+        lines.append(t("cli.backup.rolled_back"))
+    if res.get("backup"):
+        lines.append(t("cli.backup.inverse", id=res["backup"]))
+    return Result(res, lines, exit_code=1 if res["errors"] or res["rollback_errors"] else 0)
+
+
 HANDLERS = {
     "status": h_status, "version": h_version, "start": h_start, "tui": h_tui, "stop": h_stop, "restart": h_restart,
     "sources_check": h_sources_check, "config_get": h_config_get, "config_set": h_config_set,
@@ -711,4 +743,6 @@ HANDLERS = {
     "path_remove": h_path_remove,
     "doctor": h_doctor, "config_export": h_config_export,
     "config_import_preview": h_config_import_preview, "config_import": h_config_import,
+    "config_backups": h_config_backups, "config_restore_preview": h_config_restore_preview,
+    "config_restore": h_config_restore,
 }

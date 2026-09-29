@@ -121,6 +121,9 @@
 | Настройки → Обмен конфигом → «Поделиться» | `chimera config export [--sections <sections>] [--file <file>]` | read |
 | Настройки → Обмен конфигом → «Применить…» → «Проверить» | `chimera config import-preview <файл>` | read |
 | Настройки → Обмен конфигом → «Применить» | `chimera config import <файл> [--sections <sections>] [--confirm]` | app |
+| Настройки → Инструменты → Резервные копии | `chimera config backups` | read |
+| Настройки → Инструменты → Резервные копии → Предпросмотр | `chimera config restore-preview <id>` | read |
+| Настройки → Инструменты → Резервные копии → Восстановить | `chimera config restore <id> [--confirm]` | system |
 | Списки: список и редактор | `chimera lists show [имя]` | read |
 | Списки → редактор → «Сохранить» | `chimera lists save <имя> [--file <file>]` | app |
 | Списки → «Новый список» | `chimera lists create <имя>` | app |
@@ -387,6 +390,36 @@ chimera config import-preview friend.chimera
 
 ```
 chimera config import friend.chimera --sections proxy,lists
+```
+
+#### `chimera config backups`
+
+Список локальных снимков конфигурации, включая снимки перед импортом. Значения секретов не выводятся. Уровень: чтение.
+
+```
+chimera config backups
+chimera config backups --json
+```
+
+#### `chimera config restore-preview <id>`
+
+Проверить снимок и показать, какие настройки и списки восстановятся. Ничего не меняет; секреты скрыты. Уровень: чтение.
+
+- `id` — имя каталога снимка из config backups, без пути
+
+```
+chimera config restore-preview 20260930-120000-001-import
+```
+
+#### `chimera config restore <id> [--confirm]`
+
+Восстановить локальный снимок с --confirm. Перед изменениями сохраняется текущая конфигурация, настройки применяются к работающим модулям; при ошибке выполняется откат. Ранее остановленные модули не запускаются. Уровень: изменение системы.
+
+- `id` — имя каталога снимка из config backups, без пути
+- `--confirm` — подтвердить замену настроек и применение к работающим модулям
+
+```
+chimera config restore 20260930-120000-001-import --confirm
 ```
 
 ### lang
@@ -1222,5 +1255,6 @@ chimera agent-info --json
 | `data/logs/*.log` | лог, только читать: Логи модулей (winws, proxy, tgproxy, hosts, service, update). Читать: `chimera logs <модуль>`. |
 | `data/changes.log` | лог, только читать: Журнал изменений: время, источник (`cli` — команда, `file` — правка списка на диске), команда, результат (`ok` или `error`). |
 | `data/control.json` | секрет: Порт и токен канала управления. Агенту читать не нужно, не показывать. |
+| `data/backups/` | секрет: Локальные снимки до импорта/восстановления (последние 10). Могут содержать секреты; не публиковать. Чтение и восстановление: chimera config backups / restore-preview / restore. |
 | `bin/` | внешнее, не править: Бинарники (sing-box, winws2). Не править. |
 | `upstream/` | внешнее, не править: Внешние проекты (сабмодули). Не править. |

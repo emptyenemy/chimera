@@ -18,6 +18,7 @@ from modules import (
     blockcheck,
     cheburcheck,
     control,
+    configbackups,
     doctor,
     domainrec,
     domains,
@@ -58,6 +59,8 @@ def _err(e: Exception):
 
 
 class Api:
+    _mutation_lock = threading.RLock()
+
     def __init__(self, push=None, *, service_owned=False):
         self._service_owned = service_owned
         self._closed = False
@@ -65,6 +68,7 @@ class Api:
         # Ставит бэкенд: у Qt это сигнал в QWebChannel, у pywebview — evaluate_js.
         self.push = push or (lambda fn, payload: None)
         self.hosts = HostsManager()
+        self.hosts.background.mutation_lock = self._mutation_lock
         self._smoke = os.environ.get("CHIMERA_SMOKE") == "1"
         if not self._smoke and (service_owned or not service.is_running()):
             self.hosts.start_background()
@@ -114,7 +118,8 @@ class Api:
         self.lists_watcher.start_background(self._bg_stop)
 
     def _lists_file_changed(self, kind, name) -> list:
-        errors = liveapply.apply_event(kind, name, self.winws, self.proxy, self.hosts)
+        with self._mutation_lock:
+            errors = liveapply.apply_event(kind, name, self.winws, self.proxy, self.hosts)
         hub = getattr(self, "hub", None)
         if hub is not None:
             hub.poke("proxy", "hosts", "winws")  # счётчики доменов в выбранных списках
@@ -294,6 +299,9 @@ class Api:
         """Конфиг для отправки: JSON-текст выбранных разделов (по умолчанию — переносимые,
         без настроек обхода DPI). Ссылки прокси и секретов в нём нет."""
         try:
+            remote = self._backup_owner("config_export", sections, list_names)
+            if remote is not None:
+                return remote
             sections = [s for s in (sections or shareconfig.DEFAULT_SECTIONS) if s in shareconfig.SECTIONS]
             doc = shareconfig.build_export(ShareOps(self).snapshot(), sections, VERSION, list_names)
             return _ok(json.dumps(doc, ensure_ascii=False, indent=2))
@@ -303,6 +311,9 @@ class Api:
     def config_import_preview(self, text):
         """Что изменит чужой конфиг: по разделам — применится / пропущено / нужно подтверждение."""
         try:
+            remote = self._backup_owner("config_import_preview", text)
+            if remote is not None:
+                return remote
             return _ok(shareconfig.preview(shareconfig.parse(text, VERSION), ShareOps(self).snapshot()))
         except Exception as e:
             return _err(e)
@@ -312,8 +323,65 @@ class Api:
         в data/backups/<время>-import/. Чужие серверы DNS/hosts и домены-ретрансляторы Telegram
         ставятся только при confirmed=True."""
         try:
+            remote = self._backup_owner("config_import_apply", text, sections, confirmed)
+            if remote is not None:
+                return remote
             ops = ShareOps(self)
             return _ok(shareconfig.apply(shareconfig.parse(text, VERSION), sections or [], bool(confirmed), ops))
+        except Exception as e:
+            return _err(e)
+
+    def _backup_owner(self, method, *args):
+        if not getattr(self, "_service_owned", False) and service.is_running():
+            from modules.cli import client
+            result = client.connect().api(method, *args)
+            if method in ("config_backup_restore", "config_import_apply"):
+                self.proxy.config = self.proxy._load()
+                self.winws.config = self.winws._load()
+                # TgProxy._load can generate and save a secret; refresh here is read-only.
+                from modules.tgproxy.manager import DEFAULTS as TG_DEFAULTS, STATE_PATH as TG_PATH
+                try:
+                    if TG_PATH.is_file():
+                        self.tg.config = {**TG_DEFAULTS, **json.loads(TG_PATH.read_text(encoding="utf-8"))}
+                except (OSError, ValueError, TypeError):
+                    pass
+                i18n.refresh()
+                if getattr(self, "push", None):
+                    with i18n.request_language(None):
+                        self._push("langChanged", i18n.state())
+                hub = getattr(self, "hub", None)
+                if hub is not None:
+                    hub.poke("winws", "proxy", "tg", "hosts", "dns", "filters")
+            return _ok(result)
+        return None
+
+    def config_backups(self, lang=None):
+        try:
+            with i18n.request_language(lang):
+                remote = self._backup_owner("config_backups", lang)
+                return remote if remote is not None else _ok(configbackups.list_backups())
+        except Exception as e:
+            return _err(e)
+
+    def config_backup_preview(self, backup_id, lang=None):
+        try:
+            with i18n.request_language(lang):
+                remote = self._backup_owner("config_backup_preview", backup_id, lang)
+                if remote is not None:
+                    return remote
+                with self._mutation_lock:
+                    return _ok(configbackups.preview(backup_id, ShareOps(self)))
+        except Exception as e:
+            return _err(e)
+
+    def config_backup_restore(self, backup_id, confirmed=False, lang=None):
+        try:
+            with i18n.request_language(lang):
+                remote = self._backup_owner("config_backup_restore", backup_id, confirmed, lang)
+                if remote is not None:
+                    return remote
+                with self._mutation_lock:
+                    return _ok(configbackups.restore(backup_id, confirmed, ShareOps(self)))
         except Exception as e:
             return _err(e)
 
@@ -421,7 +489,10 @@ class Api:
             return json.dumps(_err(ChimeraError("err.method.unknown", method=method)))
         try:
             args = json.loads(args_json)
-            return json.dumps(fn(*args))
+            if self.is_read(method):
+                return json.dumps(fn(*args))
+            with self._mutation_lock:
+                return json.dumps(fn(*args))
         except Exception as e:
             return json.dumps(_err(e))
         finally:
@@ -437,7 +508,7 @@ class Api:
         (("dns_",), ("dns",)),
         (("lists_",), ("proxy", "hosts", "winws")),  # счётчики доменов в выбранных списках
         (("selfupdate_",), ("selfupdate",)),
-        (("panic_", "config_import_"), ("winws", "proxy", "tg", "hosts", "dns", "filters")),
+        (("panic_", "config_import_", "config_backup_restore"), ("winws", "proxy", "tg", "hosts", "dns", "filters")),
     )
     # чтения ничего не меняют — после них хаб не дёргаем
     _READ_SUFFIXES = ("_state", "_log", "_stats", "_overview", "_read", "_all", "_status",
@@ -447,11 +518,11 @@ class Api:
     # кончается на «читающий» _probe_config, но это запись в config.json
     _WRITE_WORDS = frozenset({"set", "add", "delete", "save", "create", "rename", "start",
                               "stop", "update", "download", "regen", "open", "clear",
-                              "enabled", "install", "uninstall", "apply", "reset", "panic"})
+                              "enabled", "install", "uninstall", "apply", "reset", "panic", "restore"})
 
     # сверка с апстримом — только сеть, хотя в имени и есть «update»
     _READ_NAMES = frozenset({"tg_check_update", "upstream_check_updates", "doctor_run", "doctor_report",
-                             "config_export", "config_import_preview"})
+                             "config_export", "config_import_preview", "config_backups", "config_backup_preview"})
 
     @classmethod
     def is_read(cls, method: str) -> bool:

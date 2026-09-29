@@ -31,6 +31,7 @@ import urllib.request
 from pathlib import Path
 
 from modules import appconfig
+from modules.fileutil import atomic_write_text
 
 STRATEGIES_DIR = Path(__file__).parent.parent.parent / "strategies"
 HOSTLISTS_DIR = STRATEGIES_DIR / "hostlists"
@@ -124,6 +125,22 @@ def game_ports(mode: str | None = None) -> dict | None:
 
 
 # --- ipset filter --------------------------------------------------------------
+
+def ipset_snapshot() -> dict:
+    return {"ipset": ipset_state(),
+            "content": IPSET_FILE.read_text(encoding="utf-8") if IPSET_FILE.exists() else None,
+            "loaded": IPSET_BACKUP.read_text(encoding="utf-8") if IPSET_BACKUP.exists() else None}
+
+
+def restore_ipset_snapshot(snapshot: dict) -> None:
+    from modules.configbackups import normalize
+    target = normalize("filters", snapshot)
+    for path, field in ((IPSET_FILE, "content"), (IPSET_BACKUP, "loaded")):
+        if target[field] is None:
+            path.unlink(missing_ok=True)
+        else:
+            atomic_write_text(path, target[field])
+
 
 IPSET_STATES = ("any", "none", "loaded")
 

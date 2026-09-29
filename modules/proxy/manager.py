@@ -130,6 +130,21 @@ class ProxyManager:
             encoding="utf-8",
         )
 
+    def restore_config(self, config: dict) -> dict:
+        from modules.configbackups import normalize
+        target = normalize("proxy", config)
+        running = self.running
+        if running and not self._ours_alive:
+            raise ChimeraValueError("err.backup.foreign_proxy")
+        self.config = target
+        self._save()
+        if running:
+            if target["link"]:
+                self.restart()
+            else:
+                self.stop()
+        return self.state()
+
     def set_link(self, raw: str) -> dict:
         raw = (raw or "").strip()
         if raw:

@@ -183,6 +183,26 @@ class WinwsManager:
             encoding="utf-8",
         )
 
+    def restore_config(self, config: dict) -> dict:
+        from modules.configbackups import normalize
+        target = normalize("winws", config)
+        strategy = target["last_strategy"]
+        if strategy is not None and not (STRATEGIES_DIR / f"{strategy}.txt").exists():
+            raise ChimeraFileNotFoundError('err.winws.manager.no_strategy', p0=strategy)
+        running = self.running
+        if running and not self._ours_alive:
+            raise ChimeraRuntimeError('err.winws.foreign')
+        changed = self.config.get("last_strategy") != strategy or (running and self._current != strategy)
+        self.config = target
+        self._save()
+        self.refresh_user_lists()
+        if running and changed:
+            if strategy:
+                self.start(strategy)
+            else:
+                self.stop()
+        return self.state()
+
     def set_autostart(self, value: bool) -> dict:
         self.config["autostart"] = bool(value)
         self._save()

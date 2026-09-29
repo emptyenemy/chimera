@@ -15,6 +15,7 @@ __init__ и гасит в shutdown().
 from modules.i18n import t as _tr
 
 import threading
+from contextlib import nullcontext
 import time
 from concurrent.futures import ThreadPoolExecutor
 
@@ -92,6 +93,16 @@ class HostsBackground:
 
     # --- один тик (вызывается и потоком, и тестами напрямую) -----------------
 
+    @staticmethod
+    def same_state(before, after):
+        return all(before.get(k) == after.get(k) for k in ("assignments", "enabled", "background", "entries"))
+
+    def _sync_current(self, state):
+        if hasattr(self, "mutation_lock"):
+            self.manager._sync(expected_state=state, mutation_lock=self.mutation_lock)
+        else:
+            self.manager._sync()
+
     def run_once(self, now: float | None = None) -> None:
         now = self.now() if now is None else now
         opts = self.manager.background_options()
@@ -140,7 +151,7 @@ class HostsBackground:
 
         if changed:
             try:
-                self.manager._sync()
+                self._sync_current(st)
             except Exception:
                 pass  # нет прав/сеть пропала — попробуем на следующем тике
 
@@ -185,9 +196,12 @@ class HostsBackground:
             "providers": provider_health,
         }
 
-        st = self.manager._load_state()  # перечитать: assignments мог поменять _refresh() рядом
-        st["health"] = health
-        self.manager._save_state(st)
+        with getattr(self, "mutation_lock", nullcontext()):
+            current = self.manager._load_state()
+            if not self.same_state(st, current) or self.manager.background_options() != opts:
+                return
+            current["health"] = health
+            self.manager._save_state(current)
 
         if opts.get("autoswitch_enabled"):
             self._maybe_autoswitch(opts, provider_health)
@@ -241,22 +255,28 @@ class HostsBackground:
             if not nxt or nxt == pid:
                 continue  # переключить некуда — остаёмся на текущем, ждём восстановления
 
-            assignments[nxt] = lists
-            del assignments[pid]
-            st["assignments"] = assignments
-            event = {
-                "from": pid, "to": nxt, "when": time.time(),
-                "reason": _tr('msg.modules.hosts.background.degraded_alive', p0=f"{health['alive']}", p1=f"{health['total']}"),
-            }
-            log = st.get("switch_log", []) + [event]
-            st["switch_log"] = log[-20:]  # не растим файл бесконечно
-            st["last_switch"] = event
-            self.manager._save_state(st)
-            self._log_switch(event)
-            self._degraded_streak[pid] = 0
+            with getattr(self, "mutation_lock", nullcontext()):
+                current = self.manager._load_state()
+                if not self.same_state(st, current) or self.manager.background_options() != opts:
+                    continue
+                st = current
+                assignments = st.get("assignments", {})
+                assignments[nxt] = lists
+                del assignments[pid]
+                st["assignments"] = assignments
+                event = {
+                    "from": pid, "to": nxt, "when": time.time(),
+                    "reason": _tr('msg.modules.hosts.background.degraded_alive', p0=f"{health['alive']}", p1=f"{health['total']}"),
+                }
+                log = st.get("switch_log", []) + [event]
+                st["switch_log"] = log[-20:]  # не растим файл бесконечно
+                st["last_switch"] = event
+                self.manager._save_state(st)
+                self._log_switch(event)
+                self._degraded_streak[pid] = 0
 
             try:
-                self.manager._sync()
+                self._sync_current(st)
             except Exception:
                 pass
             break  # одно переключение за тик — остальные (если есть) разберём на следующем

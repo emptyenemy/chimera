@@ -23,11 +23,9 @@ from modules.i18n import LazyMap, t as _tr
 import ipaddress
 import json
 import re
-import shutil
-import time
 from pathlib import Path
 
-from . import domains, paths, version
+from . import domains, version
 from .provider_util import parse_servers, validate_doh, validate_host
 
 SCHEMA = 1
@@ -500,30 +498,9 @@ def preview(parsed: dict, current: dict) -> dict:
 # --- применение --------------------------------------------------------------------------------
 
 def _backup(files, root: Path | None) -> str | None:
-    files = [Path(f) for f in files if Path(f).exists()]
-    if not files:
-        return None
-    root = Path(root) if root else paths.data_path("backups")
-    root.mkdir(parents=True, exist_ok=True)
-    stamp = time.strftime("%Y%m%d-%H%M%S")
-    # номер в пределах одной секунды — по максимуму существующих: после удаления старых
-    # снимков счёт по количеству мог бы повториться и упереться в занятое имя
-    taken = [int(d.name[len(stamp) + 1:len(stamp) + 4]) for d in root.iterdir()
-             if d.is_dir() and d.name.startswith(stamp + "-") and d.name[len(stamp) + 1:len(stamp) + 4].isdigit()]
-    dest = root / f"{stamp}-{max(taken, default=0) + 1:03d}-import"
-    dest.mkdir()
-    used = set()
-    for f in files:
-        name, n = f.name, 1
-        while name in used:
-            n += 1
-            name = f"{f.stem}.{n}{f.suffix}"
-        used.add(name)
-        shutil.copy2(f, dest / name)
-    olds = sorted(d for d in root.iterdir() if d.is_dir() and d.name.endswith("-import"))
-    for d in olds[:-KEEP_BACKUPS]:
-        shutil.rmtree(d, ignore_errors=True)
-    return str(dest)
+    from modules import configbackups
+    backup_id = configbackups.create_files(files, root)
+    return str(configbackups.root_path(root) / backup_id) if backup_id else None
 
 
 def apply(parsed: dict, sections, confirmed: bool, ops, backup_root: Path | None = None) -> dict:
@@ -543,9 +520,16 @@ def apply(parsed: dict, sections, confirmed: bool, ops, backup_root: Path | None
 
     touched = list((doc["sections"].get("lists") or {}).get("items", {})) if "lists" in chosen else []
     try:
-        result["backup"] = _backup(ops.backup_files(chosen, touched), backup_root)
-    except OSError as e:
+        files = ops.backup_files(chosen, touched)
+        if files and hasattr(ops, "backup_state"):
+            from modules import configbackups
+            backup_id = configbackups.create_snapshot(ops.backup_state(chosen, touched), backup_root, kind="import")
+            result["backup"] = str(configbackups.root_path(backup_root) / backup_id)
+        else:
+            result["backup"] = _backup(files, backup_root)
+    except Exception as e:
         result["errors"].append(_tr('msg.modules.shareconfig.could_not_create_a_file_snapshot', p0=f'{e}'))
+        return result
 
     def record(sid, key, line):
         result[key].setdefault(sid, []).append(line)

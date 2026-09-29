@@ -33,6 +33,14 @@ def _write(data: dict) -> None:
     atomic_write_text(CONFIG_PATH, json.dumps(data, ensure_ascii=False, indent=4) + "\n")
 
 
+def restore_values(values: dict) -> dict:
+    from modules.configbackups import normalize
+    target = normalize("config", values)
+    _write(target)
+    i18n.refresh()
+    return target
+
+
 def set_value(key: str, value) -> dict:
     """Меняет одну настройку и сразу пишет файл. Возвращает полный конфиг."""
     if key == "theme" and (not isinstance(value, str) or value not in THEMES):

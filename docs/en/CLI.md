@@ -121,6 +121,9 @@ Levels exist so that remote channels can be restricted. Secrets (the proxy link,
 | Settings → Config sharing → “Share” | `chimera config export [--sections <sections>] [--file <file>]` | read |
 | Settings → Config sharing → “Apply…” → “Check” | `chimera config import-preview <file>` | read |
 | Settings → Config sharing → “Apply” | `chimera config import <file> [--sections <sections>] [--confirm]` | app |
+| Settings → Tools → Backups | `chimera config backups` | read |
+| Settings → Tools → Backups → Preview | `chimera config restore-preview <id>` | read |
+| Settings → Tools → Backups → Restore | `chimera config restore <id> [--confirm]` | system |
 | Lists: list and editor | `chimera lists show [name]` | read |
 | Lists → editor → “Save” | `chimera lists save <name> [--file <file>]` | app |
 | Lists → “New list” | `chimera lists create <name>` | app |
@@ -387,6 +390,36 @@ Apply someone else's config (sections from --sections, by default all except the
 
 ```
 chimera config import friend.chimera --sections proxy,lists
+```
+
+#### `chimera config backups`
+
+List local configuration snapshots, including pre-import snapshots. Secret values are hidden. Level: read-only.
+
+```
+chimera config backups
+chimera config backups --json
+```
+
+#### `chimera config restore-preview <id>`
+
+Validate a snapshot and preview settings and lists to restore. Changes nothing; secrets stay hidden. Level: read-only.
+
+- `id` — snapshot directory name from config backups, without a path
+
+```
+chimera config restore-preview 20260930-120000-001-import
+```
+
+#### `chimera config restore <id> [--confirm]`
+
+Restore a local snapshot with --confirm. Current settings are saved first, then applied to running modules; failures trigger rollback. Previously stopped modules stay stopped. Level: changes the system.
+
+- `id` — snapshot directory name from config backups, without a path
+- `--confirm` — confirm replacing settings and applying them to running modules
+
+```
+chimera config restore 20260930-120000-001-import --confirm
 ```
 
 ### lang
@@ -1222,5 +1255,6 @@ chimera agent-info --json
 | `data/logs/*.log` | log, read only: Module logs (winws, proxy, tgproxy, hosts, service, update). Read them with `chimera logs <module>`. |
 | `data/changes.log` | log, read only: Change log: time, source (`cli` for a command, `file` for a list edit on disk), command, result (`ok` or `error`). |
 | `data/control.json` | secret: Port and token of the control channel. An agent does not need to read it; do not show it. |
+| `data/backups/` | secret: Local snapshots before import/restoration (last 10). May contain secrets; do not publish. List and restore with chimera config backups / restore-preview / restore. |
 | `bin/` | external, do not edit: Binaries (sing-box, winws2). Do not edit. |
 | `upstream/` | external, do not edit: External projects (submodules). Do not edit. |

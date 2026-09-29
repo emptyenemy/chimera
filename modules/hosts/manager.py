@@ -14,6 +14,7 @@ from modules.errors import ChimeraPermissionError, ChimeraValueError
 
 import ctypes
 import json
+from contextlib import nullcontext
 import os
 import re
 import subprocess
@@ -140,6 +141,14 @@ class HostsManager:
     def assignments(self) -> dict:
         return self._load_state().get("assignments", {})
 
+    def restore_config(self, config: dict) -> dict:
+        from modules.configbackups import normalize
+        target = normalize("hosts", config)
+        state = self._load_state()
+        state.update(target)
+        self._save_state(state)
+        return self._sync()
+
     def set_assignments(self, mapping: dict) -> dict:
         """Сохраняет привязку списков к провайдерам (без записи в hosts).
 
@@ -220,7 +229,7 @@ class HostsManager:
         поменялось содержимое списка, а не сама привязка (set_assignments и так синкает)."""
         return self._sync()
 
-    def _sync(self) -> dict:
+    def _sync(self, expected_state=None, mutation_lock=None) -> dict:
         """Приводит hosts в соответствие с текущими привязками.
 
         Есть привязки и разблокировка включена → резолвим и пишем блок.
@@ -232,14 +241,17 @@ class HostsManager:
                 if st.get("enabled", True) else {})
 
         if not plan:
-            if self._is_applied():
-                if not is_admin():
-                    raise ChimeraPermissionError('err.hosts.manager.administrator_rights_are_required_to_write_hosts')
-                self._write_hosts(BLOCK_RE.sub("\n", self._read_hosts()))
-            st = self._load_state()
-            st["entries"] = []
-            self._save_state(st)
-            return self.state()
+            with mutation_lock or nullcontext():
+                if expected_state is not None and not self.background.same_state(expected_state, self._load_state()):
+                    return self.state()
+                if self._is_applied():
+                    if not is_admin():
+                        raise ChimeraPermissionError('err.hosts.manager.administrator_rights_are_required_to_write_hosts')
+                    self._write_hosts(BLOCK_RE.sub("\n", self._read_hosts()))
+                st = self._load_state()
+                st["entries"] = []
+                self._save_state(st)
+                return self.state()
 
         if not is_admin():
             raise ChimeraPermissionError('err.hosts.manager.administrator_rights_are_required_to_write_hosts')
@@ -271,9 +283,12 @@ class HostsManager:
             if unavailable:
                 raise ValueError("; ".join(unavailable))
             raise ChimeraValueError('err.hosts.manager.no_addresses_resolved_are_the_providers_unavaila')
-        self._write_block(groups)
-        st = self._load_state()
-        st["entries"] = all_entries
-        self._save_state(st)
-        return self.state()
+        with mutation_lock or nullcontext():
+            if expected_state is not None and not self.background.same_state(expected_state, self._load_state()):
+                return self.state()
+            self._write_block(groups)
+            st = self._load_state()
+            st["entries"] = all_entries
+            self._save_state(st)
+            return self.state()
 

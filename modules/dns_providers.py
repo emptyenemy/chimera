@@ -71,6 +71,15 @@ def add(name: str, servers="", ipv6="", doh: str = "", dot: str = "",
     return provider
 
 
+def restore_user(items: list[dict]) -> None:
+    from modules.configbackups import normalize
+    target = normalize("dns", items)
+    builtin = {p["id"] for p in load_all() if p.get("builtin")}
+    if any(p["id"] in builtin for p in target):
+        raise ChimeraValueError("err.backup.invalid", name=USER_PATH.name)
+    _save_user(target)
+
+
 def delete(provider_id: str) -> None:
     user = _load_user()
     if not any(p["id"] == provider_id for p in user):

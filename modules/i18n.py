@@ -16,6 +16,7 @@ import os
 import re
 from collections.abc import Mapping, Sequence
 from contextlib import contextmanager
+from contextvars import ContextVar
 from pathlib import Path
 
 LANGS = ("ru", "en")
@@ -41,6 +42,7 @@ _PLACEHOLDER = re.compile(r"\{(\w+)\}")
 
 _catalogs: dict[str, dict] = {}
 _override: str | None = None
+_request_lang: ContextVar[str | None] = ContextVar("request_language", default=None)
 _config_lang: str | None = None     # уже разобранное значение lang из config.json
 _system_lang: str | None = None
 
@@ -96,6 +98,9 @@ def _from_config() -> str:
 
 
 def current_lang() -> str:
+    request_lang = _request_lang.get()
+    if request_lang:
+        return request_lang
     if _override:
         return _override
     env = (os.environ.get(ENV_VAR) or "").strip().lower()
@@ -129,6 +134,18 @@ def refresh() -> None:
     global _config_lang, _system_lang
     _config_lang = None
     _system_lang = None
+
+
+@contextmanager
+def request_language(lang: str | None):
+    """Language of one request, without changing concurrent requests or the UI setting."""
+    if lang is not None and lang not in LANGS:
+        raise ValueError("Unsupported request language")
+    token = _request_lang.set(lang)
+    try:
+        yield
+    finally:
+        _request_lang.reset(token)
 
 
 @contextmanager
