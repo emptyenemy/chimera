@@ -40,13 +40,30 @@ def test_method_is_not_both_mapped_and_excluded():
     assert not (set(MAPPED) & set(registry.EXCLUDED))
 
 
-def test_every_frontend_call_is_covered():
+def _frontend_calls(files) -> set[str]:
+    # api("метод", …) и типизированный api<Тип>("метод", …) в новом фронте на TypeScript
+    pattern = re.compile(r'\bapi(?:<[^()]*>)?\(\s*["\']([a-z_0-9]+)["\']')
     calls = set()
-    for js in (ROOT / "ui" / "web" / "js").rglob("*.js"):
-        calls.update(re.findall(r'\bapi\(\s*["\']([a-z_0-9]+)["\']', js.read_text(encoding="utf-8")))
+    for f in files:
+        calls.update(pattern.findall(f.read_text(encoding="utf-8")))
+    return calls
+
+
+def test_every_frontend_call_is_covered():
+    calls = _frontend_calls((ROOT / "ui" / "web" / "js").rglob("*.js"))
     assert calls, "во фронте не нашлось вызовов api(...): изменился способ вызова?"
     uncovered = sorted(c for c in calls if c not in MAPPED and c not in registry.EXCLUDED)
     assert not uncovered, f"действия окна без команды: {uncovered}"
+
+
+def test_every_call_of_the_new_frontend_is_covered():
+    src = ROOT / "frontend" / "src"
+    files = [*src.rglob("*.ts"), *src.rglob("*.tsx")]
+    assert files, "нет исходников нового фронта: frontend/src"
+    calls = _frontend_calls(files)
+    assert "winws_start" in calls, "в новом фронте не нашлось вызовов api(...): изменился способ вызова?"
+    uncovered = sorted(c for c in calls if c not in MAPPED and c not in registry.EXCLUDED)
+    assert not uncovered, f"действия нового окна без команды: {uncovered}"
 
 
 def test_channel_allows_exactly_what_the_table_maps():

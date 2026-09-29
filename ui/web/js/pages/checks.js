@@ -142,7 +142,7 @@
               <input class="input" data-input placeholder="Сайт или ссылка — можно несколько через пробел" value="${esc(input)}" autocomplete="off" spellcheck="false">
             </div>
             <button class="btn" data-check ${run ? "disabled" : ""}>Проверить</button>
-            <select class="select-native chk-list" data-list ${run || !listNames?.length ? "disabled" : ""}>${listOptionsHtml()}</select>
+            <select class="select-native chk-list" data-list data-testid="checks-list" ${run || !listNames?.length ? "disabled" : ""}>${listOptionsHtml()}</select>
           </div>
           ${registryDown ? `<p class="hint chk-warn">${ic("triangle-alert")}Реестр РКН сейчас недоступен — проверяю только, открываются ли сайты.</p>` : ""}
         </div>

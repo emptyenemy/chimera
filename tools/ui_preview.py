@@ -13,6 +13,10 @@
       — headless Edge/Chrome по CDP (tools/ui_shot.mjs): по умолчанию обходит все
         страницы и снимает скриншоты в OUT_DIR; сценарий — список шагов, см. ui_shot.mjs.
 
+Флаг --frontend legacy|next|all выбирает фронт: прежний (ui/web, по умолчанию), новый
+(ui/web-next, нужна сборка: npm run build в frontend/) или оба подряд — снимки оба
+фронта тогда ложатся в OUT_DIR/legacy и OUT_DIR/next.
+
 Окно с интерфейсом при этом не появляется: браузер работает в headless-режиме
 с отдельным временным профилем.
 """
@@ -29,6 +33,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 from ui import api as api_mod  # noqa: E402
+from ui import frontend  # noqa: E402
 from ui.backend_browser import _Handler, _Hub  # noqa: E402
 
 # чтение определяет Api.is_read (глагол записи в имени перевешивает суффикс);
@@ -59,12 +64,14 @@ class _QuietServer(ThreadingHTTPServer):
         pass  # headless-браузер рвёт long-poll при выходе — трейсы тут только шумят
 
 
-def _serve():
+def _serve(front: str = "legacy"):
     hub = _Hub()
     api = PreviewApi(push=hub.push)
     server = _QuietServer(("127.0.0.1", 0), _Handler)
     server.daemon_threads = True
     server.api, server.hub, server.token = api, hub, "preview"
+    server.web_dir = frontend.NEXT_DIR if front == "next" else frontend.LEGACY_DIR
+    server.missing_next = front == "next" and not frontend.next_built()
     threading.Thread(target=server.serve_forever, daemon=True).start()
     return server, f"http://127.0.0.1:{server.server_address[1]}/?t=preview"
 
@@ -78,10 +85,38 @@ def _browser() -> str | None:
     return None
 
 
+def _shot(front: str, out: Path, scenario: str) -> int:
+    browser = _browser()
+    if not browser:
+        print("Не найден Edge/Chrome")
+        return 1
+    if front == "next" and not frontend.next_built():
+        print(frontend.MISSING_TEXT)
+        return 1
+    server, url = _serve(front)
+    out.mkdir(parents=True, exist_ok=True)
+    cmd = ["node", str(ROOT / "tools" / "ui_shot.mjs"), browser, url, str(out)]
+    if scenario:
+        cmd.append(str(Path(scenario).resolve()))
+    try:
+        return subprocess.call(cmd)
+    finally:
+        server.shutdown()
+
+
 def main(argv):
-    mode = argv[1] if len(argv) > 1 else "serve"
-    server, url = _serve()
+    args = list(argv[1:])
+    front = "legacy"
+    if "--frontend" in args:
+        i = args.index("--frontend")
+        front = args[i + 1] if i + 1 < len(args) else ""
+        del args[i:i + 2]
+    if front not in ("legacy", "next", "all"):
+        print("--frontend: legacy, next или all")
+        return 1
+    mode = args[0] if args else "serve"
     if mode == "serve":
+        server, url = _serve("next" if front == "next" else "legacy")
         print(url, flush=True)
         try:
             threading.Event().wait()
@@ -89,17 +124,12 @@ def main(argv):
             pass
         return 0
     if mode == "shot":
-        out = Path(argv[2] if len(argv) > 2 else "ui-shots").resolve()
-        out.mkdir(parents=True, exist_ok=True)
-        scenario = argv[3] if len(argv) > 3 else ""
-        browser = _browser()
-        if not browser:
-            print("Не найден Edge/Chrome")
-            return 1
-        cmd = ["node", str(ROOT / "tools" / "ui_shot.mjs"), browser, url, str(out)]
-        if scenario:
-            cmd.append(str(Path(scenario).resolve()))
-        return subprocess.call(cmd)
+        out = Path(args[1] if len(args) > 1 else "ui-shots").resolve()
+        scenario = args[2] if len(args) > 2 else ""
+        if front != "all":
+            return _shot(front, out, scenario)
+        codes = [_shot(f, out / f, scenario) for f in ("legacy", "next")]
+        return max(codes)
     print(__doc__)
     return 1
 

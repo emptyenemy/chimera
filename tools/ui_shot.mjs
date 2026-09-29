@@ -15,7 +15,13 @@
 //   { "drag": [x0, y0, x1, y1] }    — протащить мышью с зажатой левой кнопкой
 //   { "dblclick": [x, y] }          — двойной клик мышью
 //   { "tap": "css-селектор" }       — настоящий клик мышью в центр элемента (открывает select)
+//   { "theme": "dark" | "light" }  — переключить тему классом на <html> (как это делает бэкенд)
+//   { "key": "b", "ctrl": true }    — нажать клавишу (Ctrl+B — сайдбар); code берётся из буквы
 // Без сценария: обойти все страницы и снять каждую ({id}.png).
+//
+// Работает с обоими фронтами: прежним (ui/web) и новым (frontend/ -> ui/web-next). Оба
+// отдают window.api и window.Pages {go, list}; для новых страниц селекторы — data-testid,
+// например { "click": "[data-testid=module-toggle-proxy]" }.
 // Ошибки JS и console.error печатаются с пометкой [ошибка страницы].
 
 import { spawn } from "node:child_process";
@@ -116,6 +122,7 @@ try {
   // ждём, пока ядро поднимется (boot() ставит body.ready)
   for (let i = 0; i < 50 && !(await evaluate("document.body?.classList.contains('ready')")); i++) await sleep(100);
 
+  console.log("фронт:", (await evaluate("document.documentElement.dataset.frontend")) || "legacy");
   let steps = scenarioPath ? JSON.parse(readFileSync(scenarioPath, "utf8")) : null;
   if (!steps) {
     const ids = await evaluate("Pages.list.map(p => p.id)");
@@ -130,6 +137,13 @@ try {
     else if (s.full) await shot(s.full, true);
     else if (s.size) await send("Emulation.setDeviceMetricsOverride", { width: s.size[0], height: s.size[1], deviceScaleFactor: 1, mobile: false });
     else if (s.mouse) await mouse("mouseMoved", s.mouse[0], s.mouse[1], { button: "none" });
+    else if (s.theme) await evaluate(`(() => { const r = document.documentElement; r.classList.toggle("dark", ${JSON.stringify(s.theme)} === "dark"); r.dataset.theme = ${JSON.stringify(s.theme)}; })()`);
+    else if (s.key) {
+      const mods = (s.ctrl ? 2 : 0) | (s.shift ? 8 : 0) | (s.alt ? 1 : 0);
+      const code = s.key.length === 1 ? "Key" + s.key.toUpperCase() : s.key;
+      for (const type of ["rawKeyDown", "keyUp"])
+        await send("Input.dispatchKeyEvent", { type, modifiers: mods, key: s.key, code, windowsVirtualKeyCode: s.key.length === 1 ? s.key.toUpperCase().charCodeAt(0) : 0 });
+    }
     else if (s.drag) await drag(...s.drag);
     else if (s.dblclick) await dblclick(...s.dblclick);
     else if (s.tap) {

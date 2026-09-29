@@ -1,6 +1,7 @@
 """Дымовой тест собранной программы — «как у пользователя, начисто».
 
-    python tools/smoke_build.py [папка сборки] [--full]      (по умолчанию build\\Chimera)
+    python tools/smoke_build.py [папка сборки] [--full] [--frontend legacy|next]
+                                          (по умолчанию build\\Chimera, прежний фронт)
 
 --full — ещё и то, что требует прав администратора и меняет систему (запуск winws2,
 запись hosts, прокси в PAC и TUN, смена DNS, задача автозапуска). Каждый шаг
@@ -93,7 +94,7 @@ def _cli_check(app: Path, env: dict) -> dict:
     return _cli_step(app, env, "service status", ["service", "status"])
 
 
-def run(build: Path, full: bool = False) -> int:
+def run(build: Path, full: bool = False, front: str = "legacy") -> int:
     if not (build / "Chimera.exe").exists():
         print(f"нет {build / 'Chimera.exe'} — сначала build.bat")
         return 2
@@ -102,7 +103,8 @@ def run(build: Path, full: bool = False) -> int:
     shutil.copytree(build, app, ignore=shutil.ignore_patterns("data", "config.json"))
     # единственное отличие от чистой установки: без UAC — иначе запрос прав на экране
     # (у exe манифеста администратора нет, но окно повышается само; auto_elevate=false это отключает)
-    (app / "config.json").write_text(json.dumps({"auto_elevate": False}), encoding="utf-8")
+    # frontend — какой из двух фронтов в сборке проверяем (config.json -> frontend)
+    (app / "config.json").write_text(json.dumps({"auto_elevate": False, "frontend": front}), encoding="utf-8")
 
     port = _free_port()
     env = dict(os.environ)
@@ -148,5 +150,13 @@ def run(build: Path, full: bool = False) -> int:
 
 
 if __name__ == "__main__":
-    args = [a for a in sys.argv[1:] if a != "--full"]
-    sys.exit(run(Path(args[0]) if args else ROOT / "build" / "Chimera", full="--full" in sys.argv))
+    args = sys.argv[1:]
+    front = "legacy"
+    if "--frontend" in args:
+        i = args.index("--frontend")
+        front = args[i + 1] if i + 1 < len(args) else ""
+        del args[i:i + 2]
+    if front not in ("legacy", "next"):
+        sys.exit("--frontend: legacy или next")
+    args = [a for a in args if a != "--full"]
+    sys.exit(run(Path(args[0]) if args else ROOT / "build" / "Chimera", full="--full" in sys.argv, front=front))
