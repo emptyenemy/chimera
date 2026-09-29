@@ -11,7 +11,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
-from modules import appconfig, applog, autostart, blockcheck, cheburcheck, control, doctor, domainrec, domains, liveapply, paths, service, shareconfig, upstream, winproc
+from modules import appconfig, applog, autostart, blockcheck, cheburcheck, control, doctor, domainrec, domains, filewatch, liveapply, paths, service, shareconfig, upstream, winproc
 from modules import discord as discord_cache
 from modules.dns_jumper import DnsJumper
 from modules.hosts import HostsManager
@@ -76,6 +76,21 @@ class Api:
             ("selfupdate", self.selfupdate_state, 5.0, False),
         ])
         self.hub.start()
+        self._watch_lists()
+
+    def _watch_lists(self) -> None:
+        """Правку lists/*.txt на диске (агентом, вручную) применяем так же, как lists_save.
+        Следит владелец процессов: при работающей службе — она, окно молчит."""
+        self.lists_watcher = filewatch.ListsWatcher(self._lists_file_changed,
+                                                    active=lambda: not service.is_running())
+        self.lists_watcher.start_background(self._bg_stop)
+
+    def _lists_file_changed(self, kind, name) -> list:
+        errors = liveapply.apply_event(kind, name, self.winws, self.proxy, self.hosts)
+        hub = getattr(self, "hub", None)
+        if hub is not None:
+            hub.poke("proxy", "hosts", "winws")  # счётчики доменов в выбранных списках
+        return errors
 
     def _startup_then_autostart(self) -> None:
         # хвосты прошлого запуска убираем до автозапусков: поднятый ими прокси заново

@@ -195,3 +195,46 @@ def test_tg_set_advanced_does_not_start_stopped_proxy(api):
 
     assert res["ok"] is True
     assert api.tg.calls == []
+
+
+# --- правка файлов напрямую (modules/filewatch.py) -----------------------------------
+
+def test_file_change_from_watcher_is_applied_like_lists_save(api):
+    api.hub = type("Hub", (), {"poked": [], "poke": lambda self, *k: self.poked.append(k)})()
+
+    errors = api._lists_file_changed("changed", "discord")
+
+    assert errors == []
+    assert names(api.winws) == ["refresh"] and names(api.proxy) == ["reload"] and names(api.hosts) == ["resync"]
+    assert api.hub.poked  # счётчики доменов на вкладках обновятся сразу
+
+
+def test_file_removal_from_watcher_drops_list_from_consumers(api):
+    api._lists_file_changed("removed", "discord")
+
+    assert names(api.proxy) == ["set_lists"] and names(api.winws) == ["set_lists"]
+    assert api.hosts.calls == [("set_assignments", {})]
+
+
+def test_watch_lists_starts_watcher_only_for_the_process_owner(api, monkeypatch):
+    import threading
+
+    made = {}
+
+    class FakeWatcher:
+        def __init__(self, on_change, active, **kw):
+            made["active"] = active
+
+        def start_background(self, stop):
+            made["stop"] = stop
+
+    monkeypatch.setattr(api_mod.filewatch, "ListsWatcher", FakeWatcher)
+    api._bg_stop = threading.Event()
+
+    api._watch_lists()
+
+    assert made["stop"] is api._bg_stop
+    monkeypatch.setattr(api_mod.service, "is_running", lambda: True)
+    assert made["active"]() is False  # при работающей службе окно не следит
+    monkeypatch.setattr(api_mod.service, "is_running", lambda: False)
+    assert made["active"]() is True

@@ -27,6 +27,7 @@ import os
 import subprocess
 import sys
 import tempfile
+import threading
 from pathlib import Path
 from xml.sax.saxutils import escape
 
@@ -302,6 +303,17 @@ def autostart_modules(tg, winws, proxy, log=lambda msg: None, allow_proxy_pac: b
                 log(f"proxy: автозапуск не удался — {e}")
 
 
+def start_lists_watch(winws, proxy, hosts, stop, log):
+    """Следит за lists/*.txt: правка файла напрямую (агентом, вручную) применяется к модулям
+    службы так же, как lists_save в окне (modules/filewatch.py). Останавливается по `stop`."""
+    from modules import filewatch, liveapply
+
+    watcher = filewatch.ListsWatcher(
+        lambda kind, name: liveapply.apply_event(kind, name, winws, proxy, hosts), log=log)
+    watcher.start_background(stop)
+    return watcher
+
+
 # --- фоновый процесс (`service run`) -------------------------------------------
 
 def run() -> int:
@@ -353,6 +365,13 @@ def run() -> int:
     else:
         logger.info("HostsManager.start_background() ещё нет — фоновые задачи hosts не запущены")
 
+    # окна при живой службе не следят за файлами (Api.__init__), поэтому применяет она
+    watch_stop = threading.Event()
+    try:
+        start_lists_watch(winws, proxy, hosts, watch_stop, logger.info)
+    except Exception as e:
+        logger.error("наблюдатель за списками не запущен: %s", e)
+
     # signal.SIGINT — для ручного `service run` в консоли (Ctrl+C): без него сигнал
     # не дошёл бы до потока, застрявшего в блокирующем WaitForSingleObject.
     import signal
@@ -372,6 +391,7 @@ def run() -> int:
         if _wait_event(stop_event, 1000) == WAIT_OBJECT_0:
             break
     logger.info("получен сигнал остановки, гашу модули")
+    watch_stop.set()
 
     if hasattr(hosts, "stop_background"):
         try:

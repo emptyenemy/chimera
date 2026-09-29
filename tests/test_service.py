@@ -277,3 +277,34 @@ def test_cli_unsupported_platform(monkeypatch, capsys):
 
     assert rc == 1
     assert "Windows" in capsys.readouterr().out
+
+
+# --- наблюдатель за lists/*.txt в службе -------------------------------------------
+
+def test_start_lists_watch_applies_file_events_to_service_modules(monkeypatch):
+    import threading
+
+    from modules import filewatch
+
+    started = {}
+
+    class FakeWatcher:
+        def __init__(self, on_change, **kw):
+            started["on_change"], started["kw"] = on_change, kw
+
+        def start_background(self, stop):
+            started["stop"] = stop
+
+    monkeypatch.setattr(filewatch, "ListsWatcher", FakeWatcher)
+    calls = []
+    winws = SimpleNamespace(config={"lists": ["discord"]}, refresh_user_lists=lambda: calls.append("winws"))
+    proxy = SimpleNamespace(config={"lists": []}, reload_lists=lambda: calls.append("proxy"))
+    hosts = SimpleNamespace(assignments=lambda: {}, resync=lambda: calls.append("hosts"))
+    stop = threading.Event()
+    logged = []
+
+    service.start_lists_watch(winws, proxy, hosts, stop, logged.append)
+
+    assert started["stop"] is stop and started["kw"]["log"] == logged.append
+    assert started["on_change"]("changed", "discord") == []
+    assert calls == ["winws"]
