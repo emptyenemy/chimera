@@ -8,6 +8,8 @@
      • HTTP (backend_browser.py): POST /api и long-poll GET /events, маркер
        window.__CHIMERA_HTTP__ пишет сам сервер (pywebview тоже отдаёт страницу по http). */
 
+import { errorMessage, t, type Params } from "@/lib/i18n"
+
 interface QtBridge {
   call(id: string, method: string, argsJson: string): void
   resolved: { connect(cb: (id: string, resultJson: string) => void): void }
@@ -97,7 +99,7 @@ function initHttpBridge(): Promise<void> {
       headers: { "Content-Type": "application/json", "X-Chimera-Token": token },
       body: JSON.stringify({ method, args: argsJson }),
     }).then((r) => {
-      if (!r.ok) throw new Error(`мост вернул ${r.status}`)
+      if (!r.ok) throw new Error(t("bridge.failed", { status: r.status }))
       return r.text()
     })
   void pumpEvents(token)
@@ -124,13 +126,15 @@ interface ApiReply<T> {
   ok: boolean
   data?: T
   error?: string
+  code?: string
+  params?: Params
 }
 
 /** Вызов метода Api по имени. Бросает Error с текстом ошибки бэкенда. */
 export async function api<T = unknown>(method: string, ...args: unknown[]): Promise<T> {
-  if (!Bridge.call) throw new Error("мост не готов")
+  if (!Bridge.call) throw new Error(t("bridge.notReady"))
   const res = JSON.parse(await Bridge.call(method, JSON.stringify(args))) as ApiReply<T>
-  if (!res.ok) throw new Error(res.error || "Ошибка")
+  if (!res.ok) throw new Error(errorMessage(res))
   return res.data as T
 }
 

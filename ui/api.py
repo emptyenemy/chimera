@@ -1099,7 +1099,10 @@ class Api:
 
     def config_set(self, key, value):
         try:
-            return _ok(appconfig.set_value(key, value))
+            config = appconfig.set_value(key, value)
+            if key == "lang" and getattr(self, "push", None):
+                self._push("langChanged", i18n.state())
+            return _ok(config)
         except Exception as e:
             return _err(e)
 

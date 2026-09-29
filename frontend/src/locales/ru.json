@@ -5,9 +5,7 @@
   "common.confirm": "Подтвердить",
   "common.save": "Сохранить",
   "common.close": "Закрыть",
-
   "boot.failed": "Не удалось запустить интерфейс",
-
   "nav.group.bypass": "Обход",
   "nav.group.network": "Сеть",
   "nav.group.data": "Данные",
@@ -21,28 +19,22 @@
   "nav.lists": "Списки",
   "nav.checks": "Проверка сайтов",
   "nav.settings": "Настройки",
-
   "sidebar.collapse": "Свернуть панель",
   "sidebar.expand": "Развернуть панель",
   "sidebar.collapseHint": "Свернуть панель · Ctrl+B",
   "sidebar.expandHint": "Развернуть панель · Ctrl+B",
   "sidebar.resize": "Ширина панели",
   "sidebar.update": "Доступна {version} — обновить в настройках",
-
   "status.guardOn": "Защита активна · {n} из {total}",
   "status.some": "{n} из {total} включено",
   "status.none": "Всё выключено",
   "status.loading": "Загрузка…",
   "status.noAdmin": "Нет прав администратора",
   "status.service": "Модулями управляет фоновая служба Chimera",
-
   "update.toast.title": "Вышла Chimera {version}",
   "update.toast.desc": "Обновить можно в «Настройки → Обновление Chimera».",
-
   "clipboard.copied": "Скопировано.",
-
   "theme.saveFailed": "Не удалось сохранить тему",
-
   "tg.title": "Telegram-прокси",
   "tg.status.on": "Работает · {addr}",
   "tg.status.off": "Остановлено",
@@ -114,7 +106,6 @@
   "tg.adv.dc.add": "Добавить DC",
   "tg.adv.dc.remove": "Удалить",
   "tg.adv.restartHint": "Продвинутые настройки применяются только при старте — перезапустите прокси, чтобы их подхватить.",
-
   "settings.tab.general": "Общее",
   "settings.tab.updates": "Обновления",
   "settings.tab.tools": "Инструменты",
@@ -153,7 +144,6 @@
   "settings.discord.notFound": "Discord не найден.",
   "settings.discord.done": "Кэш очищен · {size}",
   "settings.discord.failed": "Не удалось очистить",
-
   "settings.app.title": "Обновление Chimera",
   "settings.app.name": "Chimera {version}",
   "settings.app.checking": "Проверяю…",
@@ -185,7 +175,6 @@
   "settings.badge.error": "ошибка",
   "settings.badge.update": "есть обновление",
   "settings.badge.latest": "актуально",
-
   "settings.src.title": "Компоненты",
   "settings.src.checkAll": "Проверить всё",
   "settings.src.updateAll": "Обновить всё",
@@ -220,7 +209,6 @@
   "settings.src.allDone": "Обновлено источников: {count}.",
   "settings.src.partial": "Обновлено {done} из {total}",
   "settings.src.partialHint": "Остальное — в ошибке в списке ниже.",
-
   "settings.share.title": "Обмен конфигом",
   "settings.share.export": "Поделиться настройками",
   "settings.share.exportHint": "Выберите разделы и скопируйте конфиг. Ссылка на ваш прокси-сервер и секреты в него не попадают.",
@@ -272,7 +260,6 @@
   "settings.share.skippedCount.other": "Пропущено: {count}",
   "settings.share.backupSaved": "Прежние файлы сохранены в data/backups.",
   "settings.share.applyFailed": "Не удалось применить",
-
   "settings.doctor.title": "Диагностика",
   "settings.doctor.label": "Проверить, почему обход может не работать",
   "settings.doctor.hint": "Права, драйвер, порты, чужие процессы, прокси в системе. Ничего не меняется.",
@@ -323,7 +310,6 @@
   "checks.n.denied": "бан по стране или IP",
   "checks.n.noDns": "имя не разрешается",
   "checks.n.unreachable": "соединение обрывается",
-
   "dns.noAdapter": "Адаптер не выбран.",
   "dns.adapter.title": "Адаптер",
   "dns.adapter.none": "Сетевые адаптеры не найдены",
@@ -392,7 +378,6 @@
   "dns.probeCfg.bypassHint": "Реально заблокированные у тебя сайты, не гео-блок.",
   "dns.probeCfg.ad": "Домен-маркер рекламы",
   "dns.probeCfg.failed": "Не удалось сохранить домены пробы",
-
   "strat.status.external": "Работает (запущен вне Chimera)",
   "strat.status.running": "Работает · {name}",
   "strat.status.lingers": "Остановлено · драйвер ещё загружен",
@@ -548,7 +533,6 @@
   "lists.record.allExist": "Всё уже есть в списке",
   "lists.record.added": "Добавлено в «{name}»: {n}",
   "lists.record.addFailed": "Не удалось добавить",
-
   "proxy.start": "Запустить",
   "proxy.stop": "Остановить",
   "proxy.start.done": "Прокси запущен.",
@@ -606,7 +590,6 @@
   "proxy.lists.empty.desc": "Добавь домены на странице «Списки», потом отметь нужные здесь.",
   "proxy.lists.empty.go": "Перейти к спискам",
   "proxy.log.title": "Логи",
-
   "hosts.load.failed": "Не удалось загрузить hosts",
   "hosts.status.on.one": "Работает · {n} запись",
   "hosts.status.on.few": "Работает · {n} записи",
@@ -675,11 +658,9 @@
   "hosts.bg.up": "Выше",
   "hosts.bg.down": "Ниже",
   "hosts.bg.failed": "Автоматика: не удалось сохранить",
-
   "stub.title": "Скоро в новом интерфейсе",
   "stub.desc": "Страница «{page}» пока есть только в прежнем интерфейсе.",
   "stub.hint": "Вернуться к нему можно настройкой frontend в config.json.",
-
   "dashboard.hero.on": "Защита активна",
   "dashboard.hero.off": "Защита выключена",
   "dashboard.hero.count": "Включено {n} из {total}",
@@ -702,12 +683,10 @@
   "dashboard.panic.step.tg": "Telegram-прокси",
   "dashboard.panic.step.hosts": "hosts",
   "dashboard.panic.step.dns": "DNS",
-
   "module.winws": "Обход DPI",
   "module.proxy": "Прокси",
   "module.tg": "Telegram-прокси",
   "module.hosts": "Разблокировка hosts",
-
   "blocked.loading": "Загрузка…",
   "blocked.noStrategies": "Нет стратегий",
   "blocked.needAdmin": "Нужны права администратора",
@@ -716,7 +695,6 @@
   "blocked.noAppsAndLists": "Не выбраны приложения и списки",
   "blocked.noLists": "Не выбраны списки",
   "blocked.noServices": "Сервисы не выбраны",
-
   "meta.strategy": "Стратегия «{name}»",
   "meta.strategyNone": "Стратегия не выбрана",
   "meta.proxyMode.tun": "TUN",
@@ -730,7 +708,6 @@
   "meta.hostsServices.few": "{n} сервиса выбрано",
   "meta.hostsServices.many": "{n} сервисов выбрано",
   "meta.hostsServices.other": "{n} сервисов выбрано",
-
   "scope.all": "весь трафик",
   "scope.none": "списки не выбраны",
   "scope.apps.one": "{n} приложение",
@@ -741,5 +718,18 @@
   "scope.domains.few": "{n} домена",
   "scope.domains.many": "{n} доменов",
   "scope.domains.other": "{n} доменов",
-  "scope.ips": "{n} IP"
+  "scope.ips": "{n} IP",
+  "settings.lang.title": "Язык",
+  "settings.lang.hint": "Применяется сразу. «Как в системе» выбирает язык Windows.",
+  "settings.lang.auto": "Как в системе",
+  "settings.lang.ru": "Русский",
+  "settings.lang.en": "English",
+  "lang.saveFailed": "Не удалось сохранить язык",
+  "bridge.notReady": "Мост не готов",
+  "bridge.failed": "Мост вернул {status}",
+  "units.bytes": "Б",
+  "units.kb": "КБ",
+  "units.mb": "МБ",
+  "units.gb": "ГБ",
+  "units.tb": "ТБ"
 }

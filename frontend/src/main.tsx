@@ -6,6 +6,7 @@ import App from "./App.tsx"
 import { installAgentHooks } from "@/lib/agent-hooks"
 import { api, initBridge } from "@/lib/bridge"
 import { t } from "@/lib/i18n"
+import { initLanguage } from "@/lib/language"
 import { notify } from "@/lib/notify"
 import { router } from "@/lib/router"
 import { loadSnapshot, store } from "@/lib/store"
@@ -23,6 +24,7 @@ async function boot(): Promise<void> {
   let info: AppInfo = { admin: true, version: "" }
   try {
     await initBridge()
+    await initLanguage()
     await loadSnapshot().catch((e) => console.error(e))
     info = await api<AppInfo>("app_info").catch(() => info)
   } catch (e) {

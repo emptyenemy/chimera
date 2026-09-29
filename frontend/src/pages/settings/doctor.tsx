@@ -10,13 +10,15 @@ import { FieldGroup } from "@/components/ui/field"
 import { Spinner } from "@/components/ui/spinner"
 import { api } from "@/lib/bridge"
 import { copyText } from "@/lib/clipboard"
-import { t } from "@/lib/i18n"
+import { hasTranslation, t, type Params } from "@/lib/i18n"
 import { notify } from "@/lib/notify"
 import { store, useStore } from "@/lib/store"
 import { CardTitleIcon, SettingRow } from "@/pages/settings/general"
 
 interface Check {
   id: string
+  code?: string
+  params?: Params
   status: "ok" | "warn" | "fail"
   title: string
   message: string
@@ -94,9 +96,9 @@ export function DoctorCard() {
                   <div key={c.id} className="flex items-start gap-2.5" data-testid={`doctor-${c.id}`} data-status={c.status}>
                     <Icon className={cn("mt-0.5 size-4 shrink-0", tone)} />
                     <div className="flex flex-col gap-0.5">
-                      <div className="font-medium">{c.title}</div>
-                      <div className="text-muted-foreground">{c.message}</div>
-                      {c.status !== "ok" && c.hint && <div>{c.hint}</div>}
+                      <div className="font-medium">{hasTranslation(`doctor.${c.id}.title`) ? t(`doctor.${c.id}.title`) : c.title}</div>
+                      <div className="text-muted-foreground">{c.code ? t(`${c.code}.message`, c.params) : c.message}</div>
+                      {c.status !== "ok" && c.hint && <div>{c.code && hasTranslation(`${c.code}.hint`) ? t(`${c.code}.hint`, c.params) : c.hint}</div>}
                     </div>
                   </div>
                 )

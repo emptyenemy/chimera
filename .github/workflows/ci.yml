@@ -51,6 +51,12 @@ jobs:
         working-directory: frontend
         run: npm run typecheck
 
+      - name: Фронт — lint и тесты
+        working-directory: frontend
+        run: |
+          npm run lint
+          npm test
+
       - name: Фронт — сборка
         working-directory: frontend
         run: npm run build

@@ -6,6 +6,7 @@ import { SidebarResizer } from "@/components/app/sidebar-resizer"
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar"
 import { Toaster } from "@/components/ui/toast"
 import { TooltipProvider } from "@/components/ui/tooltip"
+import { useLanguageSetting } from "@/lib/language"
 import { useCurrentPage } from "@/lib/router"
 import {
   SIDEBAR_WIDTH_DEFAULT,
@@ -25,6 +26,7 @@ function initialWidth(): number {
 }
 
 export default function App() {
+  useLanguageSetting()
   const page = useCurrentPage()
   const [open, setOpen] = useState(() => !loadSidebar().collapsed)
   const [width, setWidth] = useState(initialWidth)

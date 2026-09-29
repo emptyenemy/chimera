@@ -1,3 +1,5 @@
+import { LANGUAGE_SETTINGS, setLanguageSetting, useLanguageSetting } from "@/lib/language"
+
 import { useState, type ReactNode } from "react"
 import { MonitorIcon, MoonIcon, SettingsIcon, SparklesIcon, SunIcon, Trash2Icon, PaletteIcon } from "lucide-react"
 
@@ -74,6 +76,30 @@ export function ThemeCard() {
                   </ToggleGroupItem>
                 )
               })}
+            </ToggleGroup>
+          </SettingRow>
+        </FieldGroup>
+      </CardContent>
+    </Card>
+  )
+}
+
+export function LanguageCard() {
+  const state = useLanguageSetting()
+  return (
+    <Card data-testid="settings-language">
+      <CardHeader><CardTitle>{t("settings.lang.title")}</CardTitle></CardHeader>
+      <CardContent>
+        <FieldGroup>
+          <SettingRow title={t("settings.lang.title")} hint={t("settings.lang.hint")}>
+            <ToggleGroup value={[state.setting]} disabled={state.pending} onValueChange={(v) => {
+              if (v[0]) void setLanguageSetting(v[0] as typeof state.setting)
+            }} variant="outline" size="sm" aria-label={t("settings.lang.title")}>
+              {LANGUAGE_SETTINGS.map((mode) => (
+                <ToggleGroupItem key={mode} value={mode} data-testid={`settings-lang-${mode}`}>
+                  {t(`settings.lang.${mode}`)}
+                </ToggleGroupItem>
+              ))}
             </ToggleGroup>
           </SettingRow>
         </FieldGroup>

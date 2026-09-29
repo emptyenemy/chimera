@@ -100,7 +100,7 @@ export async function toggleAutostart(target: boolean): Promise<void> {
 /** Размер в байтах по-русски: 1 536 -> «1,5 КБ» (те же правила чисел, что у fmtNum). */
 export function fmtBytes(b: number | null | undefined): string {
   if (b == null) return "—"
-  const units = ["Б", "КБ", "МБ", "ГБ", "ТБ"]
+  const units = ["bytes", "kb", "mb", "gb", "tb"].map((key) => t(`units.${key}`))
   let i = 0
   let v = Number(b)
   while (v >= 1024 && i < units.length - 1) {
