@@ -7,3 +7,13 @@ ytimg.com
 i.ytimg.com
 yt3.ggpht.com
 googlevideo.com
+youtubei.googleapis.com
+youtubeembeddedplayer.googleapis.com
+youtube-nocookie.com
+yt4.ggpht.com
+jnn-pa.googleapis.com
+s.youtube.com
+ytimg.l.google.com
+youtube-ui.l.google.com
+wide-youtube.l.google.com
+yt-video-upload.l.google.com
