@@ -682,16 +682,23 @@ async function withBusy(btn, fn) {
   if (!btn || btn.classList.contains("busy")) return;
   btn.classList.add("busy");
   btn.setAttribute("aria-disabled", "true");
-  let added = null;
-  if (!btn.querySelector(".icon")) {
+  let added = null, swapped = null, prevHref = null;
+  const first = btn.querySelector(".icon");
+  if (!first) {
     btn.insertAdjacentHTML("afterbegin", ic("loader-circle"));
     added = btn.firstElementChild;
+  } else {
+    // родная иконка (стрелка, копия…) на время работы становится спиннером
+    swapped = first.querySelector("use");
+    prevHref = swapped?.getAttribute("href");
+    swapped?.setAttribute("href", "#i-loader-circle");
   }
   try { return await fn(); }
   finally {
     btn.classList.remove("busy");
     btn.removeAttribute("aria-disabled");
     added?.remove();
+    if (swapped && prevHref) swapped.setAttribute("href", prevHref);
   }
 }
 
