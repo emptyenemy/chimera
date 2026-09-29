@@ -12,19 +12,18 @@ from concurrent.futures import ThreadPoolExecutor
 from PySide6.QtCore import QObject, Qt, QTimer, QUrl, Signal, Slot
 from PySide6.QtGui import QColor, QIcon
 from PySide6.QtWebChannel import QWebChannel
+from PySide6.QtWebEngineCore import QWebEngineScript
 from PySide6.QtWebEngineWidgets import QWebEngineView
 from PySide6.QtWidgets import QApplication, QMainWindow, QMenu, QSystemTrayIcon
 
 from modules import appconfig, control, instance
 
-from . import tray_model
+from . import theme, tray_model
 from .api import WEB_DIR, Api
 
 # Иконка окна и панели задач. У собранного exe она и так зашита в ресурсы
 # (build.bat), но при запуске из исходников без этого висела бы иконка python.exe.
 APP_ICON = WEB_DIR.parent.parent / "assets" / "logo" / "chimera.ico"
-# Фон окна до загрузки страницы — тот же, что --background темы (ui/web/css/base.css)
-WINDOW_BG = "#0a0a0a"
 
 
 class Bridge(QObject):
@@ -227,12 +226,21 @@ def run():
 
     view = QWebEngineView()
     view.page().setWebChannel(channel)
+    # тема — до первой отрисовки: скрипт на DocumentCreation ставит data-theme и класс dark
+    mode = theme.resolve_theme()
+    boot = QWebEngineScript()
+    boot.setName("chimera-theme")
+    boot.setSourceCode(theme.boot_script(mode))
+    boot.setInjectionPoint(QWebEngineScript.InjectionPoint.DocumentCreation)
+    boot.setWorldId(QWebEngineScript.ScriptWorldId.MainWorld)
+    view.page().scripts().insert(boot)
     # пока страница грузится, окно залито этим цветом — он должен совпадать с фоном темы
-    view.page().setBackgroundColor(QColor(WINDOW_BG))
+    bg = theme.window_bg(mode)
+    view.page().setBackgroundColor(QColor(bg))
     view.load(QUrl.fromLocalFile(str(WEB_DIR / "index.html")))
 
     window = MainWindow()
-    window.setStyleSheet(f"QMainWindow {{ background: {WINDOW_BG}; }}")  # и до первой отрисовки страницы
+    window.setStyleSheet(f"QMainWindow {{ background: {bg}; }}")  # и до первой отрисовки страницы
     window.setWindowTitle("Chimera")
     window.setCentralWidget(view)
     window.resize(1080, 720)

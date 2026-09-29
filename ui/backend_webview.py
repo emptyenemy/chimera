@@ -9,6 +9,7 @@ import json
 
 import webview
 
+from . import theme
 from .api import WEB_DIR, Api
 
 
@@ -38,7 +39,7 @@ def run():
         width=1080,
         height=720,
         min_size=(860, 560),
-        background_color="#0a0a0a",  # фон темы (--background в ui/web/css/base.css), пока грузится страница
+        background_color=theme.window_bg(),  # фон текущей темы, пока грузится страница
     )
     api.push = lambda fn, payload: window.evaluate_js(
         f"window.{fn} && window.{fn}({json.dumps(payload)})"

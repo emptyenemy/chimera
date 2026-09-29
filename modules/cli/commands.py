@@ -260,7 +260,10 @@ def h_config_set(ctx, act, ns):
     if cl.discover() is None:
         if key not in control.CONFIG_KEYS_WRITABLE:
             raise CliError(f"Настройку {key!r} через командную строку менять нельзя.", "forbidden", 1)
-        return Result(appconfig.set_value(key, value))
+        try:
+            return Result(appconfig.set_value(key, value))
+        except ValueError as e:
+            raise CliError(str(e), "invalid", 1)
     return Result(ctx.call("config_set", key, value))
 
 
