@@ -24,7 +24,20 @@ def test_atomic_write_goes_through_tmp_and_replace(tmp_path, monkeypatch):
 
     fileutil.atomic_write_text(target, "x\n")
 
-    assert seen == [(str(target) + ".tmp", str(target))]
+    assert len(seen) == 1 and seen[0][1] == str(target)
+    assert seen[0][0].startswith(str(target)) and seen[0][0].endswith(".tmp")
+
+
+def test_atomic_write_uses_unique_tmp_and_cleans_it_on_write_error(tmp_path):
+    target = tmp_path / "a.txt"
+    (tmp_path / "a.txt.tmp").write_text("чужой", encoding="utf-8")  # фиксированное имя не занять
+
+    fileutil.atomic_write_text(target, "x\n")
+    assert (tmp_path / "a.txt.tmp").read_text(encoding="utf-8") == "чужой"
+
+    with pytest.raises(UnicodeEncodeError):
+        fileutil.atomic_write_text(target, "\ud800", encoding="utf-8")
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["a.txt", "a.txt.tmp"]
 
 
 def test_atomic_write_retries_when_target_is_briefly_locked(tmp_path, monkeypatch):
