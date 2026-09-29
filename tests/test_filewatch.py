@@ -266,6 +266,7 @@ def test_background_loop_skips_and_follows_disk_while_inactive(env):
     env._step()          # неактивен: правка не применяется, но становится «уже известной»
     env._step()
     active["on"] = True
+    env._step()          # возврат: база снимается заново
     settle(env, 3)
 
     assert env.events == []
@@ -281,4 +282,117 @@ def test_start_background_primes_and_stops_with_the_event(env):
         stop.set()
     assert env._thread is not None
     env._thread.join(timeout=3)
+    assert not env._thread.is_alive()
+
+
+# --- ревью: неактивный режим, хвосты собственных записей, регистр, остановка ---------
+
+def test_inactive_watcher_does_not_rehash_files_each_step(env, monkeypatch):
+    put(env, "youtube", "a.com\n")
+    env.prime()
+    active = {"on": False}
+    env._active = lambda: active["on"]
+    reads = []
+    real = filewatch.Path.read_bytes
+    monkeypatch.setattr(filewatch.Path, "read_bytes", lambda self: (reads.append(1), real(self))[1])
+
+    for _ in range(5):
+        env._step()
+    assert reads == []  # чужой черёд: диск не читаем
+
+    put(env, "youtube", "b.com\n")  # правка, пока следила служба
+    active["on"] = True
+    env._step()  # переход в активный режим: один prime, правка уже «известна»
+    assert len(reads) == 1
+    settle(env, 3)
+    assert env.events == [] and len(reads) == 1
+
+
+def test_own_delete_then_external_recreate_then_external_delete_is_noticed(env):
+    put(env, "games", "a.com\n")
+    env.prime()
+    domains.delete_list("games")
+    settle(env, 3)
+
+    put(env, "games", "b.com\n")
+    settle(env)
+    (env.dir / "games.txt").unlink()
+    settle(env)
+
+    assert env.events == [("created", "games"), ("removed", "games")]
+
+
+def test_own_delete_then_external_edit_of_recreated_file_forgets_tombstone(env):
+    put(env, "games", "a.com\n")
+    env.prime()
+    domains.delete_list("games")
+    put(env, "games", "b.com\n")  # пересоздали снаружи до того, как наблюдатель увидел удаление
+    settle(env)
+
+    assert domains.own_written("games") == (False, None)
+
+
+def test_delete_and_recreate_with_same_content_is_not_an_event(env):
+    p = put(env, "games", "a.com\n")
+    env.prime()
+
+    p.unlink()
+    env.poll()
+    put(env, "games", "a.com\n")
+    settle(env, 3)
+
+    assert env.events == []
+
+
+def test_own_record_expires(env, monkeypatch):
+    now = [100.0]
+    monkeypatch.setattr(domains, "_clock", lambda: now[0])
+    put(env, "youtube", "old.com\n")
+    env.prime()
+    domains.save_raw("youtube", "new.com\n")  # наблюдатель не успел дойти до файла
+    assert domains.own_written("youtube")[0] is True
+    now[0] += domains.OWN_TTL + 1
+
+    assert domains.own_written("youtube") == (False, None)
+
+
+def test_prime_prunes_stale_own_records(env, monkeypatch):
+    now = [0.0]
+    monkeypatch.setattr(domains, "_clock", lambda: now[0])
+    domains.save_raw("a", "x.com\n")
+    now[0] += domains.OWN_TTL + 1
+
+    env.prime()
+
+    assert domains._own == {}
+
+
+def test_case_only_rename_is_neither_event_nor_double_apply(env):
+    p = put(env, "YouTube", "a.com\n")
+    env.prime()
+
+    p.rename(env.dir / "youtube.txt")
+    settle(env, 3)
+    assert env.events == []
+
+    put(env, "youtube", "b.com\n")
+    settle(env, 3)
+    assert env.events == [("changed", "youtube")]
+
+
+def test_own_records_are_case_insensitive(env):
+    put(env, "YouTube", "a.com\n")
+    env.prime()
+
+    domains.save_raw("youtube", "b.com\n")
+    settle(env, 3)
+
+    assert env.events == []
+
+
+def test_stop_joins_the_thread(env):
+    env.start_background(threading.Event())
+
+    env.stop()
+
     assert not env._thread.is_alive()

@@ -6,10 +6,12 @@
 
 Опрос os.stat раз в секунду, без внешних библиотек. Файл считается готовым, когда его
 (mtime, size) совпали в двух опросах подряд: редактор может писать не сразу и не атомарно,
-и читать половину списка нельзя. Свои записи (domains.save_raw и остальные) не применяются
-повторно: по хэшу содержимого (CRLF и LF не различаются), который domains запоминает до
-записи. Следим только за lists/*.txt; всё, что программа генерирует сама (hostlists
-winws, файлы правил sing-box, PAC, логи), лежит в других папках и сюда не попадает.
+и читать половину списка нельзя. Содержимое читается и хэшируется только при смене этой
+сигнатуры. Свои записи (domains.save_raw и остальные) не применяются повторно: по хэшу
+содержимого (CRLF и LF не различаются), который domains запоминает до записи. Имена
+сравниваются без учёта регистра, как на файловой системе Windows. Следим только за
+lists/*.txt; всё, что программа генерирует сама (hostlists winws, файлы правил sing-box,
+PAC, логи), лежит в других папках и сюда не попадает.
 """
 
 import threading
@@ -19,6 +21,7 @@ from typing import Callable
 from modules import applog, changelog, domains
 
 POLL_INTERVAL = 1.0
+STOP_TIMEOUT = 5.0
 
 _UNSET = object()
 # событие -> глагол в журнале изменений (`lists edit youtube`)
@@ -31,17 +34,21 @@ class ListsWatcher:
                  changes_log: Path | None = None, log: Callable[[str], None] = applog.write):
         """on_change(kind, name) применяет событие (created | changed | removed) и возвращает
         ошибки применения [{"module", "error"}]. active() == False — сейчас следить не наш
-        черёд (работает служба): опросы пропускаются, а база следует за диском."""
+        черёд (работает служба): диск не читаем, а на возврате база снимается заново."""
         self._on_change = on_change
         self._dir = directory
         self._interval = interval
         self._active = active
         self._changes_log = changes_log
         self._log = log
-        self._sig: dict[str, tuple | None] = {}      # (mtime_ns, size) последнего обработанного состояния
+        # все словари — по имени в нижнем регистре
+        self._names: dict[str, str] = {}             # как файл называется на диске
+        self._sig: dict[str, tuple] = {}             # (mtime_ns, size) последнего обработанного состояния
         self._known: dict[str, str] = {}             # хэш содержимого этого состояния
         self._pending: dict[str, tuple | None] = {}  # состояние, увиденное в прошлом опросе
+        self._idle = False                           # были ли пропущены опросы (чужой черёд)
         self._thread: threading.Thread | None = None
+        self._stop = threading.Event()
 
     # --- снимок диска --------------------------------------------------------------
 
@@ -49,7 +56,7 @@ class ListsWatcher:
     def directory(self) -> Path:
         return self._dir or domains.LISTS_DIR
 
-    def _scan(self) -> dict[str, tuple]:
+    def _scan(self) -> dict[str, tuple[str, tuple]]:
         found = {}
         try:
             files = list(self.directory.glob("*.txt"))
@@ -62,67 +69,71 @@ class ListsWatcher:
                 st = path.stat()
             except OSError:
                 continue  # исчез между glob и stat: увидим при следующем опросе
-            found[path.stem] = (st.st_mtime_ns, st.st_size)
+            found[path.stem.casefold()] = (path.stem, (st.st_mtime_ns, st.st_size))
         return found
 
-    def _path(self, name: str) -> Path:
-        return self.directory / f"{name}.txt"
+    def _path(self, key: str) -> Path:
+        return self.directory / f"{self._names.get(key, key)}.txt"
 
     def prime(self) -> None:
         """Запоминает то, что лежит на диске сейчас, как уже известное: событий не будет."""
-        self._sig, self._known, self._pending = {}, {}, {}
-        for name, sig in self._scan().items():
+        domains.own_prune()
+        self._names, self._sig, self._known, self._pending = {}, {}, {}, {}
+        for key, (name, sig) in self._scan().items():
+            self._names[key] = name
             try:
-                self._known[name] = domains.content_hash(self._path(name).read_bytes())
+                self._known[key] = domains.content_hash(self._path(key).read_bytes())
             except OSError:
                 continue  # займёмся, когда файл освободится: он покажется как новый
-            self._sig[name] = sig
+            self._sig[key] = sig
 
     # --- опрос ---------------------------------------------------------------------
 
     def poll(self) -> None:
         current = self._scan()
-        for name in sorted(set(current) | set(self._sig) | set(self._pending)):
-            sig = current.get(name)
-            if sig == self._sig.get(name):
-                self._pending.pop(name, None)
+        for key in sorted(set(current) | set(self._sig) | set(self._pending)):
+            name, sig = current.get(key, (None, None))
+            if name:
+                self._names[key] = name
+            if sig == self._sig.get(key):
+                self._pending.pop(key, None)
                 continue
-            if self._pending.get(name, _UNSET) != sig:
-                self._pending[name] = sig  # такое состояние вижу впервые: подождём следующего опроса
+            if self._pending.get(key, _UNSET) != sig:
+                self._pending[key] = sig  # такое состояние вижу впервые: подождём следующего опроса
                 continue
-            self._settle(name, sig)
+            self._settle(key, sig)
 
-    def _settle(self, name: str, sig: tuple | None) -> None:
+    def _settle(self, key: str, sig: tuple | None) -> None:
         """Состояние держится уже два опроса: разбираем, что это за событие."""
+        name = self._names.get(key, key)
         if sig is None:
-            self._pending.pop(name, None)
-            self._sig.pop(name, None)
-            was_known = self._known.pop(name, None) is not None
+            self._pending.pop(key, None)
+            self._sig.pop(key, None)
+            was_known = self._known.pop(key, None) is not None
             known_own, own_hash = domains.own_written(name)
-            own_removal = known_own and own_hash is None
             domains.own_forget(name)
-            if was_known and not own_removal:  # свои удаления применены при удалении
+            if was_known and not (known_own and own_hash is None):  # свои удаления применены при удалении
                 self._emit("removed", name)
             return
         try:
-            digest = domains.content_hash(self._path(name).read_bytes())
-            after = self._path(name).stat()
+            digest = domains.content_hash(self._path(key).read_bytes())
+            after = self._path(key).stat()
         except OSError:
             return  # занят (редактор, антивирус): pending остаётся, прочтём в следующий опрос
         if (after.st_mtime_ns, after.st_size) != sig:
-            self._pending[name] = (after.st_mtime_ns, after.st_size)  # дописывают прямо сейчас
+            self._pending[key] = (after.st_mtime_ns, after.st_size)  # дописывают прямо сейчас
             return
-        self._pending.pop(name, None)
-        self._sig[name] = sig
+        self._pending.pop(key, None)
+        self._sig[key] = sig
         known_own, own_hash = domains.own_written(name)
+        domains.own_forget(name)  # запись прочитана наблюдателем: чужая правка или наша, память о ней не нужна
         if known_own and own_hash == digest:
-            domains.own_forget(name)  # наша запись, применена тем, кто её сделал
-            self._known[name] = digest
+            self._known[key] = digest  # наша запись, применена тем, кто её сделал
             return
-        if self._known.get(name) == digest:
+        if self._known.get(key) == digest:
             return  # тронули, но содержимое прежнее
-        kind = "changed" if name in self._known else "created"
-        self._known[name] = digest
+        kind = "changed" if key in self._known else "created"
+        self._known[key] = digest
         self._emit(kind, name)
 
     def _emit(self, kind: str, name: str) -> None:
@@ -142,7 +153,11 @@ class ListsWatcher:
 
     def _step(self) -> None:
         if not self._active():
-            self.prime()  # чужой черёд: чужие применения не повторяем, когда он вернётся
+            self._idle = True  # чужой черёд (служба): диск не трогаем
+            return
+        if self._idle:
+            self._idle = False
+            self.prime()  # чужие применения не повторяем: один снимок на возврате
             return
         self.poll()
 
@@ -150,7 +165,7 @@ class ListsWatcher:
         self.prime()
 
         def loop():
-            while not stop.wait(self._interval):
+            while not (stop.is_set() or self._stop.wait(self._interval)):
                 try:
                     self._step()
                 except Exception as e:
@@ -158,3 +173,10 @@ class ListsWatcher:
 
         self._thread = threading.Thread(target=loop, daemon=True, name="lists-watch")
         self._thread.start()
+
+    def stop(self, timeout: float = STOP_TIMEOUT) -> None:
+        """Останавливает опрос и ждёт, пока закончится применение, идущее прямо сейчас: после
+        этого можно гасить модули, к которым оно обращалось бы."""
+        self._stop.set()
+        if self._thread is not None and self._thread is not threading.current_thread():
+            self._thread.join(timeout)

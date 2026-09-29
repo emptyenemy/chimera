@@ -9,6 +9,7 @@
 import hashlib
 import ipaddress
 import re
+import time
 from pathlib import Path
 
 from modules.fileutil import atomic_write_text
@@ -18,10 +19,14 @@ LISTS_DIR = Path(__file__).parent.parent / "lists"
 # имя списка = имя файла без .txt; разрешаем только безопасные символы (без путей)
 NAME_RE = re.compile(r"^[A-Za-z0-9._-]+$")
 
-# Что записали мы сами: имя -> хэш содержимого (None — файл удалили мы). По этому наблюдатель
-# за файлами (modules/filewatch.py) отличает наши записи от правок снаружи и не применяет
-# то, что уже применено. Запись делается до самой правки файла.
-_own: dict[str, str | None] = {}
+# Что записали мы сами: имя (без учёта регистра) -> (хэш содержимого, время); хэш None — файл удалили
+# мы. По этому наблюдатель за файлами (modules/filewatch.py) отличает наши записи от правок снаружи и
+# не применяет то, что уже применено. Запись делается до самой правки файла и живёт OWN_TTL секунд:
+# если наблюдатель до файла не дошёл (следит служба, запись из командной строки), запись протухает,
+# иначе откат файла к старому содержимому считался бы «нашим».
+OWN_TTL = 10.0
+_clock = time.monotonic
+_own: dict[str, tuple[str | None, float]] = {}
 
 
 def content_hash(data: bytes) -> str:
@@ -29,13 +34,28 @@ def content_hash(data: bytes) -> str:
     return hashlib.sha256(data.replace(b"\r\n", b"\n")).hexdigest()
 
 
+def _own_mark(name: str, digest: str | None) -> None:
+    _own[name.strip().casefold()] = (digest, _clock())
+
+
 def own_written(name: str) -> tuple[bool, str | None]:
-    """(писали ли мы этот список, хэш записанного; None — удалили мы)."""
-    return name in _own, _own.get(name)
+    """(писали ли мы этот список недавно, хэш записанного; None — удалили мы)."""
+    key = name.strip().casefold()
+    entry = _own.get(key)
+    if entry and _clock() - entry[1] > OWN_TTL:
+        del _own[key]
+        entry = None
+    return (True, entry[0]) if entry else (False, None)
 
 
 def own_forget(name: str) -> None:
-    _own.pop(name, None)
+    _own.pop(name.strip().casefold(), None)
+
+
+def own_prune() -> None:
+    """Выбрасывает протухшие записи."""
+    for name in list(_own):
+        own_written(name)
 
 
 def _safe_path(name: str) -> Path:
@@ -64,7 +84,7 @@ def read_raw(name: str) -> str:
 def save_raw(name: str, content: str) -> dict:
     path = _safe_path(name)
     text = content.replace("\r\n", "\n").rstrip("\n") + "\n"
-    _own[name.strip()] = content_hash(text.encode("utf-8"))
+    _own_mark(name, content_hash(text.encode("utf-8")))
     atomic_write_text(path, text)
     return {"name": name, "count": len(load_list(name))}
 
@@ -74,7 +94,7 @@ def create_list(name: str) -> dict:
     if path.exists():
         raise ValueError(f"Список {name!r} уже существует")
     text = f"# {name}\n"
-    _own[name.strip()] = content_hash(text.encode("utf-8"))
+    _own_mark(name, content_hash(text.encode("utf-8")))
     atomic_write_text(path, text)
     return {"name": name, "count": 0}
 
@@ -82,7 +102,7 @@ def create_list(name: str) -> dict:
 def delete_list(name: str) -> None:
     path = _safe_path(name)
     if path.exists():
-        _own[name.strip()] = None
+        _own_mark(name, None)
         path.unlink()
 
 
@@ -93,8 +113,8 @@ def rename_list(old: str, new: str) -> dict:
         raise FileNotFoundError(f"Список {old!r} не найден")
     if old != new and new_path.exists():
         raise ValueError(f"Список {new!r} уже существует")
-    _own[old.strip()] = None
-    _own[new.strip()] = content_hash(old_path.read_bytes())
+    _own_mark(old, None)
+    _own_mark(new, content_hash(old_path.read_bytes()))
     old_path.rename(new_path)
     return {"name": new, "count": len(load_list(new))}
 
