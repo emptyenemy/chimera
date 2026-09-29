@@ -33,4 +33,3 @@
 .tg-qr { align-items: center; text-align: center; }
 .tg-qr-code { width: min(280px, 100%); background: #fff; padding: 8px; border-radius: 12px; }
 .tg-qr-svg { display: block; width: 100%; height: auto; }
-.tg-qr-link { max-width: 100%; overflow-wrap: anywhere; font-size: 12px; color: var(--muted-foreground); user-select: all; }

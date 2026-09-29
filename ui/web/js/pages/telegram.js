@@ -393,8 +393,6 @@
         <div class="tg-qr-code">${qrSvg(st.link)}</div>
         <p class="muted">Наведите камеру телефона на QR-код и откройте ссылку в Telegram. Телефон должен быть в той же сети Wi-Fi, что и этот компьютер.</p>
         ${st.running ? "" : `<div class="alert warning">${ic("triangle-alert")}<div class="alert-desc">Прокси остановлен. Запустите его, иначе телефон не подключится.</div></div>`}
-        <code class="tg-qr-link mono">${esc(st.link)}</code>
-        <p class="muted">QR содержит секрет прокси: не показывайте его посторонним.</p>
         <button class="btn ghost sm" data-qr-lan="close">Вернуть: только этот компьютер</button>
       </div>`;
   }
