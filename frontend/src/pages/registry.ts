@@ -18,6 +18,7 @@ import {
 
 import type { ModuleKey } from "@/lib/types"
 import { DashboardPage } from "@/pages/dashboard"
+import { HostsPage } from "@/pages/hosts"
 import { ListsPage } from "@/pages/lists"
 import { ProxyPage } from "@/pages/proxy"
 import { StubPage } from "@/pages/stub"
@@ -42,7 +43,7 @@ export const PAGES: PageDef[] = [
   { id: "strategies", titleKey: "nav.strategies", icon: ShieldIcon, groupKey: "nav.group.bypass", dot: "winws", component: stub("strategies") },
   { id: "proxy", titleKey: "nav.proxy", icon: GlobeIcon, groupKey: "nav.group.bypass", dot: "proxy", component: ProxyPage },
   { id: "telegram", titleKey: "nav.telegram", icon: SendIcon, groupKey: "nav.group.bypass", dot: "tg", component: stub("telegram") },
-  { id: "hosts", titleKey: "nav.hosts", icon: ServerIcon, groupKey: "nav.group.network", dot: "hosts", component: stub("hosts") },
+  { id: "hosts", titleKey: "nav.hosts", icon: ServerIcon, groupKey: "nav.group.network", dot: "hosts", component: HostsPage },
   { id: "dns", titleKey: "nav.dns", icon: NetworkIcon, groupKey: "nav.group.network", component: stub("dns") },
   { id: "lists", titleKey: "nav.lists", icon: ListIcon, groupKey: "nav.group.data", component: ListsPage },
   { id: "checks", titleKey: "nav.checks", icon: ScanSearchIcon, groupKey: "nav.group.data", component: stub("checks") },
