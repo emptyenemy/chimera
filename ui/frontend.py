@@ -53,4 +53,4 @@ def missing_page() -> bytes:
 main{{max-width:34rem;padding:0 1.5rem}}code{{background:#262626;padding:.1rem .4rem;border-radius:.3rem}}p{{color:#a3a3a3}}</style></head>
 <body><main><h1>Chimera</h1><p>{MISSING_TEXT}</p>
 <p>Чтобы вернуть прежний интерфейс, поставьте в <code>config.json</code> <code>"frontend": "legacy"</code>.</p></main></body></html>
-""".encode("utf-8")
+""".encode()
