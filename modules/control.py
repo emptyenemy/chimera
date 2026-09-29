@@ -103,7 +103,7 @@ def _current_sid() -> str | None:
         return None
 
 
-def write_discovery(port: int, token: str) -> Path:
+def write_discovery(port: int, token: str, *, interactive_sid=None) -> Path:
     data = {"port": port, "token": token, "pid": os.getpid(), "protocol": PROTOCOL,
             "version": VERSION, "started": int(time.time())}
     path = CONTROL_PATH
@@ -111,7 +111,7 @@ def write_discovery(port: int, token: str) -> Path:
     tmp.write_text(json.dumps(data), encoding="utf-8")
     _restrict_permissions(tmp)
     if _current_sid() == "S-1-5-18":
-        _grant_service_user(tmp)
+        _grant_service_user(tmp, sid=interactive_sid, force=True)
     os.replace(tmp, path)
     return path
 
@@ -343,17 +343,25 @@ def _interactive_sid() -> str | None:
         return None
 
 
-def _grant_service_user(path: Path) -> None:
+def _grant_service_user(path: Path, *, sid=None, force=False) -> None:
     global _service_access_sid
-    sid = _interactive_sid()
-    if not sid or sid == _service_access_sid:
+    sid = sid or _interactive_sid()
+    if not force and sid == _service_access_sid:
         return
     try:
-        result = subprocess.run(["icacls", str(path), "/grant:r", f"*{sid}:R"],
-                                capture_output=True, timeout=10,
-                                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
-        if result.returncode == 0:
-            _service_access_sid = sid
+        if _service_access_sid and (force or sid != _service_access_sid):
+            removed = subprocess.run(["icacls", str(path), "/remove:g", f"*{_service_access_sid}"],
+                                     capture_output=True, timeout=10,
+                                     creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+            if removed.returncode:
+                return
+        if sid:
+            result = subprocess.run(["icacls", str(path), "/grant:r", f"*{sid}:R"],
+                                    capture_output=True, timeout=10,
+                                    creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+            if result.returncode:
+                return
+        _service_access_sid = sid
     except (OSError, subprocess.SubprocessError):
         pass
 
@@ -364,7 +372,11 @@ def refresh_service_access() -> None:
         return
     _service_access_check = time.monotonic()
     if _server is not None and _current_sid() == "S-1-5-18":
-        _grant_service_user(CONTROL_PATH)
+        sid = _interactive_sid()
+        if sid != _service_access_sid:
+            # После смены пользователя прежний токен больше не принимает сервер.
+            _server.token = secrets.token_urlsafe(32)
+            write_discovery(_server.port, _server.token, interactive_sid=sid)
 
 
 _server: ControlServer | None = None

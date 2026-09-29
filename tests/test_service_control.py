@@ -3,6 +3,8 @@ import json
 import urllib.request
 from types import SimpleNamespace
 
+import pytest
+
 from modules import control, service
 from ui import api as api_mod
 
@@ -67,3 +69,46 @@ def test_owned_api_stops_modules_even_while_service_mutex_exists(monkeypatch):
     api.shutdown()
     api.shutdown()
     assert calls == ["hub", "background", "hosts", "winws", "proxy", "tg"]
+
+
+def test_service_releases_handles_when_api_start_fails(monkeypatch, tmp_path):
+    closed = []
+    monkeypatch.setattr(service, "LOG_PATH", tmp_path / "service.log")
+    monkeypatch.setattr(service, "is_supported", lambda: True)
+    monkeypatch.setattr(service, "_create_mutex", lambda name: 1)
+    monkeypatch.setattr(service.ctypes, "get_last_error", lambda: 0)
+    monkeypatch.setattr(service, "_create_event", lambda name: 2)
+    monkeypatch.setattr(service, "_write_pid", lambda: None)
+    monkeypatch.setattr(service, "_remove_pid", lambda: closed.append("pid"))
+    monkeypatch.setattr(service, "_close_handle", closed.append)
+
+    def fail(**kwargs):
+        raise RuntimeError("startup failed")
+
+    monkeypatch.setattr(api_mod, "Api", fail)
+    with pytest.raises(RuntimeError, match="startup failed"):
+        service.run()
+    assert closed == ["pid", 2, 1]
+
+
+def test_service_rotates_token_when_console_user_changes(monkeypatch):
+    server = SimpleNamespace(port=1234, token="old-token")
+    written = []
+    monkeypatch.setattr(control, "_server", server)
+    monkeypatch.setattr(control, "_service_access_sid", "old-user")
+    monkeypatch.setattr(control, "_service_access_check", 0)
+    monkeypatch.setattr(control, "_current_sid", lambda: "S-1-5-18")
+    monkeypatch.setattr(control, "_interactive_sid", lambda: "new-user")
+    monkeypatch.setattr(control, "write_discovery", lambda port, token, **kw: written.append((port, token, kw)))
+    control.refresh_service_access()
+    assert server.token != "old-token"
+    assert written == [(1234, server.token, {"interactive_sid": "new-user"})]
+
+
+def test_discovery_recreation_grants_the_same_user_on_the_new_file(monkeypatch, tmp_path):
+    calls = []
+    monkeypatch.setattr(control, "_service_access_sid", "user-sid")
+    monkeypatch.setattr(control, "_interactive_sid", lambda: "user-sid")
+    monkeypatch.setattr(control.subprocess, "run", lambda args, **kw: calls.append(args) or SimpleNamespace(returncode=0))
+    control._grant_service_user(tmp_path / "control.tmp", force=True)
+    assert calls[-1][-1] == "*user-sid:R"

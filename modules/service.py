@@ -331,50 +331,60 @@ def run() -> int:
 
     if not is_supported():
         logger.error("service-режим поддерживается только на Windows")
+        logger.removeHandler(handler)
+        handler.close()
         return 1
 
     running_mutex = _create_mutex(MUTEX_RUNNING)
     if not running_mutex or ctypes.get_last_error() == _ERROR_ALREADY_EXISTS:
         logger.error("служба уже запущена (мьютекс %s занят)", MUTEX_RUNNING)
+        _close_handle(running_mutex)
+        logger.removeHandler(handler)
+        handler.close()
         return 1
-    stop_event = _create_event(EVENT_STOP)
-    _write_pid()
-    logger.info("служба запущена, pid=%s", os.getpid())
-
-    from modules import control
-    from ui.api import Api
-
-    api = Api(service_owned=True)
-    autostart_modules(api.tg, api.winws, api.proxy, log=logger.info, allow_proxy_pac=False)
-    control.start_for(api)
-
-    # signal.SIGINT — для ручного `service run` в консоли (Ctrl+C): без него сигнал
-    # не дошёл бы до потока, застрявшего в блокирующем WaitForSingleObject.
+    stop_event, api, previous_handler = None, None, None
     import signal
+
     interrupted = {"flag": False}
 
     def _on_sigint(signum, frame):
         interrupted["flag"] = True
 
     try:
-        signal.signal(signal.SIGINT, _on_sigint)
-    except (ValueError, OSError):
-        pass  # не главный поток или сигнал недоступен — не критично
-
-    api.request_quit = lambda: interrupted.update(flag=True)
-    logger.info("ожидание сигнала остановки")
-    try:
+        from modules import control
+        from ui.api import Api
+        stop_event = _create_event(EVENT_STOP)
+        if not stop_event:
+            raise ctypes.WinError(ctypes.get_last_error())
+        _write_pid()
+        logger.info("служба запущена, pid=%s", os.getpid())
+        api = Api(service_owned=True)
+        api.request_quit = lambda: interrupted.update(flag=True)
+        autostart_modules(api.tg, api.winws, api.proxy, log=logger.info, allow_proxy_pac=False)
+        control.start_for(api)
+        try:
+            previous_handler = signal.signal(signal.SIGINT, _on_sigint)
+        except (ValueError, OSError):
+            pass
+        logger.info("ожидание сигнала остановки")
         while not interrupted["flag"]:
             if _wait_event(stop_event, 1000) == 0:
                 break
             control.refresh_service_access()
     finally:
-        logger.info("получен сигнал остановки, гашу модули")
-        api.shutdown()
-        _remove_pid()
-        _close_handle(stop_event)
-        _close_handle(running_mutex)
-        logger.info("служба остановлена")
+        try:
+            if api is not None:
+                api.shutdown()
+        finally:
+            _remove_pid()
+            _close_handle(stop_event)
+            _close_handle(running_mutex)
+            if previous_handler is not None:
+                signal.signal(signal.SIGINT, previous_handler)
+            logger.info("служба остановлена")
+            logger.removeHandler(handler)
+            handler.close()
+
     return 0
 
 
