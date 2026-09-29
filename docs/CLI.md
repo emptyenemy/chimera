@@ -106,6 +106,16 @@
 | DNS → «Сбросить» | `chimera dns reset <адаптер>` | system |
 | DNS → «Добавить провайдера» | `chimera dns provider-add <имя> <серверы…> [--ipv6 <ipv6>] [--doh <doh>] [--dot <dot>] [--unblock] [--filtering]` | app |
 | DNS → провайдер → «Удалить» | `chimera dns provider-delete <id>` | app |
+| DNS → провайдер → «Применить» (плашка «Оставить / Вернуть») | `chimera dns trial <адаптер> <провайдер> [--seconds <seconds>]` | system |
+| DNS → плашка → «Оставить» | `chimera dns trial-confirm [адаптер]` | app |
+| DNS → плашка → «Вернуть сейчас» | `chimera dns trial-revert [адаптер]` | system |
+| Списки → «Записать домены сайта» → «Начать» | `chimera dns record-start` | app |
+| Списки → «Записать домены сайта» → «Стоп» | `chimera dns record-stop` | app |
+| Обзор → «Выключить всё», меню значка в трее | `chimera panic` | system |
+| Настройки → Диагностика | `chimera doctor [--report]` | read |
+| Настройки → Обмен конфигом → «Поделиться» | `chimera config export [--sections <sections>] [--file <file>]` | read |
+| Настройки → Обмен конфигом → «Применить…» → «Проверить» | `chimera config import-preview <файл>` | read |
+| Настройки → Обмен конфигом → «Применить» | `chimera config import <файл> [--sections <sections>] [--confirm]` | app |
 | Списки: список и редактор | `chimera lists show [имя]` | read |
 | Списки → редактор → «Сохранить» | `chimera lists save <имя> [--file <file>]` | app |
 | Списки → «Новый список» | `chimera lists create <имя>` | app |
@@ -320,6 +330,40 @@ chimera config get update_channel
 ```
 chimera config set update_channel beta
 chimera config set close_to_tray false
+```
+
+#### `chimera config export [--sections <sections>] [--file <file>]`
+
+Собрать конфиг для отправки: разделы --sections (по умолчанию переносимые: lists,proxy,hosts,dns,telegram; winws зависит от провайдера и включается явно). Ссылка прокси и секреты не входят. --file — записать в файл. Уровень: чтение.
+
+- `--sections` — разделы через запятую
+- `--file` — записать в файл
+
+```
+chimera config export --file my.chimera
+chimera config export --sections proxy,lists
+```
+
+#### `chimera config import-preview <файл>`
+
+Показать, что изменит чужой конфиг (файл или `-` для stdin): применится, пропущено, требует подтверждения. Ничего не меняет. Уровень: чтение.
+
+- `файл` — файл конфига или - для stdin
+
+```
+chimera config import-preview friend.chimera
+```
+
+#### `chimera config import <файл> [--sections <sections>] [--confirm]`
+
+Применить чужой конфиг (разделы --sections, по умолчанию все, кроме зависящих от провайдера). Сначала смотрите `config import-preview`. Чужие серверы DNS/hosts и домены Telegram — только с --confirm. Перед применением файлы копируются в data/backups. Уровень: изменение приложения.
+
+- `файл` — файл конфига или - для stdin
+- `--sections` — разделы через запятую
+- `--confirm` — разрешить чужие серверы DNS/hosts и домены Telegram
+
+```
+chimera config import friend.chimera --sections proxy,lists
 ```
 
 ### winws
@@ -793,6 +837,84 @@ chimera dns provider-add my 9.9.9.9 149.112.112.112 --doh https://dns.quad9.net/
 
 ```
 chimera dns provider-delete my
+```
+
+#### `chimera dns trial <адаптер> <провайдер> [--seconds <seconds>]`
+
+Поставить DNS с автооткатом: не подтвердите за --seconds секунд — вернётся прежний. Уровень: изменение системы.
+
+- `адаптер` — номер адаптера из `chimera dns state`
+- `провайдер` — id провайдера
+- `--seconds` — секунд на подтверждение (5–120)
+
+```
+chimera dns trial 12 cloudflare
+chimera dns trial 12 cloudflare --seconds 30
+```
+
+#### `chimera dns trial-confirm [адаптер]`
+
+Оставить новый DNS после `dns trial`; без адаптера — все ожидающие. Уровень: изменение приложения.
+
+- `адаптер` — номер адаптера; без него — все
+
+```
+chimera dns trial-confirm 12
+```
+
+#### `chimera dns trial-revert [адаптер]`
+
+Вернуть прежний DNS сразу, не дожидаясь таймера. Уровень: изменение системы.
+
+- `адаптер` — номер адаптера; без него — все
+
+```
+chimera dns trial-revert 12
+```
+
+#### `chimera dns record-start`
+
+Начать запись доменов сайта: запоминает имена в кэше DNS Windows (кэш сбрасывается, если есть права администратора). Уровень: изменение приложения.
+
+```
+chimera dns record-start
+```
+
+#### `chimera dns record-stop`
+
+Закончить запись: домены, появившиеся с начала, по основным доменам; трекеры помечены. Откройте нужный сайт между start и stop. Уровень: изменение приложения.
+
+```
+chimera dns record-start
+chimera dns record-stop --json
+```
+
+### panic
+
+Выключить всё разом: обход, прокси, Telegram, hosts, DNS, службу.
+
+#### `chimera panic`
+
+Выключить всё разом: обход, прокси, Telegram-прокси, службу, подмену hosts; вернуть DNS на адаптерах, где его ставила Chimera. Шаги независимы, сбой одного не мешает остальным. Только по просьбе пользователя. Уровень: изменение системы.
+
+```
+chimera panic
+```
+
+### doctor
+
+Диагностика: почему обход может не работать.
+
+#### `chimera doctor [--report]`
+
+Диагностика: права, драйвер WinDivert, порты, чужие процессы, прокси в системе. --report даёт Markdown для issue (ссылки прокси и секреты скрыты). Ничего не меняет. Уровень: чтение.
+
+- `--report` — отчёт в Markdown
+
+```
+chimera doctor
+chimera doctor --report
+chimera doctor --json
 ```
 
 ### lists

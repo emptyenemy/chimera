@@ -70,6 +70,8 @@ GROUPS: dict[str, str] = {
     "tg": "Telegram-прокси",
     "hosts": "подмена IP в системном hosts",
     "dns": "системный DNS и DNS-провайдеры",
+    "panic": "выключить всё разом: обход, прокси, Telegram, hosts, DNS, службу",
+    "doctor": "диагностика: почему обход может не работать",
     "lists": "списки доменов",
     "check": "открывается ли сайт и заблокирован ли он",
     "logs": "последние строки логов модулей",
@@ -308,6 +310,58 @@ ACTIONS: tuple[Action, ...] = (
        ("chimera dns provider-add my 9.9.9.9 149.112.112.112 --doh https://dns.quad9.net/dns-query",)),
     _a("dns", "provider-delete", "Удалить DNS-провайдера.", "DNS → провайдер → «Удалить»", "dns_delete_provider",
        (Arg("id", "str", "id провайдера"),), APP, ("chimera dns provider-delete my",)),
+
+    _a("dns", "trial", "Поставить DNS с автооткатом: не подтвердите за --seconds секунд — вернётся прежний.",
+       "DNS → провайдер → «Применить» (плашка «Оставить / Вернуть»)", "dns_set_trial",
+       (Arg("адаптер", "int", "номер адаптера из `chimera dns state`"), Arg("провайдер", "str", "id провайдера"),
+        Arg("seconds", "int", "секунд на подтверждение (5–120)", optional=True, flag=True, default=15)), SYSTEM,
+       ("chimera dns trial 12 cloudflare", "chimera dns trial 12 cloudflare --seconds 30")),
+    _a("dns", "trial-confirm", "Оставить новый DNS после `dns trial`; без адаптера — все ожидающие.",
+       "DNS → плашка → «Оставить»", "dns_trial_confirm",
+       (Arg("адаптер", "int", "номер адаптера; без него — все", optional=True),), APP,
+       ("chimera dns trial-confirm 12",)),
+    _a("dns", "trial-revert", "Вернуть прежний DNS сразу, не дожидаясь таймера.",
+       "DNS → плашка → «Вернуть сейчас»", "dns_trial_revert",
+       (Arg("адаптер", "int", "номер адаптера; без него — все", optional=True),), SYSTEM,
+       ("chimera dns trial-revert 12",)),
+    _a("dns", "record-start", "Начать запись доменов сайта: запоминает имена в кэше DNS Windows (кэш сбрасывается, "
+       "если есть права администратора).", "Списки → «Записать домены сайта» → «Начать»", "dns_record_start",
+       level=APP, examples=("chimera dns record-start",)),
+    _a("dns", "record-stop", "Закончить запись: домены, появившиеся с начала, по основным доменам; "
+       "трекеры помечены. Откройте нужный сайт между start и stop.",
+       "Списки → «Записать домены сайта» → «Стоп»", "dns_record_stop", level=APP,
+       examples=("chimera dns record-start", "chimera dns record-stop --json")),
+
+    _a("panic", "", "Выключить всё разом: обход, прокси, Telegram-прокси, службу, подмену hosts; вернуть DNS на "
+       "адаптерах, где его ставила Chimera. Шаги независимы, сбой одного не мешает остальным. Только по просьбе пользователя.",
+       "Обзор → «Выключить всё», меню значка в трее", "panic_all", level=SYSTEM, examples=("chimera panic",)),
+
+    _a("doctor", "", "Диагностика: права, драйвер WinDivert, порты, чужие процессы, прокси в системе. "
+       "--report даёт Markdown для issue (ссылки прокси и секреты скрыты). Ничего не меняет.",
+       "Настройки → Диагностика", handler="doctor", methods=("doctor_run", "doctor_report"),
+       args=(Arg("report", "switch", "отчёт в Markdown", flag=True, default=False),),
+       examples=("chimera doctor", "chimera doctor --report", "chimera doctor --json")),
+
+    _a("config", "export", "Собрать конфиг для отправки: разделы --sections (по умолчанию переносимые: "
+       "lists,proxy,hosts,dns,telegram; winws зависит от провайдера и включается явно). Ссылка прокси и секреты "
+       "не входят. --file — записать в файл.", "Настройки → Обмен конфигом → «Поделиться»", handler="config_export",
+       methods=("config_export",),
+       args=(Arg("sections", "str", "разделы через запятую", optional=True, flag=True),
+             Arg("file", "str", "записать в файл", optional=True, flag=True)),
+       examples=("chimera config export --file my.chimera", "chimera config export --sections proxy,lists")),
+    _a("config", "import-preview", "Показать, что изменит чужой конфиг (файл или `-` для stdin): применится, "
+       "пропущено, требует подтверждения. Ничего не меняет.", "Настройки → Обмен конфигом → «Применить…» → «Проверить»",
+       handler="config_import_preview", methods=("config_import_preview",),
+       args=(Arg("файл", "str", "файл конфига или - для stdin"),),
+       examples=("chimera config import-preview friend.chimera",)),
+    _a("config", "import", "Применить чужой конфиг (разделы --sections, по умолчанию все, кроме зависящих от "
+       "провайдера). Сначала смотрите `config import-preview`. Чужие серверы DNS/hosts и домены Telegram — только с "
+       "--confirm. Перед применением файлы копируются в data/backups.", "Настройки → Обмен конфигом → «Применить»",
+       handler="config_import", methods=("config_import_apply", "config_import_preview"),
+       args=(Arg("файл", "str", "файл конфига или - для stdin"),
+             Arg("sections", "str", "разделы через запятую", optional=True, flag=True),
+             Arg("confirm", "switch", "разрешить чужие серверы DNS/hosts и домены Telegram", flag=True, default=False)),
+       level=APP, examples=("chimera config import friend.chimera --sections proxy,lists",)),
 
     # --- списки ----------------------------------------------------------------------
     _a("lists", "show", "Списки с числом доменов и подключениями; с именем — содержимое списка.",

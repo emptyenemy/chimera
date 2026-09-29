@@ -559,6 +559,74 @@ def h_path_remove(ctx, act, ns):
                   [f"Убрано из PATH: {d}." if changed else "Папки не было в PATH."])
 
 
+def _sections(text):
+    return [x.strip() for x in text.split(",") if x.strip()] if text else None
+
+
+def _read_arg(path):
+    return sys.stdin.read() if path == "-" else open(path, encoding="utf-8").read()
+
+
+def h_doctor(ctx, act, ns):
+    if ns.get("a0"):
+        text = ctx.call("doctor_report", True)
+        return Result({"report": text}, text.splitlines())
+    res = ctx.call("doctor_run")
+    icons = {"ok": "ok  ", "warn": "warn", "fail": "FAIL"}
+    lines = [f"[{icons.get(c['status'], c['status'])}] {c['title']}: {c['message']}"
+             + (f"\n       {c['hint']}" if c["status"] != "ok" and c.get("hint") else "") for c in res["checks"]]
+    s = res["summary"]
+    lines.append(f"Итого: ok {s['ok']}, замечаний {s['warn']}, проблем {s['fail']}.")
+    return Result(res, lines, exit_code=1 if s["fail"] else 0)
+
+
+def h_config_export(ctx, act, ns):
+    text = ctx.call("config_export", _sections(ns.get("a0")))
+    path = ns.get("a1")
+    if path:
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(text)
+        return Result({"file": path}, [f"Конфиг записан в {path}."])
+    return Result({"config": text}, text.splitlines())
+
+
+def _preview_lines(pv):
+    if not pv.get("ok"):
+        return [pv.get("error") or "Конфиг не подходит."]
+    out = []
+    for s in pv["sections"]:
+        mark = " (зависит от провайдера)" if s.get("provider_dependent") else ""
+        out.append(f"{s['title']}{mark}:")
+        out += [f"  {c}" for c in s["changes"]]
+        out += [f"  ! {c}" for c in s["confirm"]]
+        out += [f"  пропущено: {c}" for c in s["skipped"]]
+    if pv.get("needs_confirm"):
+        out.append("Есть пункты, требующие подтверждения (!): применяйте с --confirm, только если доверяете автору.")
+    return out
+
+
+def h_config_import_preview(ctx, act, ns):
+    pv = ctx.call("config_import_preview", _read_arg(ns["a0"]))
+    return Result(pv, _preview_lines(pv), exit_code=0 if pv.get("ok") else 1)
+
+
+def h_config_import(ctx, act, ns):
+    text = _read_arg(ns["a0"])
+    sections = _sections(ns.get("a1"))
+    if sections is None:
+        pv = ctx.call("config_import_preview", text)
+        if not pv.get("ok"):
+            return Result(pv, _preview_lines(pv), exit_code=1)
+        sections = [s["id"] for s in pv["sections"] if not s.get("provider_dependent")]
+    res = ctx.call("config_import_apply", text, sections, bool(ns.get("a2")))
+    lines = [f"{sid}: {x}" for sid, items in res["applied"].items() for x in items]
+    lines += [f"пропущено, {sid}: {x}" for sid, items in res["skipped"].items() for x in items]
+    lines += [f"ошибка: {e}" for e in res["errors"]]
+    if res.get("backup"):
+        lines.append(f"Прежние файлы: {res['backup']}")
+    return Result(res, lines or ["Нечего применять."], exit_code=1 if res["errors"] else 0)
+
+
 HANDLERS = {
     "status": h_status, "version": h_version, "start": h_start, "stop": h_stop, "restart": h_restart,
     "sources_check": h_sources_check, "config_get": h_config_get, "config_set": h_config_set,
@@ -570,4 +638,6 @@ HANDLERS = {
     "lists_remove": h_lists_remove, "check_site": h_check_site, "check_list": h_check_list,
     "logs": h_logs, "service": h_service, "docs": h_docs, "agent_info": h_agent_info, "path_show": h_path_show, "path_add": h_path_add,
     "path_remove": h_path_remove,
+    "doctor": h_doctor, "config_export": h_config_export,
+    "config_import_preview": h_config_import_preview, "config_import": h_config_import,
 }
