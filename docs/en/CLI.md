@@ -767,7 +767,7 @@ chimera hosts assign xbox=
 Add a hosts provider (name, DoH address, servers). Level: changes the app.
 
 - `name` — str
-- `doh` — DoH address, or - 
+- `doh` — DoH address, or -
 - `servers` — IP addresses
 
 ```

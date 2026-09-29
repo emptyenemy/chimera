@@ -130,7 +130,7 @@
   "cli.cmd.hosts.ping.arg.id": "provider id",
   "cli.cmd.hosts.ping.summary": "Check that a hosts provider is reachable.",
   "cli.cmd.hosts.ping.ui": "Hosts → provider → “Ping”",
-  "cli.cmd.hosts.provider-add.arg.doh": "DoH address, or - ",
+  "cli.cmd.hosts.provider-add.arg.doh": "DoH address, or -",
   "cli.cmd.hosts.provider-add.arg.servers": "IP addresses",
   "cli.cmd.hosts.provider-add.summary": "Add a hosts provider (name, DoH address, servers).",
   "cli.cmd.hosts.provider-add.ui": "Hosts → “Add provider”",

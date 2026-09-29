@@ -50,7 +50,9 @@ def main(argv: list[str]) -> int:
                 print(f"{name} актуален")
             continue
         out.parent.mkdir(parents=True, exist_ok=True)
-        out.write_text(text, encoding="utf-8", newline="\n")
+        previous = out.read_bytes() if out.exists() else b"\r\n"
+        newline = "\r\n" if b"\r\n" in previous else "\n"
+        out.write_bytes(text.replace("\n", newline).encode("utf-8"))
         print(f"записано: {name}")
     return 1 if stale else 0
 
