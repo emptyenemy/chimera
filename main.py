@@ -64,9 +64,10 @@ def main() -> int:
                 instance.signal_existing()
             return 0
 
-    # UI/TUI работают с hosts и DNS — без прав админа толку нет, повышаемся сразу.
+    # Окно работает с hosts и DNS — без прав админа толку нет, повышаемся сразу. TUI — клиент
+    # работающей Chimera (tui/remote.py), права нужны ей, а не терминалу.
     # service — фон от SYSTEM (см. modules/service.py), там UAC неуместен и невозможен.
-    if mode in ("ui", "tui") and config.get("auto_elevate", True) and not is_admin():
+    if mode == "ui" and config.get("auto_elevate", True) and not is_admin():
         if relaunch_as_admin():
             return 0  # управление ушло в админский процесс
         print("Не удалось получить права администратора (UAC отклонён). "
@@ -83,7 +84,7 @@ def main() -> int:
         guard.start()
         return 0
     if mode == "tui":
-        from tui.app import run
+        from tui.launch import run
         return run()
     if mode == "service":
         # запуск без аргументов с interface=service в конфиге — тот же фоновый
