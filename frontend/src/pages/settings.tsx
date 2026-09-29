@@ -7,6 +7,7 @@ import { useEffect, useState } from "react"
 import { Page } from "@/components/app/page"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { t } from "@/lib/i18n"
+import { BackupsCard } from "@/pages/settings/backups"
 import { DoctorCard } from "@/pages/settings/doctor"
 import { GeneralCard, MaintenanceCard, ThemeCard, LanguageCard } from "@/pages/settings/general"
 import { ShareCard } from "@/pages/settings/share"
@@ -69,6 +70,7 @@ export function SettingsPage() {
         </TabsContent>
         <TabsContent value="tools" className="flex flex-col gap-4">
           <ShareCard />
+          <BackupsCard />
           <DoctorCard />
         </TabsContent>
       </Tabs>

@@ -38,6 +38,7 @@ The tools work independently and share domain lists:
 - **Checks**: RKN registry checks through [cheburcheck](https://github.com/LowderPlay/cheburcheck), plus domain reachability from your computer.
 - **Agent setup**: bundled skill, instructions, versioned docs and JSON commands let your agent diagnose and configure Chimera at your request.
 - **Share configurations**: export selected sections to a `.chimera` file; preview the contents before importing.
+- **Import backups**: preview and restore through the window or CLI; save the current state before restoring and roll back on failure ([details, in Russian](docs/BACKUPS.md)).
 - **CLI and TUI**: commands and a full-screen terminal interface for controlling the running application or service.
 - **Live lists**: edits to `lists/*.txt` are validated and applied automatically.
 - **Languages and themes**: Russian/English and system/light/dark themes, selectable in Settings.
