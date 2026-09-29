@@ -9,3 +9,7 @@ cryptography>=41.0
 # безусловно (корневые сертификаты для запросов к GitHub), без пакета ядро не
 # импортируется вообще. В сборке — через --include-package в build.bat.
 certifi>=2026.6
+# Полноэкранный терминальный интерфейс `chimera tui` (tui/textual_app.py). Тянет rich,
+# markdown-it-py, pygments. Без пакета `chimera tui` откатывается на простое меню (--simple).
+# В сборке — через --include-package в build.bat.
+textual>=8.2
