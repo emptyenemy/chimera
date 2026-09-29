@@ -8,6 +8,7 @@
 import json
 import sys
 from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
 
 from PySide6.QtCore import QObject, Qt, QTimer, QUrl, Signal, Slot
 from PySide6.QtGui import QColor, QIcon
@@ -18,11 +19,12 @@ from PySide6.QtWidgets import QApplication, QMainWindow, QMenu, QSystemTrayIcon
 from modules import appconfig, control, instance
 
 from . import tray_model
-from .api import WEB_DIR, Api
+from .api import Api
+from .frontend import web_dir
 
 # Иконка окна и панели задач. У собранного exe она и так зашита в ресурсы
 # (build.bat), но при запуске из исходников без этого висела бы иконка python.exe.
-APP_ICON = WEB_DIR.parent.parent / "assets" / "logo" / "chimera.ico"
+APP_ICON = Path(__file__).resolve().parent.parent / "assets" / "logo" / "chimera.ico"
 # Фон окна до загрузки страницы — тот же, что --background темы (ui/web/css/base.css)
 WINDOW_BG = "#0a0a0a"
 
@@ -229,7 +231,7 @@ def run():
     view.page().setWebChannel(channel)
     # пока страница грузится, окно залито этим цветом — он должен совпадать с фоном темы
     view.page().setBackgroundColor(QColor(WINDOW_BG))
-    view.load(QUrl.fromLocalFile(str(WEB_DIR / "index.html")))
+    view.load(QUrl.fromLocalFile(str(web_dir() / "index.html")))
 
     window = MainWindow()
     window.setStyleSheet(f"QMainWindow {{ background: {WINDOW_BG}; }}")  # и до первой отрисовки страницы
