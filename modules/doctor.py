@@ -4,7 +4,12 @@
   • gather(api) — собирает факты с живой системы, только чтение, без побочных эффектов;
     любую часть, которую не удалось получить, отдаёт как None;
   • evaluate(data) — чистая функция: факты -> список проверок
-    {id, title, status ok|warn|fail, message, hint}.
+    {id, title, status ok|warn|fail, message, hint, code, params}.
+
+Тексты проверок лежат в каталоге: заголовок — `doctor.<id>.title`, сообщение и подсказка —
+`<code>.message` и `<code>.hint` (code вроде `doctor.admin.warn` и params лежат в самой
+проверке). Окно может собрать текст на своём языке по ним; title, message и hint уже
+приходят на языке программы.
 
 Отчёт для issue (to_markdown) проходит через mask(): ссылки прокси и секреты
 Telegram-прокси в него не попадают, даже если случайно окажутся в тексте проверки.
@@ -15,9 +20,15 @@ import re
 import socket
 import time
 
+from modules.i18n import has, t
+
 # ссылки прокси (vless://…, trojan://… и т. п.) и секрет в ссылке tg://proxy
 _LINK_RE = re.compile(r"\b(vless|vmess|trojan|ss|ssr|hysteria2?|tuic|socks5?|wireguard)://[^\s`'\"<>]+", re.I)
 _SECRET_RE = re.compile(r"(secret=)[0-9a-zA-Z]+", re.I)
+
+# id проверок; у каждой в каталоге есть `doctor.<id>.title`
+CHECK_IDS = ("admin", "zapret_bundle", "windivert", "foreign_winws", "foreign_singbox", "port_proxy",
+             "port_tg", "singbox_core", "versions", "system_proxy", "service", "app")
 
 
 def mask(text) -> str:
@@ -25,15 +36,17 @@ def mask(text) -> str:
     return _SECRET_RE.sub(r"\1***", text)
 
 
-def _check(cid, title, status, message, hint=""):
-    return {"id": cid, "title": title, "status": status, "message": mask(message), "hint": mask(hint)}
+def _check(cid, status, code, **params):
+    """Проверка с готовым текстом на текущем языке. Всё, что попадёт в текст или в параметры,
+    проходит через mask()."""
+    params = {k: mask(v) if isinstance(v, str) else v for k, v in params.items()}
+    hint = t(f"{code}.hint", **params) if has(f"{code}.hint") else ""
+    return {"id": cid, "title": t(f"doctor.{cid}.title"), "status": status,
+            "message": mask(t(f"{code}.message", **params)), "hint": mask(hint),
+            "code": code, "params": params}
 
 
 # --- оценка фактов ---------------------------------------------------------------------
-
-def _missing(cid, title, what):
-    return _check(cid, title, "warn", f"Не удалось получить: {what}", "Повторите диагностику или перезапустите Chimera.")
-
 
 def evaluate(data: dict) -> dict:
     checks = []
@@ -42,122 +55,103 @@ def evaluate(data: dict) -> dict:
 
     # права
     if data.get("admin") is None:
-        add(_missing("admin", "Права администратора", "проверка прав"))
+        add(_check("admin", "warn", "doctor.admin.missing"))
     elif data["admin"]:
-        add(_check("admin", "Права администратора", "ok", "Chimera работает с правами администратора."))
+        add(_check("admin", "ok", "doctor.admin.ok"))
     else:
-        add(_check("admin", "Права администратора", "warn", "Chimera работает без прав администратора.",
-                   "Запустите Chimera от имени администратора: без этого не работают обход DPI, "
-                   "подмена hosts, смена DNS и режим TUN у прокси."))
+        add(_check("admin", "warn", "doctor.admin.warn"))
 
     # бандл zapret и драйвер WinDivert
     if data.get("winws_exe") is False:
-        add(_check("zapret_bundle", "Бандл zapret (winws2)", "fail", "winws2.exe не найден.",
-                   "Переустановите Chimera из релиза или выполните `python tools/fetch_bins.py`."))
+        add(_check("zapret_bundle", "fail", "doctor.zapret_bundle.fail"))
     elif data.get("winws_exe"):
-        add(_check("zapret_bundle", "Бандл zapret (winws2)", "ok", "winws2.exe на месте."))
+        add(_check("zapret_bundle", "ok", "doctor.zapret_bundle.ok"))
 
     if winws is None:
-        add(_missing("windivert", "Драйвер WinDivert", "состояние обхода DPI"))
+        add(_check("windivert", "warn", "doctor.windivert.missing"))
     else:
         status = winws.get("windivert")
         if winws.get("running") and status != "RUNNING":
-            add(_check("windivert", "Драйвер WinDivert", "fail",
-                       "winws2 запущен, но служба WinDivert не работает.",
-                       "Остановите обход и запустите заново; если не помогает, проверьте антивирус и "
-                       "включённую защиту ядра (Secure Boot / целостность памяти): они блокируют драйвер."))
+            add(_check("windivert", "fail", "doctor.windivert.fail"))
         elif status == "RUNNING":
-            add(_check("windivert", "Драйвер WinDivert", "ok", "Служба WinDivert работает."))
+            add(_check("windivert", "ok", "doctor.windivert.running"))
         elif status == "STOPPED":
-            add(_check("windivert", "Драйвер WinDivert", "ok", "Служба установлена и остановлена: обход выключен."))
+            add(_check("windivert", "ok", "doctor.windivert.stopped"))
         else:
-            add(_check("windivert", "Драйвер WinDivert", "ok",
-                       "Служба ещё не установлена: она появится при первом запуске стратегии."))
+            add(_check("windivert", "ok", "doctor.windivert.absent"))
 
     # чужие процессы
     if winws is not None:
         if winws.get("external"):
-            add(_check("foreign_winws", "Чужой winws2", "warn",
-                       "Работает winws2, запущенный не этой Chimera (прошлой сессией или другой программой).",
-                       "Остановите его на вкладке «Стратегии» или кнопкой «Выключить всё», иначе новая "
-                       "стратегия не поднимется."))
+            add(_check("foreign_winws", "warn", "doctor.foreign_winws.warn"))
         else:
-            add(_check("foreign_winws", "Чужой winws2", "ok", "Посторонних процессов winws2 нет."))
+            add(_check("foreign_winws", "ok", "doctor.foreign_winws.ok"))
     if proxy is not None:
         if proxy.get("external"):
-            add(_check("foreign_singbox", "Чужой sing-box", "warn",
-                       "Работает sing-box, запущенный не этой Chimera.",
-                       "Остановите его на вкладке «Прокси» или кнопкой «Выключить всё»."))
+            add(_check("foreign_singbox", "warn", "doctor.foreign_singbox.warn"))
         else:
-            add(_check("foreign_singbox", "Чужой sing-box", "ok", "Посторонних процессов sing-box нет."))
+            add(_check("foreign_singbox", "ok", "doctor.foreign_singbox.ok"))
 
     # порты
     ports = data.get("ports") or {}
-    for key, label, mod, port in (
-            ("port_proxy", "Порт прокси", proxy, (proxy or {}).get("socks_port")),
-            ("port_tg", "Порт Telegram-прокси", tg, (tg or {}).get("port"))):
+    for key, mod, port in (
+            ("port_proxy", proxy, (proxy or {}).get("socks_port")),
+            ("port_tg", tg, (tg or {}).get("port"))):
         if mod is None or port is None:
             continue
         if mod.get("running"):
-            add(_check(key, label, "ok", f"Порт {port} занят нашим модулем."))
+            add(_check(key, "ok", "doctor.port.ours", port=port))
         elif ports.get(key.replace("port_", "")):
-            add(_check(key, label, "fail", f"Порт {port} занят другим приложением.",
-                       "Закройте это приложение или поменяйте порт в настройках модуля."))
+            add(_check(key, "fail", "doctor.port.busy", port=port))
         else:
-            add(_check(key, label, "ok", f"Порт {port} свободен."))
+            add(_check(key, "ok", "doctor.port.free", port=port))
 
     # ядро sing-box
     if proxy is not None:
         core = proxy.get("core") or {}
         if core.get("present"):
-            add(_check("singbox_core", "Ядро sing-box", "ok", f"Установлено, версия {core.get('version') or '?'}."))
+            add(_check("singbox_core", "ok", "doctor.singbox_core.ok", version=core.get("version") or "?"))
         else:
-            add(_check("singbox_core", "Ядро sing-box", "warn", "Не установлено.",
-                       "Нажмите «Скачать sing-box» на вкладке «Прокси», если он вам нужен."))
+            add(_check("singbox_core", "warn", "doctor.singbox_core.warn"))
 
     # версии компонентов
     versions = data.get("versions")
     if versions is None:
-        add(_missing("versions", "Версии компонентов", "версии источников"))
+        add(_check("versions", "warn", "doctor.versions.missing"))
     else:
         text = ", ".join(f"{v.get('name')} {v.get('current')}" for v in versions if v.get("current"))
-        add(_check("versions", "Версии компонентов", "ok", text or "Версии неизвестны."))
+        add(_check("versions", "ok", "doctor.versions.list", list=text) if text
+            else _check("versions", "ok", "doctor.versions.unknown"))
 
     # системный прокси / PAC
     sp = data.get("system_proxy")
     if sp is None:
-        add(_missing("system_proxy", "Системный прокси", "настройки прокси Windows"))
+        add(_check("system_proxy", "warn", "doctor.system_proxy.missing"))
     else:
         ours = sp.get("autoconfig") and sp.get("autoconfig") == sp.get("our_pac")
         proxy_running = bool((proxy or {}).get("running"))
         if ours and not proxy_running:
-            add(_check("system_proxy", "Системный прокси", "warn",
-                       "В системе остался PAC Chimera, а прокси не запущен: сайты из списков не откроются.",
-                       "Нажмите «Выключить всё» на странице «Обзор» — PAC будет снят."))
+            add(_check("system_proxy", "warn", "doctor.system_proxy.stale_pac"))
         elif sp.get("autoconfig") and not ours:
-            add(_check("system_proxy", "Системный прокси", "warn",
-                       f"В системе задан чужой PAC: {sp['autoconfig']}",
-                       "Он может конфликтовать с прокси Chimera в режиме PAC."))
+            add(_check("system_proxy", "warn", "doctor.system_proxy.foreign_pac", pac=sp["autoconfig"]))
         elif sp.get("enabled") and sp.get("server"):
-            add(_check("system_proxy", "Системный прокси", "warn",
-                       f"Включён системный прокси {sp['server']}.",
-                       "Он может конфликтовать с прокси Chimera; отключите его, если не он вам нужен."))
+            add(_check("system_proxy", "warn", "doctor.system_proxy.enabled", server=sp["server"]))
         else:
-            add(_check("system_proxy", "Системный прокси", "ok", "Системный прокси не мешает."))
+            add(_check("system_proxy", "ok", "doctor.system_proxy.ok"))
 
     # служба
     svc = data.get("service")
     if svc is not None:
         if svc.get("running"):
-            msg = "Фоновая служба Chimera работает: она владеет модулями, окно только показывает их состояние."
+            code = "doctor.service.running"
         elif svc.get("installed"):
-            msg = "Фоновая служба установлена, сейчас не запущена."
+            code = "doctor.service.installed"
         else:
-            msg = "Фоновая служба не установлена."
-        add(_check("service", "Фоновая служба", "ok", msg))
+            code = "doctor.service.absent"
+        add(_check("service", "ok", code))
 
-    add(_check("app", "Программа и система", "ok",
-               f"Chimera {data.get('app_version') or '?'}, {data.get('os') or 'ОС неизвестна'}."))
+    add(_check("app", "ok", "doctor.app.ok", version=data.get("app_version") or "?",
+               os=data.get("os") or t("doctor.app.unknown_os")))
 
     summary = {s: sum(1 for c in checks if c["status"] == s) for s in ("ok", "warn", "fail")}
     return {"checks": checks, "summary": summary, "generated_at": data.get("generated_at") or int(time.time())}
@@ -170,12 +164,11 @@ _ICONS = {"ok": "✅", "warn": "⚠️", "fail": "❌"}
 
 def to_markdown(result: dict) -> str:
     s = result["summary"]
-    lines = ["### Диагностика Chimera", "",
-             f"Итог: ✅ {s['ok']}  ⚠️ {s['warn']}  ❌ {s['fail']}", ""]
+    lines = [t("doctor.report.title"), "", t("doctor.report.total", ok=s["ok"], warn=s["warn"], fail=s["fail"]), ""]
     for c in result["checks"]:
         lines.append(f"- {_ICONS.get(c['status'], '•')} **{c['title']}**: {c['message']}")
         if c["status"] != "ok" and c.get("hint"):
-            lines.append(f"  - Подсказка: {c['hint']}")
+            lines.append("  - " + t("doctor.report.hint", hint=c["hint"]))
     return mask("\n".join(lines)) + "\n"
 
 
