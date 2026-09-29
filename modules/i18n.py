@@ -104,12 +104,24 @@ def current_lang() -> str:
     return _from_config()
 
 
+def state() -> dict:
+    """Что выбрано в настройках (auto | ru | en), какой язык действует сейчас, какой у системы."""
+    from modules import appconfig
+    return {"setting": appconfig.load().get("lang", "auto"), "lang": current_lang(),
+            "system": resolve("auto"), "available": list(LANGS)}
+
+
 def set_lang(lang: str | None) -> None:
     """Принудительный язык на этот процесс (флаг `--lang`); None — снять."""
     global _override
     if lang is not None and lang not in LANGS:
-        raise ValueError(f"неизвестный язык {lang!r}")
+        raise ValueError(f"unknown language {lang!r}")
     _override = lang
+
+
+def override() -> str | None:
+    """Язык, принудительно выставленный set_lang (None — не выставлен)."""
+    return _override
 
 
 def refresh() -> None:

@@ -11,7 +11,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
-from modules import appconfig, applog, autostart, blockcheck, cheburcheck, control, doctor, domainrec, domains, filewatch, liveapply, paths, service, shareconfig, upstream, winproc
+from modules import appconfig, applog, autostart, blockcheck, cheburcheck, control, doctor, domainrec, domains, filewatch, i18n, liveapply, paths, service, shareconfig, upstream, winproc
 from modules import discord as discord_cache
 from modules.dns_jumper import DnsJumper
 from modules.hosts import HostsManager
@@ -1074,6 +1074,24 @@ class Api:
     def config_set(self, key, value):
         try:
             return _ok(appconfig.set_value(key, value))
+        except Exception as e:
+            return _err(e)
+
+    # --- язык (modules/i18n.py) ------------------------------------------------
+
+    def lang_get(self):
+        """Язык программы: что выбрано в настройках (auto | ru | en), что из этого получилось
+        сейчас и какой язык у системы."""
+        try:
+            return _ok(i18n.state())
+        except Exception as e:
+            return _err(e)
+
+    def i18n_get(self, lang=None):
+        """Каталог текстов языка целиком (поверх английского запасного) и правила множественных
+        форм: окно собирает текст само по кодам и параметрам. Без языка — текущий."""
+        try:
+            return _ok(i18n.frontend_payload(lang))
         except Exception as e:
             return _err(e)
 

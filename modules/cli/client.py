@@ -3,7 +3,8 @@
 import http.client
 import json
 
-from modules import control
+from modules import control, errors, i18n
+from modules.i18n import t
 
 # Версия протокола, которую говорит этот CLI. Приложение с меньшей версией не понимает часть
 # запросов — тогда просим обновить программу (см. connect()).
@@ -11,26 +12,39 @@ CLI_PROTOCOL = control.PROTOCOL
 
 
 class CliError(Exception):
-    """Ошибка, которую CLI показывает как есть, без стека. exit_code — код возврата процесса."""
+    """Ошибка, которую CLI показывает как есть, без стека. exit_code — код возврата процесса.
 
-    def __init__(self, message: str, code: str = "error", exit_code: int = 1):
+    code — устойчивая категория (usage, not_running, …), key и params — ключ сообщения в
+    каталоге и его параметры: текст message зависит от языка, они нет."""
+
+    def __init__(self, message: str, code: str = "error", exit_code: int = 1, key: str | None = None,
+                 params: dict | None = None):
         super().__init__(message)
         self.message = message
         self.code = code
         self.exit_code = exit_code
+        self.key = key
+        self.params = params or {}
+
+    @classmethod
+    def of(cls, key: str, code: str = "error", exit_code: int = 1, /, **params):
+        return cls(t(key, **params), code, exit_code, key, params)
 
 
 class NotRunning(CliError):
     def __init__(self, detail: str = ""):
-        super().__init__(
-            "Chimera не запущена" + (f" ({detail})" if detail else "")
-            + ". Запустите её командой `chimera start` или откройте окно.",
-            "not_running", 3)
+        key = "cli.err.not_running_detail" if detail else "cli.err.not_running"
+        params = {"detail": detail} if detail else {}
+        super().__init__(t(key, **params), "not_running", 3, key, params)
 
 
 class Usage(CliError):
-    def __init__(self, message: str):
-        super().__init__(message, "usage", 2)
+    def __init__(self, message: str, key: str | None = None, params: dict | None = None):
+        super().__init__(message, "usage", 2, key, params)
+
+    @classmethod
+    def of(cls, key: str, /, **params):
+        return cls(t(key, **params), key, params)
 
 
 class Client:
@@ -57,10 +71,9 @@ class Client:
         try:
             payload = json.loads(raw.decode("utf-8"))
         except ValueError as e:
-            raise CliError("Chimera ответила непонятно", "bad_response", 3) from e
+            raise CliError.of("cli.err.bad_response", "bad_response", 3) from e
         if resp.status == 403:
-            raise CliError("Chimera отказала в доступе: файл связи устарел. Повторите команду.",
-                           "forbidden", 3)
+            raise CliError.of("cli.err.forbidden", "forbidden", 3)
         return payload
 
     def hello(self) -> dict:
@@ -70,15 +83,23 @@ class Client:
         """Зовёт метод Api. Ответ {ok, data|error}; ошибка приложения → CliError (код 1)."""
         resp = self._request("POST", "/api", {"method": method, "args": list(args), "reveal": reveal})
         if not resp.get("ok"):
-            code = "remote_error" if resp.get("code") != "forbidden" else "forbidden"
-            raise CliError(str(resp.get("error") or "ошибка"), code, 1)
+            raise _remote_error(resp)
         return resp.get("data")
 
     def action(self, name: str) -> dict:
         resp = self._request("POST", "/control", {"action": name})
         if not resp.get("ok"):
-            raise CliError(str(resp.get("error") or "ошибка"), "remote_error", 1)
+            raise _remote_error(resp, forbidden=False)
         return resp.get("data") or {}
+
+
+def _remote_error(resp: dict, forbidden: bool = True) -> CliError:
+    """Ошибка приложения -> CliError. Текст собирается на языке CLI по коду ответа; коды
+    нашего канала (forbidden, bad_request) каталогу не принадлежат и идут русским текстом как есть."""
+    code = "forbidden" if forbidden and resp.get("code") == "forbidden" else "remote_error"
+    known = bool(resp.get("code")) and resp.get("code") != errors.RAW and i18n.has(resp["code"])
+    return CliError(errors.localized(resp), code, 1, resp["code"] if known else None,
+                    resp.get("params") if known else None)
 
 
 def discover() -> Client | None:
@@ -103,7 +124,5 @@ def connect() -> Client:
     hello = client.hello()
     app_protocol = int(hello.get("protocol", 0))
     if app_protocol < CLI_PROTOCOL:
-        raise CliError(
-            f"Chimera старая (протокол {app_protocol}, а командной строке нужен {CLI_PROTOCOL}). "
-            "Выполните `chimera update`.", "app_too_old", 3)
+        raise CliError.of("cli.err.app_too_old", "app_too_old", 3, app=app_protocol, need=CLI_PROTOCOL)
     return client
