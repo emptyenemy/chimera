@@ -118,8 +118,8 @@ class _Handler(BaseHTTPRequestHandler):
         self.end_headers()
         try:
             self.wfile.write(body)
-        except (BrokenPipeError, ConnectionResetError):
-            pass  # вкладку закрыли на середине long-poll — обычное дело
+        except ConnectionError:
+            pass  # вкладку закрыли на середине long-poll — обычное дело (на Windows это ConnectionAbortedError)
 
     def _json(self, obj, code: int = 200) -> None:
         self._send(code, json.dumps(obj, ensure_ascii=False).encode("utf-8"),
