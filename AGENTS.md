@@ -8,4 +8,6 @@
 
 Если команды `chimera` нет или она старее скилла, ничего не запускайте в обход неё и сообщите пользователю. Изменения системы (hosts, DNS, TUN, запуск обхода, обновление) — только по прямой просьбе пользователя. Ссылки прокси и секреты не показывать.
 
+Списки `lists/*.txt` можно править напрямую: работающая Chimera (окно, трей или служба) подхватывает правку сама за пару секунд, как `lists save`. Проверка: `chimera lists validate`; результат применения — последняя строка `data/changes.log` (источник `file`, `ok` или `error`). Не править вручную: `config.json` и `data/*.json` (на лету не подхватываются, для них есть команды), `strategies/hostlists/list-general-user.txt`, `strategies/hostlists/ipset-user.txt`, `data/singbox-*.json`, `data/proxy.pac`, `data/control.json`, логи.
+
 Для разработки репозитория: `docs/CLI.md`, тесты — `python -m pytest`.
