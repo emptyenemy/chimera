@@ -150,10 +150,11 @@ ACTIONS: tuple[Action, ...] = (
        args=(Arg("ключ", "str", "имя настройки; без него — все", optional=True),),
        examples=("chimera config get", "chimera config get update_channel")),
     _a("config", "set", "Изменить настройку. Доступно то, что меняет окно: ui_backend, auto_elevate, "
-       "close_to_tray, update_channel, update_check. Остальное — правкой config.json.",
+       "close_to_tray, update_channel, update_check, theme (system, light или dark). Остальное — правкой config.json.",
        "Настройки: переключатели и выбор", handler="config_set", methods=("config_set",), level=APP,
        offline=True, args=(Arg("ключ", "str", "имя настройки"), Arg("значение", "value", "true/false, число или строка")),
-       examples=("chimera config set update_channel beta", "chimera config set close_to_tray false")),
+       examples=("chimera config set update_channel beta", "chimera config set close_to_tray false",
+                 "chimera config set theme dark")),
 
     # --- обход DPI ------------------------------------------------------------------
     _a("winws", "state", "Состояние обхода: запущен ли, стратегия, списки, ошибка, версия.",
