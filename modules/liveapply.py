@@ -20,16 +20,21 @@ def apply_safely(errors: list, module: str, fn: Callable) -> None:
         errors.append({"module": module, "error": str(e)})
 
 
+def _has(lists, name: str) -> bool:
+    # имена файлов на Windows не различают регистр: YouTube.txt и youtube — один список
+    return name.casefold() in {str(n).casefold() for n in lists or []}
+
+
 def hosts_uses(hosts, name: str) -> bool:
     # у статического провайдера в привязке не список имён, а True
-    return any(isinstance(lists, (list, tuple, set)) and name in lists
+    return any(isinstance(lists, (list, tuple, set)) and _has(lists, name)
                for lists in hosts.assignments().values())
 
 
 def _uses(names: Iterable[str], winws, proxy, hosts) -> tuple[bool, bool, bool]:
     names = list(names)
-    return (any(n in (winws.config.get("lists") or []) for n in names),
-            any(n in (proxy.config.get("lists") or []) for n in names),
+    return (any(_has(winws.config.get("lists"), n) for n in names),
+            any(_has(proxy.config.get("lists"), n) for n in names),
             any(hosts_uses(hosts, n) for n in names))
 
 
@@ -65,7 +70,7 @@ def lists_removed(name: str, winws, proxy, hosts) -> list:
     if use_hosts:
         patched = {}
         for pid, lists in hosts.assignments().items():
-            kept = [n for n in lists if n != name] if isinstance(lists, (list, tuple, set)) else lists
+            kept = [n for n in lists if n.casefold() != name.casefold()] if isinstance(lists, (list, tuple, set)) else lists
             if kept:
                 patched[pid] = kept
         apply_safely(errors, "hosts", lambda: hosts.set_assignments(patched))

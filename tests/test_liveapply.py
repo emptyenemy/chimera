@@ -92,6 +92,14 @@ def test_removed_of_unused_list_does_nothing():
     assert winws.calls == proxy.calls == hosts.calls == []
 
 
+def test_consumers_and_removal_ignore_case():
+    winws, proxy, hosts = Mod(lists=["YouTube"]), Mod(), Mod(assignments={"xbox": ["YOUTUBE"]})
+
+    assert liveapply.consumers(["youtube"], winws, proxy, hosts) == ["winws", "hosts"]
+    liveapply.lists_removed("youtube", winws, proxy, hosts)
+    assert hosts.calls == [("set_assignments", {})]
+
+
 def test_apply_event_routes_by_kind():
     winws, proxy, hosts = mods()
 
