@@ -635,6 +635,14 @@ def test_lists_validate_json_lists_problems(capsys, stopped, local_lists):
     assert [w["line"] for w in res["warnings"]] == [2]
 
 
+def test_lists_validate_all_survives_a_file_with_invalid_name(capsys, stopped, local_lists):
+    (local_lists / "a b.txt").write_text("x.example\n", encoding="utf-8")
+    code, data, _ = run_json(capsys, "lists", "validate")
+    rows = {r["name"]: r for r in data["data"]["lists"]}
+    assert code == 1 and rows["a b"]["ok"] is False and "Имя списка" in rows["a b"]["errors"][0]["problem"]
+    assert rows["youtube"]["ok"] is True  # остальные проверены
+
+
 def test_lists_validate_unknown_list_is_not_found(capsys, stopped, local_lists):
     code, _, err = run(capsys, "lists", "validate", "nope")
     assert code == 1 and "nope" in err

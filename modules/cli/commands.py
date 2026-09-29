@@ -456,10 +456,16 @@ def h_lists_remove(ctx, act, ns):
 def h_lists_validate(ctx, act, ns):
     dm = _domains()
     name = ns.get("a0")
-    try:
-        results = [dm.validate_list(n) for n in ([name] if name else dm.available_lists())]
-    except (FileNotFoundError, ValueError) as e:
-        raise CliError(str(e), "not_found", 1) from e
+    results = []
+    for n in [name] if name else dm.available_lists():
+        try:
+            results.append(dm.validate_list(n))
+        except (FileNotFoundError, ValueError) as e:
+            if name:
+                raise CliError(str(e), "not_found", 1) from e
+            # файл с именем, которое программа не откроет (`a b.txt`): ошибка этого списка, остальные проверяем
+            results.append({"name": n, "entries": 0, "domains": 0, "networks": 0, "warnings": [], "ok": False,
+                            "errors": [{"line": None, "entry": "", "problem": str(e)}]})
     lines = []
     for r in results:
         lines.append(f"{r['name']}: " + ("ошибок нет" if r["ok"] else f"ошибок {len(r['errors'])}")
