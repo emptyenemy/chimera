@@ -280,7 +280,7 @@ def state(config=None, mode=None):
     return {"settings": {"theme": config.get("theme", "system"), "appearance": settings,
                          "appearance_custom": normalize_custom(config.get("appearance_custom"), fallback=True)}, "mode": resolved,
             "palette": entry["id"], "styles": styles, "accent": accent,
-            "hue": round(colorsys.rgb_to_hls(*rgb(accent))[0] * 360), "normalized": clamped,
+            "hue": round(colorsys.rgb_to_hls(*rgb(accent))[0] * 360) % 360, "normalized": clamped,
             "contrast_adjusted": adjusted, "windows_available": available,
             "contrast": {"text": round(contrast(text, accent), 4),
                          "background": round(min(contrast(accent, bg) for bg in surfaces), 4),

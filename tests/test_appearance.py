@@ -171,3 +171,8 @@ def test_saved_personal_variant_and_whole_system_mode(monkeypatch):
 def test_invalid_virtual_hue(hue):
     with pytest.raises(ValueError):
         a.merged({}, {"hue": hue})
+
+
+def test_hue_rounding_stays_within_slider_range():
+    result = a.state({"theme": "dark", "appearance": {"accent_source": "custom", "accent": "#bf3334"}})
+    assert 0 <= result["hue"] <= 359
