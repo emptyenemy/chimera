@@ -65,7 +65,7 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
       - name: Бинарники
         run: python tools/fetch_bins.py
-      - uses: actions/cache@v6
+      - uses: actions/cache/restore@v6
         id: nuitka-cache
         with:
           path: ~\AppData\Local\Nuitka\Nuitka\Cache
