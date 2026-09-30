@@ -119,6 +119,7 @@ def run(build: Path, full: bool = False, front: str = "next", flavor: str = "qt"
         "QTWEBENGINE_REMOTE_DEBUGGING": str(port),
         "CHIMERA_DATA": str(data),
         "CHIMERA_SMOKE": "1",
+        "PYTHONUNBUFFERED": "1",
         "CHIMERA_INSTANCE_EVENT": rf"Local\Chimera_Smoke_{os.getpid()}",
     })
     token = secrets.token_urlsafe(24)

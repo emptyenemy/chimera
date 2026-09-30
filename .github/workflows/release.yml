@@ -93,6 +93,9 @@ jobs:
         run: '& .\build\${{ matrix.folder }}\Chimera.exe --version'
       - name: Дымовой тест сборки
         run: python tools/smoke_build.py build\${{ matrix.folder }} --flavor ${{ matrix.flavor }} --full
+      - name: WebView2 Runtime для проверки окна
+        if: matrix.flavor == 'webview'
+        run: .\tools\ensure_webview_runtime.ps1
       - name: Нативное окно WebView2
         if: matrix.flavor == 'webview'
         run: python tools/smoke_build.py build\${{ matrix.folder }} --flavor webview --native-webview
