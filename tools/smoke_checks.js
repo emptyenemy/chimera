@@ -16,7 +16,7 @@
     }
   }
 
-  for (let i = 0; i < 150 && (typeof api !== "function" || typeof Bridge === "undefined"); i++) await sleep(100);
+  for (let i = 0; i < 150 && (typeof api !== "function" || typeof Bridge === "undefined" || !document.querySelector('[data-testid="sidebar"]')); i++) await sleep(100);
 
   const skip = why => `пропуск: ${why}`;
   await step("интерфейс загрузился", async () => {

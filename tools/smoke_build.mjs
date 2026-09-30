@@ -10,7 +10,7 @@ const [port, checksPath, mode] = process.argv.slice(2);
 const checks = (mode === "full" ? "window.__SMOKE_FULL__ = true;\n" : "") + readFileSync(checksPath, "utf8");
 
 const targets = await (await fetch(`http://127.0.0.1:${port}/json`)).json();
-const page = targets.find(t => t.type === "page");
+const page = targets.find(t => t.type === "page" && t.url?.includes("index.html")) || targets.find(t => t.type === "page");
 if (!page) { console.error("страница программы не найдена"); process.exit(2); }
 
 const ws = new WebSocket(page.webSocketDebuggerUrl);
@@ -29,6 +29,7 @@ ws.onmessage = m => {
 };
 await new Promise((resolve, reject) => { ws.onopen = resolve; ws.onerror = reject; });
 await call("Runtime.enable");
+await call("Emulation.setDeviceMetricsOverride", { width: 1280, height: 820, deviceScaleFactor: 1, mobile: false });
 const res = await call("Runtime.evaluate", { expression: checks, awaitPromise: true, returnByValue: true, timeout: 180000 });
 ws.close();
 const value = res.result?.result?.value;

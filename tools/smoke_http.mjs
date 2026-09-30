@@ -38,6 +38,7 @@ try {
   })
   await call("Runtime.enable")
   await call("Page.enable")
+  await call("Emulation.setDeviceMetricsOverride", { width: 1280, height: 820, deviceScaleFactor: 1, mobile: false })
   await call("Page.navigate", { url })
   for (let attempt = 0; attempt < 300; attempt++) {
     const ready = await call("Runtime.evaluate", { expression: "document.body?.classList.contains('ready')", returnByValue: true })
