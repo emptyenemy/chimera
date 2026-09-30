@@ -37,4 +37,10 @@ if (!value) {
   console.error("проверки не выполнились:", JSON.stringify(res.result?.exceptionDetails || res.error || res).slice(0, 500));
   process.exit(2);
 }
-console.log(JSON.stringify({ steps: JSON.parse(value), pageErrors: errors }));
+// WebView2 может вернуть сериализованный результат уже разобранным.
+const steps = typeof value === "string" ? JSON.parse(value) : value;
+if (!Array.isArray(steps) || !steps.length || steps.some(s => typeof s.ok !== "boolean")) {
+  console.error("неверный результат проверок:", JSON.stringify(value).slice(0, 1000));
+  process.exit(2);
+}
+console.log(JSON.stringify({ steps, pageErrors: errors }));
