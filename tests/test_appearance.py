@@ -93,7 +93,7 @@ def test_old_theme_only_config_and_boot(mode):
 def test_catalog_validates_exact_current_css_tokens():
     from pathlib import Path
     import re
-    css = (Path(__file__).resolve().parents[1] / "frontend/src/index.css").read_text()
+    css = (Path(__file__).resolve().parents[1] / "frontend/src/index.css").read_text(encoding="utf-8")
     declared = set(re.findall(r"(--color-[\w-]+):", css))
     assert declared == a.COLOR_TOKENS
     assert len(PALETTES) == 14
