@@ -22,11 +22,13 @@ def write(version: str, path: Path = VERSION_FILE) -> str:
     # с версией, которую самообновление не сможет сравнить
     if parse(version) is None:
         raise ValueError(f"{version!r} — не версия: нужен тег вида v0.2.0 или v0.3.0-beta.1")
-    text = path.read_text(encoding="utf-8")
+    raw = path.read_bytes()
+    newline = b"\r\n" if b"\r\n" in raw else b"\n"
+    text = raw.decode("utf-8").replace("\r\n", "\n")
     new, n = re.subn(r'^VERSION = ".*"$', f'VERSION = "{version}"', text, count=1, flags=re.M)
     if n != 1:
         raise RuntimeError(f"в {path} нет строки VERSION = \"...\"")
-    path.write_text(new, encoding="utf-8", newline="\n")
+    path.write_bytes(new.encode("utf-8").replace(b"\n", newline))
     return version
 
 

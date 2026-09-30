@@ -45,6 +45,7 @@ if errorlevel 1 exit /b 1
 
 python -m nuitka ^
     --standalone ^
+    --experimental=no-deferred-annotation ^
     %VARIANT% ^
     --windows-console-mode=attach ^
     --windows-icon-from-ico=assets/logo/chimera.ico ^
