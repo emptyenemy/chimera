@@ -66,6 +66,7 @@ jobs:
       - name: Бинарники
         run: python tools/fetch_bins.py
       - uses: actions/cache@v6
+        id: nuitka-cache
         with:
           path: ~\AppData\Local\Nuitka\Nuitka\Cache
           key: nuitka-${{ runner.os }}-${{ matrix.flavor }}-${{ hashFiles('requirements.txt', 'requirements-dev.txt') }}
@@ -73,8 +74,6 @@ jobs:
       - name: Сборка
         shell: cmd
         run: call build.bat ${{ matrix.flavor }}
-      - name: Дымовой тест сборки
-        run: python tools/smoke_build.py build\${{ matrix.folder }} --flavor ${{ matrix.flavor }} --full
       - name: Архив
         if: steps.ver.outputs.version != ''
         run: python -c "import shutil; shutil.make_archive('Chimera-${{ steps.ver.outputs.version }}-win64${{ matrix.suffix }}', 'zip', root_dir='build', base_dir='${{ matrix.folder }}')"
@@ -84,6 +83,16 @@ jobs:
           name: release-${{ matrix.flavor }}
           path: Chimera-*-win64*.zip
           if-no-files-found: error
+      - name: Сохранить кэш компиляции
+        if: steps.nuitka-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: ~\AppData\Local\Nuitka\Nuitka\Cache
+          key: ${{ steps.nuitka-cache.outputs.cache-primary-key }}
+      - name: Версия готового exe
+        run: '& .\build\${{ matrix.folder }}\Chimera.exe --version'
+      - name: Дымовой тест сборки
+        run: python tools/smoke_build.py build\${{ matrix.folder }} --flavor ${{ matrix.flavor }} --full
 
   release:
     needs: build

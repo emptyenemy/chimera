@@ -154,6 +154,10 @@ def run(build: Path, full: bool = False, front: str = "next", flavor: str = "qt"
             return 1
         result = json.loads(r.stdout.strip().splitlines()[-1])
         result["steps"] += _cli_checks_while_running(app, env)
+    except Exception:
+        tail = (tmp / "engine.log").read_bytes()[-8000:].decode("utf-8", "replace")
+        print("---- лог ошибки запуска ----\n" + tail.replace(token, "<token>"), flush=True)
+        raise
     finally:
         subprocess.run(["taskkill", "/PID", str(proc.pid), "/T", "/F"], capture_output=True)
         log.close()
