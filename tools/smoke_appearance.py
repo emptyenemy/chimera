@@ -23,7 +23,7 @@ def main(screenshot=None):
         paths.migrate = lambda *args: None
         appconfig.CONFIG_PATH = work / "config.json"
         appconfig.CONFIG_PATH.write_text(json.dumps({"auto_elevate": False, "lang": "ru", "update_check": False,
-                                                    "theme": "dark", "appearance": {"palette": "dracula"}}), encoding="utf-8")
+                                                    "theme": "system", "appearance": {"palette": "dracula"}}), encoding="utf-8")
         domains.LISTS_DIR = work / "lists"
         domains.LISTS_DIR.mkdir()
         from modules.winws import filters
@@ -37,9 +37,17 @@ def main(screenshot=None):
         from ui.api import Api
         from ui.backend_browser import _Handler, _Hub
         hub = _Hub()
+        from ui import theme
+        system_mode = ["dark"]
+        theme._system_theme = lambda: system_mode[0]
 
         class CheckApi(Api):
             def dispatch(self, method, args_json):
+                if method == "__smoke_system_theme":
+                    mode = json.loads(args_json)[0]
+                    assert mode in ("light", "dark")
+                    system_mode[0] = mode
+                    return json.dumps({"ok": True, "data": mode})
                 if self.is_read(method) or method in {"hub_snapshot", "hub_watch", "hub_refresh", "appearance_apply", "appearance_refresh"}:
                     return super().dispatch(method, args_json)
                 return json.dumps({"ok": False, "error": "Operation outside appearance check"})

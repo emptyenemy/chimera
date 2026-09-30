@@ -1276,7 +1276,7 @@ class Api:
     def appearance_state(self, mode=None):
         try:
             result = appearance.state(mode=mode)
-            if mode is not None and getattr(self, "_native_theme_changed", None):
+            if getattr(self, "_native_theme_changed", None):
                 self._native_theme_changed(result["styles"]["--background"])
             return _ok(result)
         except Exception as e:

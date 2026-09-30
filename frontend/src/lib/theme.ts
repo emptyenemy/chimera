@@ -17,13 +17,8 @@ const listeners = new Set<() => void>()
 let state = window.__CHIMERA_APPEARANCE__ ?? null
 let pending = false
 let previewSequence = 0
+let previewing = false
 let initialized = false
-const modeFor = (theme?: ThemeSetting) =>
-  (theme ?? state?.settings.theme ?? "system") === "system"
-    ? media.matches
-      ? "dark"
-      : "light"
-    : (theme ?? state?.settings.theme)
 function emit() {
   for (const fn of listeners) fn()
 }
@@ -43,8 +38,13 @@ if (state) apply(state)
 
 async function refresh() {
   if (pending) return
+  const sequence = previewSequence
   try {
-    apply(await api<AppearanceState>("appearance_state", modeFor()))
+    const next = await api<AppearanceState>("appearance_state")
+    if (pending || sequence !== previewSequence) return
+    if (previewing && next.mode === state?.mode) return
+    previewing = false
+    apply(next)
   } catch {
     /* retain boot palette offline */
   }
@@ -61,7 +61,11 @@ export async function initTheme(): Promise<void> {
       if (!pending) void refresh()
     })
     window.setInterval(() => {
-      if (state?.settings.appearance.accent_source === "windows") void refresh()
+      if (
+        state?.settings.theme === "system" ||
+        state?.settings.appearance.accent_source === "windows"
+      )
+        void refresh()
     }, 1500)
     void api<{ updated: boolean; state: AppearanceState }>("appearance_refresh")
       .then((reply) => {
@@ -75,12 +79,9 @@ export async function previewAppearance(
   patch: AppearancePatch
 ): Promise<AppearanceState | null> {
   const sequence = ++previewSequence
-  const next = await api<AppearanceState>(
-    "appearance_preview",
-    patch,
-    modeFor(patch.theme)
-  )
+  const next = await api<AppearanceState>("appearance_preview", patch)
   if (sequence !== previewSequence || pending) return null
+  previewing = true
   apply(next)
   return next
 }
@@ -88,16 +89,11 @@ export async function previewAppearance(
 export async function applyAppearance(patch: AppearancePatch): Promise<void> {
   if (pending) return
   pending = true
+  previewing = false
   ++previewSequence
   emit()
   try {
-    apply(
-      await api<AppearanceState>(
-        "appearance_apply",
-        patch,
-        modeFor(patch.theme)
-      )
-    )
+    apply(await api<AppearanceState>("appearance_apply", patch))
   } catch (e) {
     pending = false
     await refresh()

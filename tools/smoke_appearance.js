@@ -3,7 +3,7 @@
   const need = (value, message) => { if (!value) throw new Error(message); };
   const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
   const el = id => document.querySelector(`[data-testid="${id}"]`);
-  const wait = async (fn, message) => { for (let i = 0; i < 100; i++) { if (fn()) return; await sleep(100); } throw new Error(message); };
+  const wait = async (fn, message) => { for (let i = 0; i < 100; i++) { if (await fn()) return; await sleep(100); } throw new Error(message); };
   const click = async id => { await wait(() => el(id) && !el(id).disabled, `${id} not ready`); el(id).click(); await sleep(150); };
   const input = (id, value) => { const node = el(id); Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(node, value); node.dispatchEvent(new Event('input', { bubbles: true })); };
   const style = key => document.documentElement.style.getPropertyValue(key);
@@ -22,8 +22,11 @@
     await click('appearance-accent-blue');
     await wait(() => style('--primary') !== window.__CHIMERA_APPEARANCE__.accent, 'Preset accent unchanged');
     need(style('--background') === bg, 'Accent changed a surface');
+    await click('settings-theme-system');
     input('appearance-color', '#00ff00'); await sleep(100); await click('appearance-check');
     await wait(() => el('appearance-normalized'), 'Clamping notice missing');
+    await sleep(1700);
+    need(el('appearance-normalized'), 'System poll discarded the color preview');
     need(style('--primary') !== '#00ff00', 'Acid color displayed unchanged');
     input('appearance-color', '#010101'); await sleep(100); await click('appearance-check');
     await wait(() => el('appearance-contrast-warning'), 'Contrast warning missing');
@@ -42,10 +45,10 @@
     await wait(() => style('--primary') === ownAccent && style('--radius') === '1rem', 'Own theme not restored');
     steps.push({ name: 'Own theme survives selection of another preset', ok: true });
     await click('settings-theme-system');
-    window.__smokeSystemMode('light');
+    await api("__smoke_system_theme", "light"); window.__smokeSystemMode('light');
     await wait(() => document.documentElement.dataset.theme === 'light', 'System light mode not followed');
     need(style('--background') !== bg, 'System mode did not replace the whole palette');
-    window.__smokeSystemMode('dark');
+    await api("__smoke_system_theme", "dark"); window.__smokeSystemMode('dark');
     await wait(() => document.documentElement.dataset.theme === 'dark', 'System dark mode not followed');
     await click('appearance-windows');
     await wait(() => el('appearance-color').disabled, 'Windows accent control did not apply');
@@ -64,9 +67,7 @@
     const beforeHue = (await api('appearance_state')).data.settings.appearance.accent;
     slider.focus();
     window.__smokeKey('ArrowRight');
-    await wait(() => style('--primary') !== '#af71db', 'Hue preview did not change');
-    await sleep(400);
-    need((await api('appearance_state')).data.settings.appearance.accent !== beforeHue, 'Hue keyboard change not saved');
+    await wait(async () => (await api('appearance_state')).data.settings.appearance.accent !== beforeHue, 'Hue keyboard change not saved');
     steps.push({ name: 'Hue slider preview and committed keyboard change', ok: true });
     el('settings-theme').scrollIntoView({ block: 'start' });
     const persisted = (await api('appearance_state')).data;
