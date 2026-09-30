@@ -146,6 +146,11 @@ class ShareOps:
         from modules.hosts import static_providers
         a = self.api
         states = backup["states"]
+        if backup.get("complete_lists"):
+            saved_names = {name.casefold() for name in backup["lists"]}
+            for name in domains.available_lists():
+                if name.casefold() not in saved_names:
+                    backup["lists"][name] = None
         current = self._current_states()
         deleted = {n.casefold() for n, text in backup["lists"].items() if text is None}
         # Removing an imported list must also remove its live connections. Save these
@@ -209,12 +214,12 @@ class ShareOps:
 
     def backup_snapshot(self, target):
         current = self._current_states()
-        lists = {n: domains.read_raw(n) for n in domains.available_lists()}
+        lists = {n.casefold(): domains.read_raw(n) for n in domains.available_lists()}
         states = {sid: deepcopy(current[sid]) for sid in target["states"]}
         # Rebuilding provider assignments can change the hosts cache, even for a DNS-only snapshot.
         if "dns" in states:
             states.setdefault("hosts", deepcopy(current["hosts"]))
-        return {"states": states, "lists": {n: lists.get(n) for n in target["lists"]},
+        return {"states": states, "lists": {n: lists.get(n.casefold()) for n in target["lists"]},
                 "runtime": {sid: bool(getattr(manager, "running", False)) for sid, manager in
                             (("proxy", self.api.proxy), ("telegram", self.api.tg), ("winws", self.api.winws)) if sid in states}}
 

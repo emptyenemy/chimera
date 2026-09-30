@@ -315,9 +315,11 @@ function BackupBrowser({ onClose }: { onClose: () => void }) {
                     <Badge variant={backup.valid ? "secondary" : "destructive"}>
                       {!backup.valid
                         ? t("settings.backups.invalid")
-                        : backup.kind === "restore"
-                          ? t("settings.backups.beforeRestore")
-                          : t("settings.backups.beforeImport")}
+                        : backup.kind === "manual"
+                          ? t("settings.backups.manual")
+                          : backup.kind === "restore"
+                            ? t("settings.backups.beforeRestore")
+                            : t("settings.backups.beforeImport")}
                     </Badge>
                   </CardTitle>
                   <CardDescription className="break-all">
@@ -397,6 +399,20 @@ function BackupBrowser({ onClose }: { onClose: () => void }) {
 
 export function BackupsCard() {
   const [open, setOpen] = useState(false)
+  const [creating, setCreating] = useState(false)
+
+  async function createSnapshot() {
+    setCreating(true)
+    try {
+      const backup = await api<Backup>("config_backup_create")
+      notify.success(t("settings.backups.created"), backup.id)
+      setOpen(true)
+    } catch (e) {
+      notify.error(t("settings.backups.createFailed"), message(e))
+    } finally {
+      setCreating(false)
+    }
+  }
   return (
     <Card data-testid="settings-backups">
       <CardHeader>
@@ -405,9 +421,22 @@ export function BackupsCard() {
         </CardTitleIcon>
         <CardDescription>{t("settings.backups.description")}</CardDescription>
       </CardHeader>
-      <CardFooter>
+      <CardFooter className="flex-wrap gap-2">
+        <Button
+          disabled={creating}
+          onClick={() => void createSnapshot()}
+          data-testid="settings-backups-create"
+        >
+          {creating ? (
+            <Spinner data-icon="inline-start" />
+          ) : (
+            <ArchiveIcon data-icon="inline-start" />
+          )}
+          {t("settings.backups.create")}
+        </Button>
         <Button
           variant="outline"
+          disabled={creating}
           onClick={() => setOpen(true)}
           data-testid="settings-backups-open"
         >

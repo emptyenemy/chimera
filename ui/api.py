@@ -355,6 +355,17 @@ class Api:
             return _ok(result)
         return None
 
+    def config_backup_create(self, lang=None):
+        try:
+            with i18n.request_language(lang):
+                remote = self._backup_owner("config_backup_create", lang)
+                if remote is not None:
+                    return remote
+                with self._mutation_lock:
+                    return _ok(configbackups.create_manual(ShareOps(self)))
+        except Exception as e:
+            return _err(e)
+
     def config_backups(self, lang=None):
         try:
             with i18n.request_language(lang):

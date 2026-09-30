@@ -322,6 +322,8 @@ ACTIONS: tuple[Action, ...] = (
              Arg("confirm", "switch", flag=True, default=False)),
        level=APP, examples=("chimera config import friend.chimera --sections proxy,lists",)),
 
+    _a("config", "backup", handler="config_backup", methods=("config_backup_create",), level=APP,
+       examples=("chimera config backup", "chimera config backup --json")),
     _a("config", "backups", handler="config_backups", methods=("config_backups",),
        examples=("chimera config backups", "chimera config backups --json")),
     _a("config", "restore-preview", handler="config_restore_preview", methods=("config_backup_preview",),

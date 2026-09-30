@@ -1,6 +1,7 @@
 """Real state setters with isolated files and stubbed process/system operations."""
 
 import json
+import sys
 from copy import deepcopy
 from pathlib import Path
 from types import SimpleNamespace
@@ -110,7 +111,9 @@ def live(monkeypatch, tmp_path):
     a.tg.start = restart_tg
     a.winws.start = start_winws
     a.winws.stop = lambda: setattr(a.winws, "flag", False)
-    a.winws.refresh_user_lists = lambda: events.append(("winws_lists", tuple(a.winws.config["lists"]), domains.read_raw("discord")))
+    a.winws.refresh_user_lists = lambda: events.append(
+        ("winws_lists", tuple(a.winws.config["lists"]),
+         domains.read_raw("discord") if "discord" in domains.available_lists() else None))
     a.hosts = hosts_mod.HostsManager(data / "hosts.json", tmp_path / "system-hosts")
     a.hosts._save_state({"assignments": {}, "enabled": False, "entries": []})
 
@@ -444,3 +447,99 @@ def test_cli_language_does_not_change_window_language_on_restore(live):
     assert not reply["errors"]
     language_events = [e for e in live.events if e[0] == "push" and e[1] == "langChanged"]
     assert language_events[-1][2]["lang"] == "ru"
+
+
+def test_manual_snapshot_captures_all_settings_and_hides_private_values(live):
+    original = full_snapshot(live)
+    result = live.api.config_backup_create("en")
+    assert result["ok"], result
+    entry = result["data"]
+    saved = cb.load(entry["id"], live.root)
+    assert saved["kind"] == "manual" and saved["complete_lists"]
+    assert saved["states"] == original["states"] and saved["lists"] == original["lists"]
+    assert entry["sections"] == list(cb.SECTIONS)
+    assert not live.events and not live.api.proxy.running and not live.api.winws.running
+    assert LINK not in json.dumps(result) and SECRET not in json.dumps(result)
+    assert cb.list_backups(live.root)[0]["valid"]
+
+
+def test_manual_restore_removes_later_lists_and_inverse_recovers_them(live):
+    manual = cb.create_manual(live.ops, live.root)["id"]
+    domains.save_raw("later", "later.example\n")
+    domains.save_raw("discord", "changed.example\n")
+    live.api.proxy.set_lists(["later"])
+    appconfig.set_value("theme", "light")
+    pv = cb.preview(manual, live.ops, live.root)
+    assert pv["ok"] and any("later" in text for s in pv["sections"] for text in s["changes"])
+    restored = cb.restore(manual, True, live.ops, live.root)
+    assert not restored["errors"]
+    assert domains.available_lists() == ["discord"]
+    assert domains.read_raw("discord") == "discord.com\n"
+    assert live.api.proxy.config["lists"] == ["discord"]
+    assert appconfig.load()["theme"] == "system"
+    undone = cb.restore(restored["backup"], True, live.ops, live.root)
+    assert not undone["errors"]
+    assert domains.read_raw("later") == "later.example\n"
+    assert domains.read_raw("discord") == "changed.example\n"
+    assert live.api.proxy.config["lists"] == ["later"]
+    assert appconfig.load()["theme"] == "light"
+
+
+def test_empty_manual_list_inventory_is_preserved_and_restored(live):
+    domains.delete_list("discord")
+    live.api.proxy.set_lists([])
+    live.api.winws.set_lists([])
+    entry = cb.create_manual(live.ops, live.root)
+    assert "lists" in cb.list_backups(live.root)[0]["sections"]
+    assert cb.load(entry["id"], live.root)["lists"] == {}
+    domains.save_raw("later", "later.example\n")
+    restored = cb.restore(entry["id"], True, live.ops, live.root)
+    assert not restored["errors"] and domains.available_lists() == []
+
+
+@pytest.mark.parametrize("flag", [False, "true", 1, None])
+def test_manual_inventory_flag_must_be_a_true_boolean(live, flag):
+    entry = cb.create_manual(live.ops, live.root)
+    manifest_path = live.root / entry["id"] / "manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["complete_lists"] = flag
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+    assert not cb.preview(entry["id"], live.ops, live.root)["ok"]
+    assert not cb.list_backups(live.root)[0]["valid"]
+
+
+def test_manual_capture_failure_does_not_publish_or_modify_settings(live, monkeypatch):
+    before = full_snapshot(live)
+    monkeypatch.setattr(ShareOps, "backup_state", lambda *a: (_ for _ in ()).throw(RuntimeError("capture failed")))
+    reply = live.api.config_backup_create()
+    assert not reply["ok"] and cb.list_backups(live.root) == []
+    assert full_snapshot(live) == before and not live.events
+
+
+def test_manual_capture_is_forwarded_to_the_service_owner(live, monkeypatch):
+    from modules.cli import client, commands, registry
+    live.api._service_owned = False
+    calls = []
+    entry = {"id": "20260930-120000-001-manual", "sections": list(cb.SECTIONS)}
+    monkeypatch.setattr(api_mod.service, "is_running", lambda: True)
+    monkeypatch.setattr(client, "connect", lambda: SimpleNamespace(api=lambda *args: calls.append(args) or entry))
+    assert live.api.config_backup_create("en")["data"] == entry
+    assert calls == [("config_backup_create", "en")]
+    assert cb.list_backups(live.root) == [] and not live.events
+    assert not api_mod.Api.is_read("config_backup_create")
+    assert registry.BY_GROUP["config"]["backup"].level == registry.APP
+    ctx = SimpleNamespace(call=lambda *args: entry)
+    result = commands.h_config_backup(ctx, registry.BY_GROUP["config"]["backup"], {})
+    assert result.data == entry and entry["id"] in " ".join(result.lines)
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows list names are case insensitive")
+def test_manual_restore_keeps_a_list_renamed_only_by_case_and_its_inverse(live):
+    manual = cb.create_manual(live.ops, live.root)["id"]
+    (live.lists / "discord.txt").rename(live.lists / "Discord.txt")
+    domains.save_raw("Discord", "changed.example\n")
+    assert cb.preview(manual, live.ops, live.root)["ok"]
+    restored = cb.restore(manual, True, live.ops, live.root)
+    assert not restored["errors"] and domains.read_raw("discord") == "discord.com\n"
+    inverse = cb.restore(restored["backup"], True, live.ops, live.root)
+    assert not inverse["errors"] and domains.read_raw("discord") == "changed.example\n"

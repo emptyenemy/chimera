@@ -22,7 +22,7 @@ SCHEMA = 1
 KEEP = 10
 MAX_BYTES = 8 * 1024 * 1024
 MAX_FILE_BYTES = 2 * 1024 * 1024
-ID_RE = re.compile(r"^\d{8}-\d{6}-\d{3,8}-(?:import|restore)$")
+ID_RE = re.compile(r"^\d{8}-\d{6}-\d{3,8}-(?:import|restore|manual)$")
 FILES = {"proxy.json": "proxy", "tgproxy.json": "telegram", "hosts.json": "hosts",
          "dns_providers.user.json": "dns", "winws.json": "winws", "config.json": "config",
          "winws-filters.json": "filters"}
@@ -257,6 +257,9 @@ def load(backup_id, root=None):
             _bad()
         blobs[item.name] = data
     legacy = "manifest.json" not in blobs
+    complete_lists = False
+    if legacy and backup_id.endswith("-manual"):
+        _bad()
     if legacy:
         entries = [{"name": name, "exists": True} for name in blobs]
         created = datetime.strptime(backup_id[:15], "%Y%m%d-%H%M%S").astimezone(UTC)
@@ -265,6 +268,9 @@ def load(backup_id, root=None):
         manifest = _json(blobs.pop("manifest.json"), "manifest.json")
         if (not isinstance(manifest, dict) or manifest.get("schema") != SCHEMA
                 or isinstance(manifest.get("schema"), bool) or manifest.get("kind") != backup_id.rsplit("-", 1)[1]):
+            _bad()
+        complete_lists = manifest.get("complete_lists", False)
+        if not isinstance(complete_lists, bool) or complete_lists != backup_id.endswith("-manual"):
             _bad()
         entries = manifest.get("entries")
         created_at = manifest.get("created_at")
@@ -321,12 +327,16 @@ def load(backup_id, root=None):
             states[sid] = normalize(sid, defaults[sid])
     if set(blobs) - seen or not (states or lists):
         _bad()
+    if complete_lists and set(states) != set(SECTIONS) - {"lists"}:
+        _bad()
     return {"id": backup_id, "kind": backup_id.rsplit("-", 1)[1], "created_at": created_at,
-            "states": states, "lists": lists, "legacy": legacy, "obsolete_fields": obsolete}
+            "states": states, "lists": lists, "legacy": legacy, "obsolete_fields": obsolete, "complete_lists": complete_lists}
 
 
-def _publish(blobs, root, kind):
-    if kind not in ("import", "restore") or not blobs or len(blobs) > shareconfig.MAX_LISTS + len(FILES):
+def _publish(blobs, root, kind, complete_lists=False):
+    if not isinstance(complete_lists, bool) or complete_lists != (kind == "manual"):
+        _bad()
+    if kind not in ("import", "restore", "manual") or not blobs or len(blobs) > shareconfig.MAX_LISTS + len(FILES):
         _bad()
     if any(blob is not None and len(blob) > MAX_FILE_BYTES for blob in blobs.values()):
         _bad()
@@ -349,8 +359,8 @@ def _publish(blobs, root, kind):
             entries.append(entry)
         manifest = {"schema": SCHEMA, "kind": kind,
                     "created_at": now.isoformat(timespec="seconds").replace("+00:00", "Z"),
-                    "sections": [sid for sid in SECTIONS if any(_section(name) == sid for name in blobs)],
-                    "entries": entries}
+                    "sections": [sid for sid in SECTIONS if (sid == "lists" and complete_lists) or any(_section(name) == sid for name in blobs)],
+                    "entries": entries, "complete_lists": complete_lists}
         (temp / "manifest.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
         temp.rename(base / backup_id)
     except Exception:
@@ -381,6 +391,8 @@ def create_files(files, root=None, kind="import"):
 
 
 def create_snapshot(snapshot, root=None, kind="restore"):
+    if snapshot.get("complete_lists") and set(snapshot["states"]) != set(SECTIONS) - {"lists"}:
+        _bad()
     blobs = {STATE_FILES[sid]: (json.dumps(normalize(sid, value), ensure_ascii=False, indent=2) + "\n").encode("utf-8")
              for sid, value in snapshot["states"].items()}
     for name, text in snapshot["lists"].items():
@@ -390,7 +402,18 @@ def create_snapshot(snapshot, root=None, kind="restore"):
         if text is not None and (shareconfig._clean_list_text(text)[1] or text.count("\n") > shareconfig.MAX_LIST_LINES):
             _bad()
     with _LOCK:
-        return _publish(blobs, root, kind)
+        return _publish(blobs, root, kind, complete_lists=snapshot.get("complete_lists", False))
+
+
+def create_manual(ops, root=None):
+    """Capture all supported application settings and the complete list inventory."""
+    with _LOCK:
+        snapshot = ops.backup_state(SECTIONS, domains.available_lists())
+        snapshot["complete_lists"] = True
+        backup_id = create_snapshot(snapshot, root, kind="manual")
+        backup = load(backup_id, root)
+        return {"id": backup_id, "kind": "manual", "created_at": backup["created_at"],
+                "sections": list(SECTIONS), "valid": True, "error": None}
 
 
 def list_backups(root=None):
@@ -406,7 +429,7 @@ def list_backups(root=None):
         try:
             backup = load(path.name, root)
             entry.update(created_at=backup["created_at"], valid=True,
-                         sections=[sid for sid in SECTIONS if sid in backup["states"] or (sid == "lists" and backup["lists"])])
+                         sections=[sid for sid in SECTIONS if sid in backup["states"] or (sid == "lists" and (backup["lists"] or backup["complete_lists"]))])
         except Exception:
             entry["error"] = t("err.backup.invalid", name="")
         result.append(entry)
@@ -420,7 +443,7 @@ def _preview(backup, ops):
     secret_changed = False
     for sid in SECTIONS:
         changes = []
-        if sid == "lists" and backup["lists"]:
+        if sid == "lists" and (backup["lists"] or backup.get("complete_lists")):
             for name, text in backup["lists"].items():
                 old = current["lists"].get(name)
                 if old == text:

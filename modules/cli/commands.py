@@ -696,6 +696,11 @@ def h_config_import(ctx, act, ns):
     return Result(res, lines or [t("cli.config.nothing")], exit_code=1 if res["errors"] else 0)
 
 
+def h_config_backup(ctx, act, ns):
+    backup = ctx.call("config_backup_create", i18n.current_lang())
+    return Result(backup, [t("cli.backup.created", id=backup["id"])])
+
+
 def h_config_backups(ctx, act, ns):
     backups = ctx.call("config_backups", i18n.current_lang())
     lines = [f"{b['id']}  {b.get('created_at') or '—'}  {', '.join(b['sections'])}" +
@@ -743,6 +748,6 @@ HANDLERS = {
     "path_remove": h_path_remove,
     "doctor": h_doctor, "config_export": h_config_export,
     "config_import_preview": h_config_import_preview, "config_import": h_config_import,
-    "config_backups": h_config_backups, "config_restore_preview": h_config_restore_preview,
+    "config_backup": h_config_backup, "config_backups": h_config_backups, "config_restore_preview": h_config_restore_preview,
     "config_restore": h_config_restore,
 }

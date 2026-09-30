@@ -121,6 +121,7 @@
 | Настройки → Обмен конфигом → «Поделиться» | `chimera config export [--sections <sections>] [--file <file>]` | read |
 | Настройки → Обмен конфигом → «Применить…» → «Проверить» | `chimera config import-preview <файл>` | read |
 | Настройки → Обмен конфигом → «Применить» | `chimera config import <файл> [--sections <sections>] [--confirm]` | app |
+| Настройки → Инструменты → Бэкапы настроек → Создать снимок | `chimera config backup` | app |
 | Настройки → Инструменты → Резервные копии | `chimera config backups` | read |
 | Настройки → Инструменты → Резервные копии → Предпросмотр | `chimera config restore-preview <id>` | read |
 | Настройки → Инструменты → Резервные копии → Восстановить | `chimera config restore <id> [--confirm]` | system |
@@ -390,6 +391,15 @@ chimera config import-preview friend.chimera
 
 ```
 chimera config import friend.chimera --sections proxy,lists
+```
+
+#### `chimera config backup`
+
+Создать ручной снимок всех настроек Chimera и пользовательских списков. Не меняет работающие модули. Локальный снимок содержит секреты; вывод показывает только его имя и разделы. Уровень: изменение приложения.
+
+```
+chimera config backup
+chimera config backup --json
 ```
 
 #### `chimera config backups`

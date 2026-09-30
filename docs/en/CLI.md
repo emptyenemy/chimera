@@ -121,6 +121,7 @@ Levels exist so that remote channels can be restricted. Secrets (the proxy link,
 | Settings → Config sharing → “Share” | `chimera config export [--sections <sections>] [--file <file>]` | read |
 | Settings → Config sharing → “Apply…” → “Check” | `chimera config import-preview <file>` | read |
 | Settings → Config sharing → “Apply” | `chimera config import <file> [--sections <sections>] [--confirm]` | app |
+| Settings → Tools → Settings backups → Create snapshot | `chimera config backup` | app |
 | Settings → Tools → Backups | `chimera config backups` | read |
 | Settings → Tools → Backups → Preview | `chimera config restore-preview <id>` | read |
 | Settings → Tools → Backups → Restore | `chimera config restore <id> [--confirm]` | system |
@@ -390,6 +391,15 @@ Apply someone else's config (sections from --sections, by default all except the
 
 ```
 chimera config import friend.chimera --sections proxy,lists
+```
+
+#### `chimera config backup`
+
+Create a manual snapshot of all Chimera settings and user lists. Does not change running modules. Local snapshots contain secrets; output only shows the snapshot name and sections. Level: changes the app.
+
+```
+chimera config backup
+chimera config backup --json
 ```
 
 #### `chimera config backups`

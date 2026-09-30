@@ -734,7 +734,7 @@
   "units.gb": "ГБ",
   "units.tb": "ТБ",
   "settings.backups.title": "Бэкапы настроек",
-  "settings.backups.description": "Снимки создаются перед импортом и восстановлением настроек.",
+  "settings.backups.description": "Создайте снимок всех настроек и списков. Перед импортом и восстановлением снимок сохраняется автоматически.",
   "settings.backups.open": "Открыть бэкапы",
   "settings.backups.preview": "Предпросмотр восстановления",
   "settings.backups.confirmHint": "Будут восстановлены перечисленные настройки. Перед применением сохранится снимок текущего состояния.",
@@ -748,11 +748,15 @@
   "settings.backups.secrets": "Восстановятся также сохранённые ссылки прокси и секреты. Их значения скрыты.",
   "settings.backups.admin": "Для восстановления этих настроек нужны права администратора.",
   "settings.backups.empty": "Бэкапов пока нет",
-  "settings.backups.emptyHint": "Снимок появится после применения импортированного конфига.",
+  "settings.backups.emptyHint": "Создайте первый снимок или импортируйте конфиг — перед применением сохранится резервная копия.",
   "settings.backups.beforeRestore": "Перед восстановлением",
   "settings.backups.beforeImport": "Перед импортом",
   "settings.backups.back": "К списку",
   "settings.backups.refresh": "Обновить",
   "settings.backups.restore": "Восстановить",
-  "settings.backups.unknownDate": "Дата неизвестна"
+  "settings.backups.unknownDate": "Дата неизвестна",
+  "settings.backups.create": "Создать снимок",
+  "settings.backups.created": "Снимок создан",
+  "settings.backups.createFailed": "Не удалось создать снимок",
+  "settings.backups.manual": "Ручной снимок"
 }

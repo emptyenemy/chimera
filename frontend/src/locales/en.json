@@ -712,7 +712,7 @@
   "units.gb": "GB",
   "units.tb": "TB",
   "settings.backups.title": "Settings backups",
-  "settings.backups.description": "Snapshots are created before importing or restoring settings.",
+  "settings.backups.description": "Create a snapshot of all settings and lists. A snapshot is also saved automatically before imports and restores.",
   "settings.backups.open": "Browse backups",
   "settings.backups.preview": "Restore preview",
   "settings.backups.confirmHint": "The settings below will be restored. A snapshot of your current settings will be saved first.",
@@ -726,11 +726,15 @@
   "settings.backups.secrets": "Saved proxy links and secrets will also be restored. Their values are hidden.",
   "settings.backups.admin": "Administrator privileges are required to restore these settings.",
   "settings.backups.empty": "No backups yet",
-  "settings.backups.emptyHint": "A snapshot will appear after you apply an imported configuration.",
+  "settings.backups.emptyHint": "Create your first snapshot or import a config — a backup will be saved before applying it.",
   "settings.backups.beforeRestore": "Before restore",
   "settings.backups.beforeImport": "Before import",
   "settings.backups.back": "Back to list",
   "settings.backups.refresh": "Refresh",
   "settings.backups.restore": "Restore",
-  "settings.backups.unknownDate": "Unknown date"
+  "settings.backups.unknownDate": "Unknown date",
+  "settings.backups.create": "Create snapshot",
+  "settings.backups.created": "Snapshot created",
+  "settings.backups.createFailed": "Could not create snapshot",
+  "settings.backups.manual": "Manual snapshot"
 }
