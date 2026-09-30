@@ -166,6 +166,16 @@ def run(build: Path, full: bool = False, front: str = "next", flavor: str = "qt"
     except Exception:
         tail = (tmp / "engine.log").read_bytes()[-8000:].decode("utf-8", "replace")
         print("---- лог ошибки запуска ----\n" + tail.replace(token, "<token>"), flush=True)
+        if native_webview:
+            diagnostic = subprocess.run([
+                "powershell", "-NoProfile", "-Command",
+                "Get-Process | Where-Object { $_.ProcessName -match 'Chimera|msedge|WebView' } | "
+                "Select-Object Id,ProcessName,MainWindowTitle | ConvertTo-Json -Compress",
+            ], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=15)
+            print("---- процессы окна ----\n" + diagnostic.stdout, flush=True)
+            print(json.dumps(_cli_step(app, env, "status", ["status", "--json"]), ensure_ascii=False), flush=True)
+            for path in sorted(data.glob("logs/*.log")):
+                print(f"---- {path.name} ----\n" + path.read_bytes()[-4000:].decode("utf-8", "replace").replace(token, "<token>"), flush=True)
         raise
     finally:
         subprocess.run(["taskkill", "/PID", str(proc.pid), "/T", "/F"], capture_output=True)
