@@ -298,7 +298,7 @@ class ControlServer:
     def port(self) -> int:
         return self._httpd.server_address[1]
 
-    def start(self) -> ControlServer:
+    def start(self) -> "ControlServer":
         httpd = _Server((HOST, self._port), _Handler)
         httpd.api, httpd.allowed, httpd.token, httpd.finish = self.api, self.allowed, self.token, self._finish
         self._httpd = httpd

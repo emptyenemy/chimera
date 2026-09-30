@@ -57,7 +57,7 @@
 `release.yml` — на пуш тега `v*` (и вручную, пробно), `windows-latest`. `pytest` в нём нет — он уже прошёл в `ci.yml` на том же коммите; `PYTHONUTF8=1` — консоль раннера в cp1252:
 
 1. checkout с сабмодулями;
-2. Python 3.14, `pip install -r requirements-dev.txt`;
+2. Python 3.13, `pip install -r requirements-dev.txt`;
 3. версия из тега → `modules/version.py`;
 4. `python tools/fetch_bins.py`;
 5. `build.bat qt|webview|lite` в трёх параллельных задачах (кэш Nuitka между сборками — `actions/cache`);
@@ -136,7 +136,8 @@
 - Пробная локальная сборка Lite от 30 сентября 2026 завершила компиляцию, но exe падает
   до входа в программу даже на `--version`: `EOFError: marshal data too short`.
   Среда: CPython 3.14.7, Nuitka 4.2.2, Zig 0.16.0. Сбой воспроизведён на маленьком примере с аннотациями Python 3.14;
-  `--experimental=no-deferred-annotation` устраняет его. Nuitka закреплена на 4.2.2.
+  экспериментальный обход приводит к падению примера с `dataclass`.
+  Сборка и CI переведены на Python 3.13, Nuitka закреплена на 4.2.2.
   Проверка полноценных архивов выполняется перед публикацией.
 - После исправления нужно проверить запуск и дымовой сценарий всех трёх вариантов.
   WebView2 был прерван на этапе компиляции, Qt текущих изменений не проверялся.

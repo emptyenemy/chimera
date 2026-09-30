@@ -40,7 +40,7 @@ jobs:
           submodules: recursive
       - uses: actions/setup-python@v7
         with:
-          python-version: "3.14"
+          python-version: "3.13"
           cache: pip
           cache-dependency-path: |
             requirements.txt
@@ -69,8 +69,8 @@ jobs:
         id: nuitka-cache
         with:
           path: ~\AppData\Local\Nuitka\Nuitka\Cache
-          key: nuitka-${{ runner.os }}-${{ matrix.flavor }}-${{ hashFiles('requirements.txt', 'requirements-dev.txt') }}
-          restore-keys: nuitka-${{ runner.os }}-${{ matrix.flavor }}-
+          key: nuitka-${{ runner.os }}-py313-${{ matrix.flavor }}-${{ hashFiles('requirements.txt', 'requirements-dev.txt') }}
+          restore-keys: nuitka-${{ runner.os }}-py313-${{ matrix.flavor }}-
       - name: Сборка
         shell: cmd
         run: call build.bat ${{ matrix.flavor }}
@@ -114,7 +114,7 @@ jobs:
           path: archives
       - uses: actions/setup-python@v7
         with:
-          python-version: "3.14"
+          python-version: "3.13"
       - name: Обновление настоящего архива 1.0.0
         shell: bash
         run: |
