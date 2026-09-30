@@ -263,7 +263,8 @@ def write_script(app_dir: Path, staged: Path, pid: int, restart_service: bool, r
     rc = "/E /R:2 /W:1 /NP /NJH /NJS"
     # /IS /IT — копировать и «одинаковые» файлы: robocopy сравнивает только размер и
     # время, и файл новой версии того же размера с той же датой иначе остался бы старым
-    force = "/IS /IT"
+    # /IM — отдельный класс NTFS Modified: ChangeTime может отличаться при том же mtime.
+    force = "/IS /IT /IM"
     # пользовательские папки — отдельным проходом: /XC /XN /XO пропускают всё, что уже
     # лежит у пользователя, и копируют только новые файлы релиза
     user_dirs = [f'robocopy {_q(_win(st, d))} {_q(_win(app, d))} /XC /XN /XO {rc} >>"%LOG%"' + "\r\n"

@@ -6,6 +6,7 @@ import io
 import os
 import subprocess
 import sys
+import time
 import urllib.error
 import zipfile
 from ctypes import wintypes
@@ -311,7 +312,8 @@ def test_apply_script_keeps_user_edits_in_lists(tmp_path):
 
 
 @windows_only
-def test_apply_script_replaces_file_with_same_size_and_time(tmp_path):
+@pytest.mark.parametrize("change_time_gap", [0, .05])
+def test_apply_script_replaces_file_with_same_size_and_time(tmp_path, change_time_gap):
     # robocopy по умолчанию считает файлы одинаковыми по размеру и времени; новая версия
     # с тем же размером и той же датой (тот же день сборки, округление времени в zip)
     # всё равно должна лечь поверх старой
@@ -322,6 +324,8 @@ def test_apply_script_replaces_file_with_same_size_and_time(tmp_path):
     selfupdate.write_manifest(staged)
     stamp = 1_700_000_000
     os.utime(app / "Chimera.exe", (stamp, stamp))
+    # Отдельный NTFS ChangeTime при одинаковом времени записи — класс Modified.
+    time.sleep(change_time_gap)
     os.utime(staged / "Chimera.exe", (stamp, stamp))
     r, log = _run_script(app, staged, upd)
     assert r.returncode == 0, log
