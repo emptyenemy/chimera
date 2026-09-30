@@ -30,7 +30,25 @@ ws.onmessage = m => {
 await new Promise((resolve, reject) => { ws.onopen = resolve; ws.onerror = reject; });
 await call("Runtime.enable");
 await call("Emulation.setDeviceMetricsOverride", { width: 1280, height: 820, deviceScaleFactor: 1, mobile: false });
-const res = await call("Runtime.evaluate", { expression: checks, awaitPromise: true, returnByValue: true, timeout: 180000 });
+// WebView2 не всегда ожидает Promise в Runtime.evaluate. Результат читается
+// отдельным синхронным вызовом после завершения проверок.
+await call("Runtime.evaluate", {
+  expression: `window.__chimeraSmokeResult = null; Promise.resolve((0, eval)(${JSON.stringify(checks)})).then(value => { window.__chimeraSmokeResult = { value }; }, error => { window.__chimeraSmokeResult = { error: String(error?.stack || error) }; }); "started"`,
+  returnByValue: true,
+});
+let res;
+for (let attempt = 0; attempt < 1800; attempt++) {
+  res = await call("Runtime.evaluate", { expression: "JSON.stringify(window.__chimeraSmokeResult)", returnByValue: true });
+  const serialized = res.result?.result?.value;
+  if (typeof serialized === "string" && serialized !== "null") {
+    const result = JSON.parse(serialized);
+    if (result.error) throw new Error(result.error);
+    res = { result: { result: { value: result.value } } };
+    break;
+  }
+  await new Promise(resolve => setTimeout(resolve, 100));
+  if (attempt === 1799) throw new Error("проверки не завершились за три минуты");
+}
 ws.close();
 const value = res.result?.result?.value;
 if (!value) {
