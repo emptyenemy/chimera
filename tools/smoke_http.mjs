@@ -1,8 +1,8 @@
 // Проверка собранного фронта в headless Edge через HTTP-мост; своего окна нет.
-import { spawn } from "node:child_process"
+import { spawn, spawnSync } from "node:child_process"
 import { mkdtempSync, readFileSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
-import { join } from "node:path"
+import { dirname, join, resolve } from "node:path"
 
 const [browser, url, checksPath, mode] = process.argv.slice(2)
 const profile = mkdtempSync(join(tmpdir(), "chimera-http-smoke-"))
@@ -53,7 +53,10 @@ try {
   console.log(JSON.stringify({ steps: JSON.parse(value), pageErrors: errors }))
 } finally {
   ws?.close()
-  proc.kill()
+  if (process.platform === "win32") {
+    spawnSync("taskkill", ["/PID", String(proc.pid), "/T", "/F"], { windowsHide: true, stdio: "ignore", timeout: 10000 })
+  } else proc.kill()
   await new Promise(resolve => setTimeout(resolve, 500))
-  rmSync(profile, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 })
+  if (dirname(resolve(profile)) !== resolve(tmpdir())) throw new Error("Unsafe browser profile cleanup path")
+  rmSync(profile, { recursive: true, force: true, maxRetries: 10, retryDelay: 250 })
 }
