@@ -30,7 +30,7 @@ const features = [
   { icon: Radio, title: 'Telegram', text: t('Локальный MTProto-прокси на базе tg-ws-proxy. Подключение к Telegram по ссылке.', 'A local MTProto proxy powered by tg-ws-proxy. Connect Telegram with a link.') },
   { icon: Globe, title: 'Hosts + DNS', text: t('Провайдеры hosts, выбор DNS и проверка серверов. Настройки собраны в одном месте.', 'Hosts providers, DNS selection and server checks. All settings in one place.') },
   { icon: ListChecks, title: t('Диагностика', 'Diagnostics'), text: t('Проверка сайтов, DNS и состояния модулей. Логи помогают понять, где проблема.', 'Check websites, DNS and module status. Logs help you find the problem.') },
-  { icon: SlidersHorizontal, title: t('Под себя', 'Make it yours'), text: t('Русский и английский, светлая и тёмная темы, автозапуск и работа в фоне.', 'Russian and English, light and dark themes, autostart and background operation.') },
+  { icon: SlidersHorizontal, title: t('Под себя', 'Make it yours'), text: t('Готовые палитры и свой вариант, акцент Windows, скругления и плотность. Снимки настроек для сравнения и возврата.', 'Curated palettes and your own variant, Windows accent, corner radius and density. Settings snapshots for comparison and restore.') },
 ]
 
 const faqs = [

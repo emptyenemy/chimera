@@ -1,4 +1,4 @@
-"""Check an actual 1.0.0 -> new Qt archive upgrade inside a temporary directory."""
+"""Check an actual previous release -> new Qt archive upgrade inside a temporary directory."""
 
 import argparse
 import hashlib
@@ -19,7 +19,7 @@ def run(argv, **kwargs):
                           encoding="utf-8", errors="replace", timeout=300, **kwargs)
 
 
-def verify(archive, version):
+def verify(archive, version, from_version="1.0.0"):
     if sys.platform != "win32":
         raise RuntimeError("The upgrade check requires Windows")
     archive = Path(archive).resolve()
@@ -27,24 +27,25 @@ def verify(archive, version):
         work = Path(tmp).resolve()
         assert work.is_relative_to(Path(tempfile.gettempdir()).resolve())
         source = work / "old_selfupdate.py"
-        source.write_bytes(subprocess.check_output(["git", "show", "v1.0.0:modules/selfupdate.py"], cwd=ROOT))
+        source.write_bytes(subprocess.check_output(["git", "show", f"v{from_version}:modules/selfupdate.py"], cwd=ROOT))
         spec = importlib.util.spec_from_file_location("old_selfupdate", source)
         old = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(old)
 
-        old_zip = work / "Chimera-1.0.0-win64.zip"
-        run(["gh", "release", "download", "v1.0.0", "--repo", "emptyenemy/chimera",
+        old_zip = work / f"Chimera-{from_version}-win64.zip"
+        run(["gh", "release", "download", f"v{from_version}", "--repo", "emptyenemy/chimera",
              "--pattern", old_zip.name, "--dir", str(work)])
         installed = old.stage(old_zip, work / "installed")
         # 1.0.0 has no --version CLI; read its PE metadata without starting the window.
         old_version = run(["powershell", "-NoProfile", "-Command",
                            "[Diagnostics.FileVersionInfo]::GetVersionInfo($env:CHIMERA_UPGRADE_OLD_EXE).FileVersion"],
                           env={**os.environ, "CHIMERA_UPGRADE_OLD_EXE": str(installed / "Chimera.exe")}).stdout.strip()
-        assert old_version.split(".")[:3] == ["1", "0", "0"], old_version
+        assert old_version.split(".")[:3] == from_version.split("."), old_version
 
         private = {"config.json": b'{"close_to_tray":true,"theme":"light"}\n',
                    "lists/upgrade-check.txt": b"keep.example.org\n",
                    "data/upgrade-check.json": b'{"preserve":true}\n',
+                   "data/config-backups/upgrade-check.json": b'{"preserve_snapshot":true}\n',
                    "personal-note.txt": b"user file\n"}
         for relative, data in private.items():
             path = installed / relative
@@ -60,7 +61,7 @@ def verify(archive, version):
         original = paths.IS_FROZEN, paths.APP_DIR
         paths.IS_FROZEN, paths.APP_DIR = True, installed
         try:
-            found = old.check(current="1.0.0", fetch=lambda url: [release])
+            found = old.check(current=from_version, fetch=lambda url: [release])
         finally:
             paths.IS_FROZEN, paths.APP_DIR = original
         assert found["latest"] == version and found["installable"], found
@@ -79,8 +80,10 @@ def verify(archive, version):
             assert (installed / relative).read_bytes() == data, relative
         notes = installed / "release-notes" / f"{version}.ru.md"
         assert notes.is_file() and "Chimera " + version in notes.read_text(encoding="utf-8")
+        assert (installed / "release-notes" / f"{version}.en.md").is_file()
+        assert (installed / "themes" / "catalog.json").is_file()
         assert (work / "rollback" / "Chimera.exe").is_file()
-        print(json.dumps({"from": "1.0.0", "to": version, "ok": True,
+        print(json.dumps({"from": from_version, "to": version, "ok": True,
                           "user_files_preserved": list(private), "rollback_saved": True}, ensure_ascii=False))
 
 
@@ -88,5 +91,6 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("archive", type=Path)
     parser.add_argument("--version", required=True)
+    parser.add_argument("--from-version", default="1.0.0")
     args = parser.parse_args()
-    verify(args.archive, args.version)
+    verify(args.archive, args.version, args.from_version)

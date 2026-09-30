@@ -236,6 +236,16 @@
   });
 
   await step("настройки", async () => { await api("config_read"); });
+  await step("палитры и акцент готового exe", async () => {
+    const original = await api("appearance_state");
+    need(original.themes.length >= 14, "каталог тем не упакован");
+    const changed = await api("appearance_apply", { theme: "dark", appearance: { palette: "catppuccin-mocha", accent_source: "custom", accent: "#00ff00" } });
+    need(changed.normalized && changed.contrast.text >= 4.5 && changed.contrast.background >= 4.5, "небезопасный акцент");
+    for (let i = 0; i < 100 && document.documentElement.dataset.palette !== "catppuccin-mocha"; i++) await sleep(100);
+    need(document.documentElement.dataset.palette === "catppuccin-mocha", "тема не поменялась в нативном окне");
+    await api("appearance_apply", original.settings);
+    return "каталог, нормализация, контраст, смена без перезапуска";
+  });
   await step("автозапуск", async () => {
     const a = await api("autostart_get");
     need(a.supported, "автозапуск не поддерживается");

@@ -121,11 +121,11 @@ jobs:
       - uses: actions/setup-python@v7
         with:
           python-version: "3.13"
-      - name: Обновление настоящего архива 1.0.0
+      - name: Обновление настоящего архива 1.0.1
         shell: bash
         run: |
           version="${BUILD_VERSION#v}"
-          python tools/verify_upgrade.py "archives/Chimera-${version}-win64.zip" --version "$version"
+          python tools/verify_upgrade.py "archives/Chimera-${version}-win64.zip" --version "$version" --from-version 1.0.1
       - name: Релиз
         if: startsWith(github.ref, 'refs/tags/')
         shell: bash
