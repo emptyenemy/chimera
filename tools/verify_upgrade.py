@@ -4,6 +4,7 @@ import argparse
 import hashlib
 import importlib.util
 import json
+import os
 import subprocess
 import sys
 import tempfile
@@ -35,7 +36,11 @@ def verify(archive, version):
         run(["gh", "release", "download", "v1.0.0", "--repo", "emptyenemy/chimera",
              "--pattern", old_zip.name, "--dir", str(work)])
         installed = old.stage(old_zip, work / "installed")
-        assert "1.0.0" in run([str(installed / "Chimera.exe"), "--version"]).stdout
+        # 1.0.0 has no --version CLI; read its PE metadata without starting the window.
+        old_version = run(["powershell", "-NoProfile", "-Command",
+                           "[Diagnostics.FileVersionInfo]::GetVersionInfo($env:CHIMERA_UPGRADE_OLD_EXE).FileVersion"],
+                          env={**os.environ, "CHIMERA_UPGRADE_OLD_EXE": str(installed / "Chimera.exe")}).stdout.strip()
+        assert old_version.split(".")[:3] == ["1", "0", "0"], old_version
 
         private = {"config.json": b'{"close_to_tray":true,"theme":"light"}\n',
                    "lists/upgrade-check.txt": b"keep.example.org\n",
