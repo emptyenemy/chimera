@@ -6,6 +6,7 @@
 """
 
 import json
+import os
 import sys
 
 import webview
@@ -32,6 +33,11 @@ class JsApi:
 def run():
     from modules import control, instance
     from ui.tray_win32 import Tray, close_to_tray
+
+    smoke_port = os.environ.get("QTWEBENGINE_REMOTE_DEBUGGING") if os.environ.get("CHIMERA_SMOKE") == "1" else None
+    if smoke_port:
+        webview.settings["REMOTE_DEBUGGING_PORT"] = int(smoke_port)
+        webview.settings["OPEN_DEVTOOLS_IN_DEBUG"] = False
 
     api = Api()
     quitting = False
@@ -77,6 +83,6 @@ def run():
     if hidden and not (tray and tray.available):
         window.events.loaded += show
     try:
-        webview.start(gui="edgechromium" if sys.platform == "win32" else None)
+        webview.start(gui="edgechromium" if sys.platform == "win32" else None, debug=bool(smoke_port))
     finally:
         cleanup()
