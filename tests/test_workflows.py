@@ -17,12 +17,12 @@ def test_release_job_runs_python_in_utf8():
 
 def test_release_notes_carry_sha256_of_the_archive():
     # хеш считается уже после сборки архива и попадает в описание релиза: по нему
-    # можно сверить скачанный zip; автоматический список изменений остаётся
+    # можно сверить скачанный zip; описание берётся из заметок этой версии
     assert "sha256sum" in RELEASE
     assert RELEASE.index("make_archive") < RELEASE.index("sha256sum") < RELEASE.index("gh release create")
-    assert "--notes" in RELEASE and "SHA256" in RELEASE
-    assert "--generate-notes" in RELEASE
-    assert 'sha256sum "${zips[@]}"' in RELEASE
+    assert "--notes-file" in RELEASE and "--checksums checksums.txt" in RELEASE
+    assert "tools/release_notes.py" in RELEASE and "--generate-notes" not in RELEASE
+    assert "cd archives && sha256sum Chimera-*-win64*.zip" in RELEASE
     assert 'gh release create "$GITHUB_REF_NAME" "${zips[@]}"' in RELEASE
     assert "needs: build" in RELEASE
     for flavor in ("qt", "webview", "lite"):
