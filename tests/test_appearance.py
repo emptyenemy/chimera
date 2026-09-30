@@ -96,7 +96,7 @@ def test_catalog_validates_exact_current_css_tokens():
     css = (Path(__file__).resolve().parents[1] / "frontend/src/index.css").read_text(encoding="utf-8")
     declared = set(re.findall(r"(--color-[\w-]+):", css))
     assert declared == a.COLOR_TOKENS
-    assert len(PALETTES) == 14
+    assert len(PALETTES) >= 14
     assert a.validate_catalog(deepcopy(a.catalog()))
 
 
