@@ -543,3 +543,91 @@ def test_manual_restore_keeps_a_list_renamed_only_by_case_and_its_inverse(live):
     assert not restored["errors"] and domains.read_raw("discord") == "discord.com\n"
     inverse = cb.restore(restored["backup"], True, live.ops, live.root)
     assert not inverse["errors"] and domains.read_raw("discord") == "changed.example\n"
+
+
+def test_compare_full_snapshots_lists_settings_and_secret_mask(live):
+    first = cb.create_manual(live.ops)["id"]
+    domains.save_raw("discord", "new.example\n")
+    domains.create_list("new-list")
+    appconfig.set_value("theme", "light")
+    live.api.proxy.config["link"] = LINK.replace("server.example", "other.example")
+    second = cb.create_manual(live.ops)["id"]
+    before = {p: p.read_bytes() for p in live.tmp.rglob("*") if p.is_file()}
+    events = list(live.events)
+    result = live.api.config_backup_compare(first, second, "en")["data"]
+    assert result["ok"] and not result["identical"] and result["secrets_changed"]
+    changes = {s["id"]: s["changes"] for s in result["sections"]}
+    assert changes["lists"] == ['Changed contents of list “discord”.', 'Added list “new-list”.']
+    assert len(changes["proxy"]) == len(changes["config"]) == 1
+    output = json.dumps(result)
+    for secret in (LINK, SECRET, "server.example", "other.example", "new.example"):
+        assert secret not in output
+    assert before == {p: p.read_bytes() for p in live.tmp.rglob("*") if p.is_file()}
+    assert events == live.events
+    reverse = cb.compare(second, first)
+    assert any('Удалён' in c for s in reverse["sections"] for c in s["changes"])
+
+
+def test_compare_partial_scope_is_unknown_not_deleted(live):
+    first = make_backup(live, states={"config": appconfig.load()}, lists={"discord": "discord.com\n"})
+    second = make_backup(live, states={"proxy": live.api.proxy.config}, lists={"other": None})
+    with i18n.request_language("en"):
+        result = cb.compare(first, second)
+    assert result["ok"] and not result["identical"]
+    changes = [c for s in result["sections"] for c in s["changes"]]
+    assert len(changes) == 4
+    assert all('not captured' in c for c in changes)
+    assert not any('Removed' in c for c in changes)
+
+
+def test_compare_complete_empty_inventory_and_casefold_line_endings(live):
+    first = cb.create_manual(live.ops)["id"]
+    second = make_backup(live, lists={"Discord": "discord.com\r\n"})
+    result = cb.compare(first, second)
+    assert len(result["sections"][0]["changes"]) == 1  # inventory coverage only
+    domains.delete_list("discord")
+    empty = cb.create_manual(live.ops)["id"]
+    result = cb.compare(first, empty)
+    assert result["ok"]
+    assert any('discord' in c for s in result["sections"] if s["id"] == "lists" for c in s["changes"])
+    assert cb.compare(empty, empty)["identical"]
+
+
+def test_compare_explicit_list_absence_and_provider_changes(live):
+    provider = {"id": "custom", "name": "Custom", "servers": ["1.1.1.1"]}
+    first = make_backup(live, states={"dns": [provider]}, lists={"discord": None})
+    second = make_backup(live, states={"dns": [{**provider, "servers": ["8.8.8.8"]}]}, lists={"discord": "discord.com\n"})
+    with i18n.request_language("en"):
+        result = cb.compare(first, second)
+    assert [s["id"] for s in result["sections"]] == ["lists", "dns"]
+    assert result["sections"][0]["changes"] == ['Added list “discord”.']
+    assert result["sections"][1]["changes"] == ['Changed settings of provider custom.']
+    assert '8.8.8.8' not in json.dumps(result)
+
+
+def test_compare_invalid_digest_and_path_ids_redact_errors(live):
+    first = make_backup(live, states={"proxy": live.api.proxy.config})
+    assert cb.compare(first, first)["identical"]
+    (live.root / first / "proxy.json").write_text(LINK)
+    for other in (first, "../../" + SECRET, None, []):
+        result = cb.compare(first, other)
+        assert not result["ok"] and result["errors"] and not result["sections"]
+        assert SECRET not in json.dumps(result) and LINK not in json.dumps(result)
+
+
+def test_compare_is_read_forwards_owner_and_cli_reports_failures(live, monkeypatch):
+    from modules.cli import client, commands, registry
+    calls = []
+    monkeypatch.setattr(api_mod.service, "is_running", lambda: True)
+    live.api._service_owned = False
+    remote = {"ok": True, "left_id": "first", "right_id": "second", "identical": True, "sections": [], "errors": []}
+    monkeypatch.setattr(client, "connect", lambda: SimpleNamespace(api=lambda *args: calls.append(args) or remote))
+    assert live.api.config_backup_compare("first", "second", "en")["data"] == remote
+    assert calls == [("config_backup_compare", "first", "second", "en")]
+    assert api_mod.Api.is_read("config_backup_compare")
+    action = registry.BY_GROUP["config"]["compare"]
+    assert action.level == registry.READ
+    ctx = SimpleNamespace(call=lambda *args: remote)
+    assert commands.h_config_compare(ctx, action, {"a0": "first", "a1": "second"}).exit_code == 0
+    remote.update(ok=False, identical=False, errors=["Invalid snapshot"])
+    assert commands.h_config_compare(ctx, action, {"a0": "first", "a1": "second"}).exit_code == 1

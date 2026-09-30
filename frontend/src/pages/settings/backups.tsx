@@ -2,6 +2,7 @@ import { useEffect, useState } from "react"
 import {
   ArchiveIcon,
   CircleAlertIcon,
+  GitCompareArrowsIcon,
   HistoryIcon,
   RefreshCwIcon,
   RotateCcwIcon,
@@ -34,6 +35,8 @@ import {
   EmptyMedia,
   EmptyTitle,
 } from "@/components/ui/empty"
+import { Checkbox } from "@/components/ui/checkbox"
+import { Field, FieldLabel } from "@/components/ui/field"
 import { Separator } from "@/components/ui/separator"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Spinner } from "@/components/ui/spinner"
@@ -65,6 +68,15 @@ interface BackupPreview {
   secrets_changed: boolean
 }
 
+interface BackupComparison extends Omit<
+  BackupPreview,
+  "id" | "requires_admin"
+> {
+  left_id: string | null
+  right_id: string | null
+  identical: boolean
+}
+
 interface RestoreReply {
   id: string
   restored: string[]
@@ -92,6 +104,9 @@ function BackupBrowser({ onClose }: { onClose: () => void }) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [preview, setPreview] = useState<BackupPreview | null>(null)
+  const [selected, setSelected] = useState<string[]>([])
+  const [comparison, setComparison] = useState<BackupComparison | null>(null)
+  const displayed = preview ?? comparison
   const [checking, setChecking] = useState(false)
   const [restoring, setRestoring] = useState(false)
   const [result, setResult] = useState<RestoreReply | null>(null)
@@ -114,7 +129,24 @@ function BackupBrowser({ onClose }: { onClose: () => void }) {
     }
   }, [])
 
+  async function compareSelected() {
+    if (selected.length !== 2) return
+    setChecking(true)
+    setError(null)
+    setResult(null)
+    try {
+      setComparison(
+        await api<BackupComparison>("config_backup_compare", ...selected)
+      )
+    } catch (e) {
+      setError(message(e))
+    } finally {
+      setChecking(false)
+    }
+  }
+
   async function reload() {
+    setSelected([])
     setLoading(true)
     setError(null)
     try {
@@ -189,14 +221,18 @@ function BackupBrowser({ onClose }: { onClose: () => void }) {
       >
         <DialogHeader>
           <DialogTitle>
-            {preview
-              ? t("settings.backups.preview")
-              : t("settings.backups.title")}
+            {comparison
+              ? t("settings.backups.compare")
+              : preview
+                ? t("settings.backups.preview")
+                : t("settings.backups.title")}
           </DialogTitle>
           <DialogDescription>
-            {preview
-              ? t("settings.backups.confirmHint")
-              : t("settings.backups.description")}
+            {comparison
+              ? t("settings.backups.compareHint")
+              : preview
+                ? t("settings.backups.confirmHint")
+                : t("settings.backups.description")}
           </DialogDescription>
         </DialogHeader>
         <div
@@ -234,20 +270,34 @@ function BackupBrowser({ onClose }: { onClose: () => void }) {
               </AlertDescription>
             </Alert>
           )}
-          {preview ? (
+          {displayed ? (
             <>
-              <p className="font-mono text-xs break-all">{preview.id}</p>
-              {!preview.ok && (
+              <p
+                className="font-mono text-xs break-all"
+                data-testid="backup-comparison-pair"
+              >
+                {comparison
+                  ? `${comparison.left_id ?? "—"} → ${comparison.right_id ?? "—"}`
+                  : preview?.id}
+              </p>
+              {comparison?.identical && (
+                <Alert data-testid="backup-comparison-identical">
+                  <AlertDescription>
+                    {t("settings.backups.identical")}
+                  </AlertDescription>
+                </Alert>
+              )}
+              {!displayed.ok && (
                 <Alert variant="destructive">
                   <CircleAlertIcon />
                   <AlertDescription>
-                    {[preview.error, ...preview.errors]
+                    {[displayed.error, ...displayed.errors]
                       .filter(Boolean)
                       .join("\n") || t("settings.backups.invalid")}
                   </AlertDescription>
                 </Alert>
               )}
-              {preview.sections.map((section, i) => (
+              {displayed.sections.map((section, i) => (
                 <div
                   key={section.id}
                   className="flex flex-col gap-2"
@@ -266,7 +316,7 @@ function BackupBrowser({ onClose }: { onClose: () => void }) {
                   </ul>
                 </div>
               ))}
-              {preview.secrets_changed && (
+              {displayed.secrets_changed && (
                 <Alert>
                   <HistoryIcon />
                   <AlertDescription>
@@ -274,7 +324,7 @@ function BackupBrowser({ onClose }: { onClose: () => void }) {
                   </AlertDescription>
                 </Alert>
               )}
-              {preview.requires_admin && (
+              {preview?.requires_admin && (
                 <Alert>
                   <CircleAlertIcon />
                   <AlertDescription>
@@ -282,7 +332,7 @@ function BackupBrowser({ onClose }: { onClose: () => void }) {
                   </AlertDescription>
                 </Alert>
               )}
-              {(preview.warnings ?? []).map((warning, i) => (
+              {(displayed.warnings ?? []).map((warning, i) => (
                 <Alert key={i}>
                   <CircleAlertIcon />
                   <AlertDescription>{warning}</AlertDescription>
@@ -336,7 +386,33 @@ function BackupBrowser({ onClose }: { onClose: () => void }) {
                     </p>
                   )}
                 </CardContent>
-                <CardFooter>
+                <CardFooter className="flex-wrap gap-3">
+                  <Field orientation="horizontal" className="w-auto">
+                    <Checkbox
+                      id={`compare-${backup.id}`}
+                      checked={selected.includes(backup.id)}
+                      disabled={
+                        !backup.valid ||
+                        busy ||
+                        (selected.length >= 2 && !selected.includes(backup.id))
+                      }
+                      onCheckedChange={(checked) =>
+                        setSelected((ids) =>
+                          checked
+                            ? [...ids, backup.id].slice(0, 2)
+                            : ids.filter((id) => id !== backup.id)
+                        )
+                      }
+                      data-testid="backup-select"
+                    />
+                    <FieldLabel htmlFor={`compare-${backup.id}`}>
+                      {selected.includes(backup.id)
+                        ? t("settings.backups.selected", {
+                            n: selected.indexOf(backup.id) + 1,
+                          })
+                        : t("settings.backups.select")}
+                    </FieldLabel>
+                  </Field>
                   <Button
                     size="sm"
                     variant="outline"
@@ -353,12 +429,13 @@ function BackupBrowser({ onClose }: { onClose: () => void }) {
           )}
         </div>
         <DialogFooter>
-          {preview ? (
+          {displayed ? (
             <Button
               variant="outline"
               disabled={busy}
               onClick={() => {
                 setPreview(null)
+                setComparison(null)
                 setError(null)
               }}
             >
@@ -377,6 +454,16 @@ function BackupBrowser({ onClose }: { onClose: () => void }) {
           <Button variant="outline" disabled={busy} onClick={onClose}>
             {t("common.close")}
           </Button>
+          {!displayed && (
+            <Button
+              disabled={selected.length !== 2 || busy || loading}
+              onClick={() => void compareSelected()}
+              data-testid="backup-compare"
+            >
+              <GitCompareArrowsIcon data-icon="inline-start" />
+              {t("settings.backups.compare")}
+            </Button>
+          )}
           {preview && (
             <Button
               disabled={!preview.ok || busy}

@@ -374,6 +374,14 @@ class Api:
         except Exception as e:
             return _err(e)
 
+    def config_backup_compare(self, left_id, right_id, lang=None):
+        try:
+            with i18n.request_language(lang):
+                remote = self._backup_owner("config_backup_compare", left_id, right_id, lang)
+                return remote if remote is not None else _ok(configbackups.compare(left_id, right_id))
+        except Exception as e:
+            return _err(e)
+
     def config_backup_preview(self, backup_id, lang=None):
         try:
             with i18n.request_language(lang):
@@ -533,7 +541,7 @@ class Api:
 
     # сверка с апстримом — только сеть, хотя в имени и есть «update»
     _READ_NAMES = frozenset({"tg_check_update", "upstream_check_updates", "doctor_run", "doctor_report",
-                             "config_export", "config_import_preview", "config_backups", "config_backup_preview"})
+                             "config_export", "config_import_preview", "config_backups", "config_backup_preview", "config_backup_compare"})
 
     @classmethod
     def is_read(cls, method: str) -> bool:

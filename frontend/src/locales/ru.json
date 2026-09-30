@@ -758,5 +758,10 @@
   "settings.backups.create": "Создать снимок",
   "settings.backups.created": "Снимок создан",
   "settings.backups.createFailed": "Не удалось создать снимок",
-  "settings.backups.manual": "Ручной снимок"
+  "settings.backups.manual": "Ручной снимок",
+  "settings.backups.compare": "Сравнить снимки",
+  "settings.backups.compareHint": "Различия от первого снимка ко второму. Настройки не применяются; несохранённые разделы отмечены отдельно.",
+  "settings.backups.select": "Выбрать для сравнения",
+  "settings.backups.selected": "Снимок {n} для сравнения",
+  "settings.backups.identical": "Сохранённые данные совпадают."
 }

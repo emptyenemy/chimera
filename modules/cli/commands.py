@@ -708,6 +708,19 @@ def h_config_backups(ctx, act, ns):
     return Result(backups, lines or [t("cli.backup.empty")])
 
 
+def h_config_compare(ctx, act, ns):
+    pv = ctx.call("config_backup_compare", ns["a0"], ns["a1"], i18n.current_lang())
+    lines = [f"{pv['left_id']} → {pv['right_id']}"] if pv.get("ok") else []
+    for section in pv.get("sections", []):
+        lines.append(f"{section['title']}:")
+        lines.extend(f"  {line}" for line in section["changes"])
+    if pv.get("identical"):
+        lines.append(t("msg.backup.compare.identical"))
+    lines.extend(f"! {line}" for line in pv.get("warnings", []))
+    lines.extend(t("cli.config.error_item", error=line) for line in pv.get("errors", []))
+    return Result(pv, lines, exit_code=0 if pv.get("ok") else 1)
+
+
 def h_config_restore_preview(ctx, act, ns):
     pv = ctx.call("config_backup_preview", ns["a0"], i18n.current_lang())
     lines = []
@@ -748,6 +761,7 @@ HANDLERS = {
     "path_remove": h_path_remove,
     "doctor": h_doctor, "config_export": h_config_export,
     "config_import_preview": h_config_import_preview, "config_import": h_config_import,
-    "config_backup": h_config_backup, "config_backups": h_config_backups, "config_restore_preview": h_config_restore_preview,
+    "config_compare": h_config_compare, "config_backup": h_config_backup, "config_backups": h_config_backups,
+    "config_restore_preview": h_config_restore_preview,
     "config_restore": h_config_restore,
 }

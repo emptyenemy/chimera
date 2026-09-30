@@ -123,6 +123,7 @@ Levels exist so that remote channels can be restricted. Secrets (the proxy link,
 | Settings → Config sharing → “Apply” | `chimera config import <file> [--sections <sections>] [--confirm]` | app |
 | Settings → Tools → Settings backups → Create snapshot | `chimera config backup` | app |
 | Settings → Tools → Backups | `chimera config backups` | read |
+| Settings → Tools → Configuration backups → Compare. | `chimera config compare <first> <second>` | read |
 | Settings → Tools → Backups → Preview | `chimera config restore-preview <id>` | read |
 | Settings → Tools → Backups → Restore | `chimera config restore <id> [--confirm]` | system |
 | Lists: list and editor | `chimera lists show [name]` | read |
@@ -409,6 +410,17 @@ List local configuration snapshots, including pre-import snapshots. Secret value
 ```
 chimera config backups
 chimera config backups --json
+```
+
+#### `chimera config compare <first> <second>`
+
+Compare two saved snapshots without applying settings. Level: read-only.
+
+- `first` — First snapshot ID (original state).
+- `second` — Second snapshot ID (changed state).
+
+```
+chimera config compare 20260930-120000-001-manual 20260930-130000-001-manual --json
 ```
 
 #### `chimera config restore-preview <id>`

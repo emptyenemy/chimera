@@ -436,6 +436,80 @@ def list_backups(root=None):
     return result
 
 
+def _title(sid):
+    return (t("msg.backup.config_title") if sid == "config" else
+            t("msg.backup.filters_title") if sid == "filters" else shareconfig.TITLES[sid])
+
+
+def compare(left_id, right_id, root=None):
+    """Compare stored data only; uncaptured sections are unknown, never deletions."""
+    result = {"left_id": None, "right_id": None, "ok": False, "error": None,
+              "errors": [], "sections": [], "warnings": [], "secrets_changed": False,
+              "identical": False}
+    for key, value in (("left_id", left_id), ("right_id", right_id)):
+        if isinstance(value, str) and ID_RE.fullmatch(value):
+            result[key] = value
+    try:
+        with _LOCK:
+            left, right = load(left_id, root), load(right_id, root)
+        if left["legacy"] or right["legacy"]:
+            result["warnings"].append(t("msg.backup.legacy_warning"))
+        if left["obsolete_fields"] or right["obsolete_fields"]:
+            result["warnings"].append(t("msg.backup.obsolete_warning"))
+        for sid in SECTIONS:
+            changes = []
+            if sid == "lists":
+                a = {name.casefold(): (name, text) for name, text in left["lists"].items()}
+                b = {name.casefold(): (name, text) for name, text in right["lists"].items()}
+                if left["complete_lists"] != right["complete_lists"]:
+                    changes.append(t("msg.backup.compare.list_scope"))
+                for key in sorted(a.keys() | b.keys()):
+                    name = (b.get(key) or a[key])[0]
+                    unknown_left = key not in a and not left["complete_lists"]
+                    unknown_right = key not in b and not right["complete_lists"]
+                    if unknown_left or unknown_right:
+                        changes.append(t("msg.backup.compare.list_unknown", name=name,
+                                         side=t("msg.backup.compare.first" if unknown_left else "msg.backup.compare.second")))
+                        continue
+                    old, new = a.get(key, (name, None))[1], b.get(key, (name, None))[1]
+                    # Ignore platform line endings, while preserving comments and ordering.
+                    if (None if old is None else old.replace("\r\n", "\n")) == (None if new is None else new.replace("\r\n", "\n")):
+                        continue
+                    key = ("msg.backup.compare.list_added" if old is None else
+                           "msg.backup.compare.list_removed" if new is None else "msg.backup.compare.list_changed")
+                    changes.append(t(key, name=name))
+            elif sid in left["states"] or sid in right["states"]:
+                if sid not in left["states"] or sid not in right["states"]:
+                    changes.append(t("msg.backup.compare.section_unknown", side=t(
+                        "msg.backup.compare.first" if sid not in left["states"] else "msg.backup.compare.second")))
+                else:
+                    a, b = left["states"][sid], right["states"][sid]
+                    if isinstance(a, dict):
+                        for field in sorted(a.keys() | b.keys()):
+                            if field in a and field in b and a[field] == b[field]:
+                                continue
+                            sensitive = field in ("link", "secret", "host")
+                            result["secrets_changed"] |= sensitive
+                            label = t(FIELD_TITLES[(sid, field)]) if (sid, field) in FIELD_TITLES else field
+                            changes.append(t("msg.backup.secret_change" if sensitive else "msg.backup.setting_change", field=label))
+                    else:
+                        # Provider order has no meaning; compare identity and every saved field.
+                        a = {p["id"]: p for p in a}
+                        b = {p["id"]: p for p in b}
+                        for pid in sorted(a.keys() | b.keys()):
+                            if a.get(pid) != b.get(pid):
+                                key = ("msg.backup.compare.provider_added" if pid not in a else
+                                       "msg.backup.compare.provider_removed" if pid not in b else "msg.backup.compare.provider_changed")
+                                changes.append(t(key, id=pid))
+            if changes:
+                result["sections"].append({"id": sid, "title": _title(sid), "changes": changes})
+        result.update(ok=True, identical=not result["sections"])
+    except Exception:
+        error = t("err.backup.invalid", name="")
+        result.update(error=error, errors=[error], sections=[], warnings=[], secrets_changed=False)
+    return result
+
+
 def _preview(backup, ops):
     ops.validate_backup(backup)
     current = ops.backup_snapshot(backup)

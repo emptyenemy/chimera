@@ -123,6 +123,7 @@
 | Настройки → Обмен конфигом → «Применить» | `chimera config import <файл> [--sections <sections>] [--confirm]` | app |
 | Настройки → Инструменты → Бэкапы настроек → Создать снимок | `chimera config backup` | app |
 | Настройки → Инструменты → Резервные копии | `chimera config backups` | read |
+| Настройки → Инструменты → Бэкапы → Сравнить. | `chimera config compare <first> <second>` | read |
 | Настройки → Инструменты → Резервные копии → Предпросмотр | `chimera config restore-preview <id>` | read |
 | Настройки → Инструменты → Резервные копии → Восстановить | `chimera config restore <id> [--confirm]` | system |
 | Списки: список и редактор | `chimera lists show [имя]` | read |
@@ -409,6 +410,17 @@ chimera config backup --json
 ```
 chimera config backups
 chimera config backups --json
+```
+
+#### `chimera config compare <first> <second>`
+
+Сравнить два сохранённых снимка без применения настроек. Уровень: чтение.
+
+- `first` — ID первого снимка (исходное состояние).
+- `second` — ID второго снимка (изменённое состояние).
+
+```
+chimera config compare 20260930-120000-001-manual 20260930-130000-001-manual --json
 ```
 
 #### `chimera config restore-preview <id>`

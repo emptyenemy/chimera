@@ -736,5 +736,10 @@
   "settings.backups.create": "Create snapshot",
   "settings.backups.created": "Snapshot created",
   "settings.backups.createFailed": "Could not create snapshot",
-  "settings.backups.manual": "Manual snapshot"
+  "settings.backups.manual": "Manual snapshot",
+  "settings.backups.compare": "Compare snapshots",
+  "settings.backups.compareHint": "Changes from the first snapshot to the second. No settings are applied; uncaptured sections are marked separately.",
+  "settings.backups.select": "Select for comparison",
+  "settings.backups.selected": "Snapshot {n} for comparison",
+  "settings.backups.identical": "Saved data is identical."
 }
