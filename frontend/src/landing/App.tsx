@@ -117,7 +117,7 @@ export default function Landing() {
       </section>
 
       <section id="download" className="flex flex-col gap-8">
-        <div className="flex flex-col gap-3"><h2 className="text-3xl font-semibold tracking-tight md:text-4xl">{t('Окно, терминал или служба.', 'Window, terminal or service.')}</h2><p className="max-w-2xl text-lg text-muted-foreground">{t('Три варианта в следующем обновлении. Один набор инструментов, CLI во всех.', 'Three editions in the next update. The same tools, with CLI in every edition.')}</p></div>
+        <div className="flex flex-col gap-3"><h2 className="text-3xl font-semibold tracking-tight md:text-4xl">{t('Окно, терминал или служба.', 'Window, terminal or service.')}</h2><p className="max-w-2xl text-lg text-muted-foreground">{t('Три варианта для Windows. Один набор инструментов, CLI во всех.', 'Three editions for Windows. The same tools, with CLI in every edition.')}</p></div>
         <Tabs defaultValue="qt"><TabsList><TabsTrigger value="qt"><Monitor />Qt</TabsTrigger><TabsTrigger value="webview">WebView2</TabsTrigger><TabsTrigger value="lite"><Terminal />Lite</TabsTrigger></TabsList>{[
           { id: 'qt', title: t('Самостоятельное окно', 'A self-contained window'), text: t('Собственный Chromium в комплекте. Оконный интерфейс, трей, CLI и TUI.', 'Includes Chromium. Window interface, tray, CLI and TUI.'), suffix: '' },
           { id: 'webview', title: t('Системный WebView2', 'System WebView2'), text: t('Использует Microsoft Edge WebView2 Runtime. Нативный трей; при отсутствии Runtime доступен браузерный интерфейс.', 'Uses Microsoft Edge WebView2 Runtime. Native tray; the browser interface is available if Runtime is missing.'), suffix: '-webview' },
