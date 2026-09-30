@@ -24,12 +24,13 @@
 // например { "click": "[data-testid=module-toggle-proxy]" }.
 // Ошибки JS и console.error печатаются с пометкой [ошибка страницы].
 
-import { spawn } from "node:child_process";
-import { mkdtempSync, writeFileSync, readFileSync, rmSync } from "node:fs";
+import { spawn, spawnSync } from "node:child_process";
+import { mkdirSync, mkdtempSync, writeFileSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 
 const [, , browserExe, url, outDir, scenarioPath] = process.argv;
+mkdirSync(outDir, { recursive: true });
 const profile = mkdtempSync(join(tmpdir(), "chimera-shot-"));
 const W = 1280, H = 820;
 
@@ -157,7 +158,10 @@ try {
   process.exitCode = 1;
 } finally {
   try { ws.close(); } catch {}
-  proc.kill();
-  await sleep(300);
-  try { rmSync(profile, { recursive: true, force: true }); } catch {}
+  if (process.platform === "win32") {
+    spawnSync("taskkill", ["/PID", String(proc.pid), "/T", "/F"], { windowsHide: true, stdio: "ignore", timeout: 10000 });
+  } else proc.kill();
+  await sleep(500);
+  if (dirname(resolve(profile)) !== resolve(tmpdir())) throw new Error("Unsafe browser profile cleanup path");
+  rmSync(profile, { recursive: true, force: true, maxRetries: 10, retryDelay: 250 });
 }
