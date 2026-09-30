@@ -32,7 +32,7 @@ def child(work):
 
 def main():
     from tools.smoke_build import _free_port, _wait_cdp
-    with tempfile.TemporaryDirectory(prefix="chimera-native-appearance-") as temporary:
+    with tempfile.TemporaryDirectory(prefix="chimera-native-appearance-", ignore_cleanup_errors=True) as temporary:
         work = Path(temporary)
         port = _free_port()
         (work / "config.json").write_text(json.dumps({"auto_elevate": False, "lang": "ru", "update_check": False,
@@ -55,6 +55,7 @@ def main():
                 assert not checks["pageErrors"] and all(s["ok"] for s in checks["steps"]), checks
             finally:
                 subprocess.run(["taskkill", "/PID", str(proc.pid), "/T", "/F"], capture_output=True)
+                proc.wait(timeout=15)
                 print((work / "engine.log").read_bytes()[-3000:].decode("utf-8", "replace"))
 
 
