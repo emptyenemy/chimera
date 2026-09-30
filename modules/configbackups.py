@@ -11,10 +11,11 @@ import re
 import shutil
 import tempfile
 import threading
+from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
 
-from modules import appconfig, domains, paths, shareconfig
+from modules import appconfig, applog, domains, paths, shareconfig
 from modules.errors import ChimeraValueError
 from modules.i18n import t
 
@@ -22,13 +23,14 @@ SCHEMA = 1
 KEEP = 10
 MAX_BYTES = 8 * 1024 * 1024
 MAX_FILE_BYTES = 2 * 1024 * 1024
-ID_RE = re.compile(r"^\d{8}-\d{6}-\d{3,8}-(?:import|restore|manual)$")
+ID_RE = re.compile(r"^\d{8}-\d{6}-\d{3,8}-(?:import|restore|manual|auto)$")
 FILES = {"proxy.json": "proxy", "tgproxy.json": "telegram", "hosts.json": "hosts",
          "dns_providers.user.json": "dns", "winws.json": "winws", "config.json": "config",
          "winws-filters.json": "filters"}
 STATE_FILES = {v: k for k, v in FILES.items()}
 SECTIONS = ("lists", "dns", "hosts", "proxy", "telegram", "winws", "config", "filters")
 _LOCK = threading.RLock()
+_AUTO = threading.local()
 FIELD_TITLES = {("config", "theme"): "msg.backup.field.theme",
                 ("config", "lang"): "msg.backup.field.lang",
                 ("filters", "content"): "msg.backup.field.ipset_content",
@@ -333,10 +335,10 @@ def load(backup_id, root=None):
             "states": states, "lists": lists, "legacy": legacy, "obsolete_fields": obsolete, "complete_lists": complete_lists}
 
 
-def _publish(blobs, root, kind, complete_lists=False):
+def _publish(blobs, root, kind, complete_lists=False, prune=True):
     if not isinstance(complete_lists, bool) or complete_lists != (kind == "manual"):
         _bad()
-    if kind not in ("import", "restore", "manual") or not blobs or len(blobs) > shareconfig.MAX_LISTS + len(FILES):
+    if kind not in ("import", "restore", "manual", "auto") or not blobs or len(blobs) > shareconfig.MAX_LISTS + len(FILES):
         _bad()
     if any(blob is not None and len(blob) > MAX_FILE_BYTES for blob in blobs.values()):
         _bad()
@@ -366,11 +368,17 @@ def _publish(blobs, root, kind, complete_lists=False):
     except Exception:
         shutil.rmtree(temp, ignore_errors=True)
         raise
-    old = sorted(p for p in base.iterdir() if ID_RE.fullmatch(p.name) and p.is_dir() and not _is_link(p))
+    if prune:
+        _prune(base)
+    return backup_id
+
+
+def _prune(base):
+    old = sorted((p for p in base.iterdir() if ID_RE.fullmatch(p.name) and p.is_dir() and not _is_link(p)),
+                 key=lambda p: (p.name[:15], int(p.name.split("-")[2])))
     for p in old[:-KEEP]:
         if p.resolve().parent == base.resolve():
             shutil.rmtree(p)
-    return backup_id
 
 
 def create_files(files, root=None, kind="import"):
@@ -390,7 +398,7 @@ def create_files(files, root=None, kind="import"):
         return _publish(blobs, root, kind)
 
 
-def create_snapshot(snapshot, root=None, kind="restore"):
+def create_snapshot(snapshot, root=None, kind="restore", *, prune=True):
     if snapshot.get("complete_lists") and set(snapshot["states"]) != set(SECTIONS) - {"lists"}:
         _bad()
     blobs = {STATE_FILES[sid]: (json.dumps(normalize(sid, value), ensure_ascii=False, indent=2) + "\n").encode("utf-8")
@@ -402,7 +410,69 @@ def create_snapshot(snapshot, root=None, kind="restore"):
         if text is not None and (shareconfig._clean_list_text(text)[1] or text.count("\n") > shareconfig.MAX_LIST_LINES):
             _bad()
     with _LOCK:
-        return _publish(blobs, root, kind, complete_lists=snapshot.get("complete_lists", False))
+        return _publish(blobs, root, kind, complete_lists=snapshot.get("complete_lists", False), prune=prune)
+
+
+@contextmanager
+def suspend_auto():
+    """Import and restore already capture one inverse snapshot for the whole operation."""
+    depth = getattr(_AUTO, "depth", 0)
+    _AUTO.depth = depth + 1
+    try:
+        yield
+    finally:
+        _AUTO.depth = depth
+
+
+@contextmanager
+def automatic(capture, root=None):
+    """Persist before writing. Unchanged operations do not consume backup history."""
+    if getattr(_AUTO, "depth", 0):
+        yield
+        return
+    with _LOCK, suspend_auto():
+        try:
+            before = capture()
+            backup_id = create_snapshot(before, root, kind="auto", prune=False)
+            load(backup_id, root)
+        except Exception:
+            raise ChimeraValueError("err.backup.prepare_failed") from None
+        try:
+            yield
+        finally:
+            # A failed setter may have changed files. Retain its inverse snapshot too.
+            try:
+                unchanged = before == capture()
+            except Exception:
+                unchanged = False
+            directory = root_path(root) / backup_id
+            try:
+                if unchanged:
+                    if directory.resolve().parent == root_path(root).resolve() and not _is_link(directory):
+                        shutil.rmtree(directory)
+                else:
+                    _prune(root_path(root))
+            except OSError:
+                # Settings have already been applied; keep the saved inverse on disk.
+                applog.write(t("msg.backup.cleanup_failed"))
+
+
+def offline_change(method, args, action):
+    """The same snapshot guarantee for CLI writes while the application is closed."""
+    if method == "config_set":
+        def capture():
+            return {"states": {"config": normalize("config", appconfig.load())}, "lists": {}}
+    elif method in ("lists_save", "lists_create"):
+        name = args[0]
+        if not isinstance(name, str) or not domains.NAME_RE.fullmatch(name):
+            return action()
+        def capture():
+            available = {n.casefold(): n for n in domains.available_lists()}
+            return {"states": {}, "lists": {name: domains.read_raw(available[name.casefold()]) if name.casefold() in available else None}}
+    else:
+        return action()
+    with automatic(capture):
+        return action()
 
 
 def create_manual(ops, root=None):
@@ -421,7 +491,7 @@ def list_backups(root=None):
     if not base.exists():
         return []
     result = []
-    for path in sorted(base.iterdir(), reverse=True):
+    for path in sorted(base.iterdir(), key=lambda p: (p.name[:15], int(p.name.split("-")[2])) if ID_RE.fullmatch(p.name) else ("", 0), reverse=True):
         if not ID_RE.fullmatch(path.name):
             continue
         entry = {"id": path.name, "created_at": None, "kind": path.name.rsplit("-", 1)[1],
@@ -491,7 +561,7 @@ def compare(left_id, right_id, root=None):
                             sensitive = field in ("link", "secret", "host")
                             result["secrets_changed"] |= sensitive
                             label = t(FIELD_TITLES[(sid, field)]) if (sid, field) in FIELD_TITLES else field
-                            changes.append(t("msg.backup.secret_change" if sensitive else "msg.backup.setting_change", field=label))
+                            changes.append(t("msg.backup.compare.secret_change" if sensitive else "msg.backup.compare.setting_change", field=label))
                     else:
                         # Provider order has no meaning; compare identity and every saved field.
                         a = {p["id"]: p for p in a}

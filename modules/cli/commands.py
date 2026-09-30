@@ -14,7 +14,7 @@ import sys
 import time
 from dataclasses import dataclass, field
 
-from modules import changelog, control, errors, i18n, paths
+from modules import changelog, configbackups, control, errors, i18n, paths
 from modules.cli import client as cl
 from modules.cli import pathenv
 from modules.cli.client import CliError, Usage
@@ -61,7 +61,7 @@ class Ctx:
         c = cl.discover()
         if c is not None:
             return c.api(method, *args, reveal=self.reveal)
-        return local()
+        return configbackups.offline_change(method, args, local)
 
 
 # --- вывод по умолчанию -----------------------------------------------------------------
@@ -270,7 +270,7 @@ def h_config_set(ctx, act, ns):
         if key not in control.CONFIG_KEYS_WRITABLE:
             raise CliError.of("cli.err.config_forbidden", "forbidden", 1, key=repr(key))
         try:
-            return Result(appconfig.set_value(key, value))
+            return Result(configbackups.offline_change("config_set", (key, value), lambda: appconfig.set_value(key, value)))
         except ChimeraError as e:
             raise CliError(e.message(), "invalid", 1, e.code, e.params) from e
     return Result(ctx.call("config_set", key, value))

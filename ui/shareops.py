@@ -129,17 +129,19 @@ class ShareOps:
 
     # --- local snapshots (private values stay inside the application) -----------------
 
-    def _current_states(self):
+    def _current_states(self, sections=None):
         from modules import configbackups
-        return {
-            "proxy": configbackups.normalize("proxy", self.api.proxy.config),
-            "telegram": configbackups.normalize("telegram", self.api.tg.config),
-            "winws": configbackups.normalize("winws", self.api.winws.config),
-            "hosts": configbackups.normalize("hosts", self.api.hosts._load_state()),
-            "dns": configbackups.normalize("dns", [p for p in dns_providers.load_all() if not p.get("builtin")]),
-            "config": configbackups.normalize("config", appconfig.load()),
-            "filters": configbackups.normalize("filters", filters.ipset_snapshot()),
+        sources = {
+            "proxy": lambda: self.api.proxy.config,
+            "telegram": lambda: self.api.tg.config,
+            "winws": lambda: self.api.winws.config,
+            "hosts": lambda: self.api.hosts._load_state(),
+            "dns": lambda: [p for p in dns_providers.load_all() if not p.get("builtin")],
+            "config": appconfig.load,
+            "filters": filters.ipset_snapshot,
         }
+        return {sid: configbackups.normalize(sid, source()) for sid, source in sources.items()
+                if sections is None or sid in sections}
 
     def validate_backup(self, backup):
         from modules.errors import ChimeraValueError
@@ -224,14 +226,16 @@ class ShareOps:
                             (("proxy", self.api.proxy), ("telegram", self.api.tg), ("winws", self.api.winws)) if sid in states}}
 
     def backup_state(self, sections, list_names):
-        current = self._current_states()
         selected = set(sections) - {"lists"}
         if "winws" in selected:
             selected.update(("config", "filters"))
         if "hosts" in selected:
             selected.add("dns")
-        return {"states": {sid: current[sid] for sid in selected},
-                "lists": {name: domains.read_raw(name) if name in domains.available_lists() else None for name in list_names}}
+        current = self._current_states(selected)
+        available = {name.casefold(): name for name in domains.available_lists()}
+        list_names = list({name.casefold(): name for name in reversed(list(list_names))}.values())
+        return {"states": current,
+                "lists": {name: domains.read_raw(available[name.casefold()]) if name.casefold() in available else None for name in list_names}}
 
     def backup_requires_admin(self, target):
         a = self.api

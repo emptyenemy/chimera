@@ -631,3 +631,196 @@ def test_compare_is_read_forwards_owner_and_cli_reports_failures(live, monkeypat
     assert commands.h_config_compare(ctx, action, {"a0": "first", "a1": "second"}).exit_code == 0
     remote.update(ok=False, identical=False, errors=["Invalid snapshot"])
     assert commands.h_config_compare(ctx, action, {"a0": "first", "a1": "second"}).exit_code == 1
+
+
+@pytest.mark.parametrize("method,args,section", [
+    ("config_set", ("theme", "light"), "config"),
+    ("proxy_set_link", (LINK.replace("server.example", "new.example"),), "proxy"),
+    ("proxy_set_lists", ([],), "proxy"),
+    ("proxy_set_apps", (["Discord.exe"],), "proxy"),
+    ("proxy_set_autostart", (True,), "proxy"),
+    ("proxy_set_mode", ("tun",), "proxy"),
+    ("winws_set_lists", ([],), "winws"),
+    ("winws_set_autostart", (True,), "winws"),
+    ("tg_set_config", ("localhost", 2443, SECRET, True), "telegram"),
+    ("tg_set_advanced", ({"fake_tls_domain": "example.com"},), "telegram"),
+    ("tg_regen_secret", (), "telegram"),
+    ("hosts_set_enabled", (True,), "hosts"),
+    ("hosts_set_background", ({"refresh_enabled": False},), "hosts"),
+    ("game_filter_set", ("tcp", "80,443", None), "config"),
+    ("ipset_set", ("none",), "filters"),
+])
+def test_auto_snapshot_captures_old_settings_and_restores(live, method, args, section):
+    old = live.ops._current_states()[section]
+    reply = getattr(live.api, method)(*args)
+    assert reply["ok"], reply.get("error")
+    backups = cb.list_backups(live.root)
+    assert len(backups) == 1 and backups[0]["kind"] == "auto" and backups[0]["valid"]
+    backup = cb.load(backups[0]["id"], live.root)
+    assert backup["states"][section] == old
+    assert not cb.restore(backup["id"], True, live.ops)["errors"]
+    assert live.ops._current_states()[section] == old
+
+
+def test_auto_is_persisted_before_setter_and_failure_blocks_change(live, monkeypatch):
+    original = appconfig.set_value
+    def checked(key, value):
+        backups = cb.list_backups(live.root)
+        assert len(backups) == 1 and cb.load(backups[0]["id"])["states"]["config"]["theme"] == "system"
+        return original(key, value)
+    monkeypatch.setattr(appconfig, "set_value", checked)
+    assert live.api.config_set("theme", "light")["ok"]
+    before = full_snapshot(live)
+    monkeypatch.setattr(cb, "create_snapshot", lambda *a, **k: (_ for _ in ()).throw(OSError(SECRET)))
+    reply = live.api.config_set("theme", "dark")
+    assert not reply["ok"] and reply["code"] == "err.backup.prepare_failed"
+    assert SECRET not in json.dumps(reply)
+    assert full_snapshot(live) == before
+
+
+def test_noop_and_invalid_operations_preserve_existing_backup_history(live, monkeypatch):
+    monkeypatch.setattr(cb, "KEEP", 2)
+    first = cb.create_manual(live.ops)["id"]
+    second = cb.create_manual(live.ops)["id"]
+    before = {p: p.read_bytes() for p in live.root.rglob("*") if p.is_file()}
+    for _ in range(3):
+        assert live.api.config_set("theme", "system")["ok"]
+        assert not live.api.config_set("theme", "neon")["ok"]
+        assert live.api.lists_save("discord", "discord.com\n")["ok"]
+    assert before == {p: p.read_bytes() for p in live.root.rglob("*") if p.is_file()}
+    assert {b["id"] for b in cb.list_backups()} == {first, second}
+
+
+def test_failed_setter_with_partial_change_keeps_its_inverse(live):
+    before = appconfig.load()
+    reply = live.api.game_filter_set("tcp", "invalid", None)
+    assert not reply["ok"]
+    assert appconfig.load()["game_filter"] == "tcp"
+    backup = cb.list_backups()[0]
+    assert cb.load(backup["id"])["states"]["config"] == before
+    assert not cb.restore(backup["id"], True, live.ops)["errors"]
+    assert appconfig.load() == before
+
+
+@pytest.mark.parametrize("method,args", [
+    ("lists_create", ("new-list",)),
+    ("lists_save", ("new-list", "new.example\n")),
+    ("lists_delete", ("discord",)),
+    ("lists_rename", ("discord", "renamed")),
+])
+def test_auto_list_inventory_changes_restore_connections(live, method, args):
+    old = full_snapshot(live)
+    assert getattr(live.api, method)(*args)["ok"]
+    backups = cb.list_backups()
+    assert len(backups) == 1
+    assert not cb.restore(backups[0]["id"], True, live.ops)["errors"]
+    assert domains.available_lists() == ["discord"]
+    assert full_snapshot(live) == old
+
+
+def test_auto_provider_add_and_delete_restore_related_hosts(live):
+    assert live.api.hosts_add_provider("Local", "", ["1.1.1.1"])["ok"]
+    backup = cb.list_backups()[0]
+    assert set(cb.load(backup["id"])["states"]) == {"dns", "hosts"}
+    provider = next(p for p in dns_providers.load_all() if not p.get("builtin"))
+    live.api.hosts._save_state({"assignments": {provider["id"]: ["discord"]}, "enabled": False})
+    assert live.api.hosts_delete_provider(provider["id"])["ok"]
+    deleted = cb.list_backups()[0]
+    assert not cb.restore(deleted["id"], True, live.ops)["errors"]
+    assert live.api.hosts.assignments() == {provider["id"]: ["discord"]}
+
+
+def test_restore_and_import_do_not_create_nested_auto_snapshots(live):
+    backup = cb.create_manual(live.ops)["id"]
+    assert live.api.config_set("theme", "light")["ok"]
+    count = len(cb.list_backups())
+    assert not live.api.config_backup_restore(backup, True)["data"]["errors"]
+    assert len(cb.list_backups()) == count + 1
+    portable = {"schema": 1, "sections": {"lists": {"discord": "different.example\n"}, "proxy": {"mode": "tun"}}}
+    count = len(cb.list_backups())
+    reply = live.api.config_import_apply(json.dumps(portable), ["lists", "proxy"], True)
+    assert reply["ok"] and not reply["data"]["errors"]
+    assert len(cb.list_backups()) == count + 1
+    assert cb.list_backups()[0]["kind"] == "import"
+
+
+def test_auto_forwarding_service_creates_only_owner_snapshot(live, monkeypatch):
+    from modules.cli import client
+    owner = live.api
+    ui = api_mod.Api.__new__(api_mod.Api)
+    ui._service_owned = False
+    ui.proxy, ui.winws, ui.tg = owner.proxy, owner.winws, owner.tg
+    calls = []
+    monkeypatch.setattr(api_mod.service, "is_running", lambda: True)
+    def remote(method, *args):
+        calls.append((method, args))
+        reply = getattr(owner, method)(*args)
+        assert reply["ok"]
+        return reply["data"]
+    monkeypatch.setattr(client, "connect", lambda: SimpleNamespace(api=remote))
+    assert ui.config_set(key="theme", value="light")["ok"]
+    assert calls == [("config_set", ("theme", "light"))]
+    assert len(cb.list_backups()) == 1
+
+
+def test_offline_cli_config_and_lists_use_automatic_snapshots(live, monkeypatch):
+    from modules.cli import client, commands, registry
+    monkeypatch.setattr(client, "discover", lambda: None)
+    ctx = commands.Ctx()
+    action = registry.BY_GROUP["config"]["set"]
+    commands.h_config_set(ctx, action, {"a0": "theme", "a1": "light"})
+    config_backup = cb.list_backups()[0]
+    assert cb.load(config_backup["id"])["states"]["config"]["theme"] == "system"
+    ctx.call_or_local("lists_save", ("discord", "changed.example\n"), lambda: domains.save_raw("discord", "changed.example\n"))
+    lists_backup = cb.list_backups()[0]
+    assert cb.load(lists_backup["id"])["lists"] == {"discord": "discord.com\n"}
+    assert not cb.restore(lists_backup["id"], True, live.ops)["errors"]
+    assert domains.read_raw("discord") == "discord.com\n"
+
+
+def test_history_uses_numeric_sequence_after_999(live, monkeypatch):
+    monkeypatch.setattr(cb, "KEEP", 2)
+    frozen = cb.datetime.now(cb.UTC)
+    class FixedDateTime(cb.datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return frozen.astimezone(tz)
+    monkeypatch.setattr(cb, "datetime", FixedDateTime)
+    first = cb.create_manual(live.ops)["id"]
+    renamed = first.rsplit("-", 2)[0] + "-999-manual"
+    (live.root / first).rename(live.root / renamed)
+    second = cb.create_manual(live.ops)["id"]
+    assert "-1000-" in second
+    assert live.api.config_set("theme", "light")["ok"]
+    entries = cb.list_backups()
+    assert len(entries) == 2 and "-1001-auto" in entries[0]["id"]
+    assert entries[1]["id"] == second
+    assert not (live.root / renamed).exists()
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows list names are case insensitive")
+def test_auto_case_only_list_rename_creates_a_valid_inverse(live):
+    with cb.automatic(lambda: live.ops.backup_state(("proxy", "winws", "hosts"), ("discord", "Discord"))):
+        (live.lists / "discord.txt").rename(live.lists / "Discord.txt")
+        domains.save_raw("Discord", "changed.example\n")
+    entry = cb.list_backups()[0]
+    assert entry["valid"] and cb.load(entry["id"])["lists"] == {"discord": "discord.com\n"}
+    assert not cb.restore(entry["id"], True, live.ops)["errors"]
+    assert live.api.proxy.config["lists"] == ["discord"]
+
+
+def test_auto_cleanup_failure_does_not_report_a_successful_change_as_failed(live, monkeypatch):
+    logs = []
+    monkeypatch.setattr(cb.applog, "write", lambda text: logs.append(text))
+    monkeypatch.setattr(cb, "_prune", lambda *a: (_ for _ in ()).throw(PermissionError("busy")))
+    assert live.api.config_set("theme", "light")["ok"]
+    assert appconfig.load()["theme"] == "light"
+    assert cb.list_backups()[0]["valid"] and len(logs) == 1
+
+
+def test_auto_read_commands_do_not_capture(live, monkeypatch):
+    monkeypatch.setattr(cb, "create_snapshot", lambda *a, **k: pytest.fail("Read attempted a snapshot"))
+    assert live.api.config_read()["ok"]
+    assert live.api.config_backups()["data"] == []
+    assert live.api.lists_read("discord")["ok"]
+    assert not live.api.config_backup_compare("missing", "missing")["data"]["ok"]

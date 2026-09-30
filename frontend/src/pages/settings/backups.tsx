@@ -320,7 +320,7 @@ function BackupBrowser({ onClose }: { onClose: () => void }) {
                 <Alert>
                   <HistoryIcon />
                   <AlertDescription>
-                    {t("settings.backups.secrets")}
+                    {t(comparison ? "settings.backups.compareSecrets" : "settings.backups.secrets")}
                   </AlertDescription>
                 </Alert>
               )}
@@ -365,11 +365,13 @@ function BackupBrowser({ onClose }: { onClose: () => void }) {
                     <Badge variant={backup.valid ? "secondary" : "destructive"}>
                       {!backup.valid
                         ? t("settings.backups.invalid")
-                        : backup.kind === "manual"
-                          ? t("settings.backups.manual")
-                          : backup.kind === "restore"
-                            ? t("settings.backups.beforeRestore")
-                            : t("settings.backups.beforeImport")}
+                        : backup.kind === "auto"
+                          ? t("settings.backups.automatic")
+                          : backup.kind === "manual"
+                            ? t("settings.backups.manual")
+                            : backup.kind === "restore"
+                              ? t("settings.backups.beforeRestore")
+                              : t("settings.backups.beforeImport")}
                     </Badge>
                   </CardTitle>
                   <CardDescription className="break-all">

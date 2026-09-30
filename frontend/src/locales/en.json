@@ -712,7 +712,7 @@
   "units.gb": "GB",
   "units.tb": "TB",
   "settings.backups.title": "Settings backups",
-  "settings.backups.description": "Create a snapshot of all settings and lists. A snapshot is also saved automatically before imports and restores.",
+  "settings.backups.description": "Create a full snapshot, compare saved settings or restore them. Changes through the window and CLI automatically back up the affected data.",
   "settings.backups.open": "Browse backups",
   "settings.backups.preview": "Restore preview",
   "settings.backups.confirmHint": "The settings below will be restored. A snapshot of your current settings will be saved first.",
@@ -726,7 +726,7 @@
   "settings.backups.secrets": "Saved proxy links and secrets will also be restored. Their values are hidden.",
   "settings.backups.admin": "Administrator privileges are required to restore these settings.",
   "settings.backups.empty": "No backups yet",
-  "settings.backups.emptyHint": "Create your first snapshot or import a config — a backup will be saved before applying it.",
+  "settings.backups.emptyHint": "Create a manual snapshot. Automatic snapshots appear after changing settings or lists.",
   "settings.backups.beforeRestore": "Before restore",
   "settings.backups.beforeImport": "Before import",
   "settings.backups.back": "Back to list",
@@ -741,5 +741,7 @@
   "settings.backups.compareHint": "Changes from the first snapshot to the second. No settings are applied; uncaptured sections are marked separately.",
   "settings.backups.select": "Select for comparison",
   "settings.backups.selected": "Snapshot {n} for comparison",
-  "settings.backups.identical": "Saved data is identical."
+  "settings.backups.identical": "Saved data is identical.",
+  "settings.backups.automatic": "Before a change",
+  "settings.backups.compareSecrets": "Saved proxy links or secrets differ. Their values are hidden."
 }

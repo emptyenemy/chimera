@@ -4,6 +4,8 @@
 
 Api создаём через __new__ (настоящий поднимает менеджеры и потоки), модули — заглушки."""
 
+from contextlib import nullcontext
+
 import pytest
 
 from modules.winws import filters
@@ -48,6 +50,9 @@ class Recorder:
 
 @pytest.fixture
 def api(monkeypatch):
+    # These consumer stubs do not persist configuration; snapshot coverage uses real managers.
+    monkeypatch.setattr(api_mod.configbackups, "automatic", lambda *args, **kwargs: nullcontext())
+    monkeypatch.setattr(api_mod.service, "is_running", lambda: False)
     a = api_mod.Api.__new__(api_mod.Api)
     a.winws = Recorder(lists=["discord"], current="general")
     a.proxy = Recorder(lists=["discord"])

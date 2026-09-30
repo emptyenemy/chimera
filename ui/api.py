@@ -4,11 +4,13 @@
 дёргают отсюда только dispatch() и подсовывают свой push() для стриминга в JS.
 """
 
+import inspect
 import json
 import os
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from functools import wraps
 from pathlib import Path
 
 from modules import (
@@ -56,6 +58,40 @@ def _err(e: Exception):
     # error — русский текст, как отдавали раньше (старый фронт и агенты читают его);
     # code и params — для клиентов, которые собирают текст сами на выбранном языке
     return {"ok": False, **errors.describe(e)}
+
+
+def _auto_snapshot(sections, list_args=()):
+    def decorate(fn):
+        signature = inspect.signature(fn)
+
+        @wraps(fn)
+        def wrapped(self, *args, **kwargs):
+            try:
+                bound = signature.bind(self, *args, **kwargs)
+                bound.apply_defaults()
+                with self._mutation_lock:
+                    remote = self._backup_owner(fn.__name__, *list(bound.arguments.values())[1:])
+                    if remote is not None:
+                        return remote
+                    if fn.__name__ in ("hosts_set_enabled", "winws_start") and not is_admin():
+                        return fn(self, *args, **kwargs)
+                    names = [bound.arguments[key] for key in list_args]
+                    if any(not isinstance(name, str) or not domains.NAME_RE.fullmatch(name) for name in names):
+                        return fn(self, *args, **kwargs)
+                    with configbackups.automatic(lambda: ShareOps(self).backup_state(sections, names)):
+                        return fn(self, *args, **kwargs)
+            except Exception as e:
+                return _err(e)
+        return wrapped
+    return decorate
+
+
+def _backup_batch(fn):
+    @wraps(fn)
+    def wrapped(self, *args, **kwargs):
+        with self._mutation_lock, configbackups.suspend_auto():
+            return fn(self, *args, **kwargs)
+    return wrapped
 
 
 class Api:
@@ -318,6 +354,7 @@ class Api:
         except Exception as e:
             return _err(e)
 
+    @_backup_batch
     def config_import_apply(self, text, sections, confirmed=False):
         """Применяет выбранные разделы чужого конфига. Перед этим копирует затрагиваемые файлы
         в data/backups/<время>-import/. Чужие серверы DNS/hosts и домены-ретрансляторы Telegram
@@ -335,7 +372,10 @@ class Api:
         if not getattr(self, "_service_owned", False) and service.is_running():
             from modules.cli import client
             result = client.connect().api(method, *args)
-            if method in ("config_backup_restore", "config_import_apply"):
+            refresh = method in ("config_backup_restore", "config_import_apply", "config_set", "tg_regen_secret",
+                                 "winws_start", "game_filter_set", "ipset_set", "ipset_update")
+            refresh |= method.startswith(("proxy_set_", "tg_set_", "winws_set_", "lists_", "hosts_", "dns_")) and not self.is_read(method)
+            if refresh:
                 self.proxy.config = self.proxy._load()
                 self.winws.config = self.winws._load()
                 # TgProxy._load can generate and save a secret; refresh here is read-only.
@@ -393,6 +433,7 @@ class Api:
         except Exception as e:
             return _err(e)
 
+    @_backup_batch
     def config_backup_restore(self, backup_id, confirmed=False, lang=None):
         try:
             with i18n.request_language(lang):
@@ -587,6 +628,7 @@ class Api:
         except Exception as e:
             return _err(e)
 
+    @_auto_snapshot(('hosts',))
     def hosts_set_assignments(self, mapping):
         """Сохраняет привязки и СРАЗУ применяет (резолвит + пишет hosts)."""
         try:
@@ -594,6 +636,7 @@ class Api:
         except Exception as e:
             return _err(e)
 
+    @_auto_snapshot(('hosts',))
     def hosts_set_enabled(self, value):
         """Общий выключатель hosts-разблокировки (привязки сохраняются)."""
         try:
@@ -603,18 +646,21 @@ class Api:
         except Exception as e:
             return _err(e)
 
+    @_auto_snapshot(('dns', 'hosts'))
     def hosts_add_provider(self, name, doh, servers):
         try:
             return _ok(self.hosts.add_provider(name, doh, servers))
         except Exception as e:
             return _err(e)
 
+    @_auto_snapshot(('dns', 'hosts'))
     def hosts_delete_provider(self, provider_id):
         try:
             return _ok(self.hosts.delete_provider(provider_id))
         except Exception as e:
             return _err(e)
 
+    @_auto_snapshot(('hosts',))
     def hosts_set_background(self, options):
         """Настройки фонового потока hosts: автообновление IP, TCP+TLS-чекер,
         автопереключение при деградации привязки (см. modules/hosts/background.py)."""
@@ -670,18 +716,21 @@ class Api:
         except Exception as e:
             return _err(e)
 
+    @_auto_snapshot(('config',))
     def dns_set_probe_config(self, bypass, ad):
         try:
             return _ok(self.dns.set_probe_config(bypass, ad))
         except Exception as e:
             return _err(e)
 
+    @_auto_snapshot(('dns', 'hosts'))
     def dns_add_provider(self, name, servers, ipv6="", doh="", dot="", unblock=False, filtering=False):
         try:
             return _ok(self.dns.add_provider(name, servers, ipv6, doh, dot, unblock, filtering))
         except Exception as e:
             return _err(e)
 
+    @_auto_snapshot(('dns', 'hosts'))
     def dns_delete_provider(self, provider_id):
         try:
             self.dns.delete_provider(provider_id)
@@ -763,6 +812,7 @@ class Api:
         except Exception as e:
             return _err(e)
 
+    @_auto_snapshot((), ('name',))
     def lists_save(self, name, content):
         """Сохраняет список и сразу применяет его везде, где он подключён.
         Ошибка применения (например, нет прав на hosts) не отменяет сохранение —
@@ -787,12 +837,14 @@ class Api:
         except Exception as e:
             return _err(e)
 
+    @_auto_snapshot((), ('name',))
     def lists_create(self, name):
         try:
             return _ok(domains.create_list(name))  # новый список пока никуда не подключён
         except Exception as e:
             return _err(e)
 
+    @_auto_snapshot(('proxy', 'winws', 'hosts'), ('name',))
     def lists_delete(self, name):
         try:
             domains.delete_list(name)
@@ -828,6 +880,7 @@ class Api:
             raise ChimeraError("err.admin.winws_restart")
         self.winws.start(sid)
 
+    @_auto_snapshot(('proxy', 'winws', 'hosts'), ('old', 'new'))
     def lists_rename(self, old, new):
         """Переименовывает файл списка и переносит на новое имя все ссылки на
         него — иначе proxy/winws/hosts после ребилда конфига будут ссылаться
@@ -960,6 +1013,7 @@ class Api:
         except Exception as e:
             return _err(e)
 
+    @_auto_snapshot(('winws',))
     def winws_start(self, strategy_id):
         try:
             if not is_admin():
@@ -974,12 +1028,14 @@ class Api:
         except Exception as e:
             return _err(e)
 
+    @_auto_snapshot(('winws',))
     def winws_set_autostart(self, value):
         try:
             return _ok(self.winws.set_autostart(value))
         except Exception as e:
             return _err(e)
 
+    @_auto_snapshot(('winws',))
     def winws_set_lists(self, names):
         try:
             return _ok(self.winws.set_lists(names))  # без перезапуска — права не нужны
@@ -1001,6 +1057,7 @@ class Api:
         except Exception as e:
             return _err(e)
 
+    @_auto_snapshot(('config',))
     def game_filter_set(self, mode, tcp=None, udp=None):
         """mode — off/all/tcp/udp; tcp/udp — диапазоны портов (см. filters.validate_game_range),
         не переданы — старые значения не трогаем (обратная совместимость со старым вызовом
@@ -1028,6 +1085,7 @@ class Api:
             data["apply_error"] = info["error"]
             data["apply_error_code"], data["apply_error_params"] = info["code"], info["params"]
 
+    @_auto_snapshot(('filters',))
     def ipset_set(self, mode):
         try:
             from modules.winws import filters
@@ -1035,6 +1093,7 @@ class Api:
         except Exception as e:
             return _err(e)
 
+    @_auto_snapshot(('filters',))
     def ipset_update(self):
         try:
             from modules.winws import filters
@@ -1073,18 +1132,21 @@ class Api:
         except Exception as e:
             return _err(e)
 
+    @_auto_snapshot(('telegram',))
     def tg_set_config(self, host, port, secret, autostart):
         try:
             return _ok(self.tg.set_config(host, port, secret, autostart))
         except Exception as e:
             return _err(e)
 
+    @_auto_snapshot(('telegram',))
     def tg_regen_secret(self):
         try:
             return _ok(self.tg.regen_secret())
         except Exception as e:
             return _err(e)
 
+    @_auto_snapshot(('telegram',))
     def tg_set_advanced(self, options):
         """Продвинутые настройки ядра (CF-proxy/worker домены, Fake TLS, dc-ip, ...).
         Ядро читает их при старте, поэтому запущенный прокси перезапускается сам."""
@@ -1134,18 +1196,21 @@ class Api:
         except Exception as e:
             return _err(e)
 
+    @_auto_snapshot(('proxy',))
     def proxy_set_link(self, link):
         try:
             return _ok(self.proxy.set_link(link))
         except Exception as e:
             return _err(e)
 
+    @_auto_snapshot(('proxy',))
     def proxy_set_lists(self, names):
         try:
             return _ok(self.proxy.set_lists(names))
         except Exception as e:
             return _err(e)
 
+    @_auto_snapshot(('proxy',))
     def proxy_set_apps(self, names):
         try:
             return _ok(self.proxy.set_apps(names))
@@ -1159,6 +1224,7 @@ class Api:
         except Exception as e:
             return _err(e)
 
+    @_auto_snapshot(('proxy',))
     def proxy_set_autostart(self, value):
         try:
             return _ok(self.proxy.set_autostart(value))
@@ -1180,6 +1246,7 @@ class Api:
         except Exception as e:
             return _err(e)
 
+    @_auto_snapshot(('proxy',))
     def proxy_set_mode(self, mode):
         try:
             return _ok(self.proxy.set_mode(mode))
@@ -1206,6 +1273,7 @@ class Api:
         except Exception as e:
             return _err(e)
 
+    @_auto_snapshot(('config',))
     def config_set(self, key, value):
         try:
             config = appconfig.set_value(key, value)
