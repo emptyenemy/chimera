@@ -45,17 +45,19 @@ def _free_port() -> int:
 
 def _wait_cdp(port: int, proc: subprocess.Popen, timeout: float = 60) -> None:
     deadline = time.time() + timeout
+    last_pages = []
     while time.time() < deadline:
         if proc.poll() is not None:
             raise RuntimeError(f"Chimera.exe завершилась сама, код {proc.returncode}")
         try:
             pages = json.loads(urllib.request.urlopen(f"http://127.0.0.1:{port}/json", timeout=1).read())
-            if any(p.get("type") == "page" and p.get("url", "").endswith("index.html") for p in pages):
+            last_pages = [{"type": p.get("type"), "url": p.get("url", "").split("?", 1)[0].split("#", 1)[0]} for p in pages]
+            if any(p["type"] == "page" and p["url"].endswith("index.html") for p in last_pages):
                 return
         except OSError:
             pass
         time.sleep(0.5)
-    raise RuntimeError("страница программы не поднялась за минуту")
+    raise RuntimeError(f"страница программы не поднялась за минуту; CDP: {last_pages}")
 
 
 def _cli_step(app: Path, env: dict, name: str, args: list[str], check=None) -> dict:
@@ -127,7 +129,7 @@ def run(build: Path, full: bool = False, front: str = "next", flavor: str = "qt"
         env.update({"CHIMERA_NO_BROWSER": "1", "CHIMERA_HTTP_TOKEN": token})
     log = open(tmp / "engine.log", "wb")
     # --window: exe без аргументов из консоли печатает справку, а окно нужно именно оно
-    flags = ["--window", "--tray"] if native_webview else ["--window" if flavor == "qt" else "--browser"]
+    flags = ["--window" if flavor == "qt" or native_webview else "--browser"]
     proc = subprocess.Popen([str(app / "Chimera.exe"), *flags], cwd=app, env=env, stdout=log,
                             stderr=subprocess.STDOUT)
     try:
