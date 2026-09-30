@@ -76,6 +76,12 @@ jobs:
       - name: Оформление — живой интерфейс
         run: python tools/smoke_appearance.py --screenshot appearance.png
 
+      - name: WebView2 Runtime для проверки исходников
+        run: ./tools/ensure_webview_runtime.ps1
+
+      - name: Оформление — нативное окно WebView2
+        run: python tools/smoke_native_appearance.py
+
       - uses: actions/upload-artifact@v6
         if: always()
         with:
