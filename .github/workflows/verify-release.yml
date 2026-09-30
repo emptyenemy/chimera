@@ -1,0 +1,85 @@
+name: Verify release archives
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_run:
+        description: "Run ID сборки существующих архивов"
+        required: true
+        type: string
+      version:
+        description: "Версия существующего тега (без v)"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  verify:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    env:
+      PYTHONUTF8: "1"
+      GH_TOKEN: ${{ github.token }}
+      SOURCE_RUN: ${{ inputs.source_run }}
+      VERSION: ${{ inputs.version }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - flavor: qt
+            folder: Chimera
+            suffix: ""
+          - flavor: webview
+            folder: Chimera-webview
+            suffix: -webview
+          - flavor: lite
+            folder: Chimera-lite
+            suffix: -lite
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Проверка происхождения архивов
+        shell: pwsh
+        run: |
+          if ($env:SOURCE_RUN -notmatch '^\d+$' -or $env:VERSION -notmatch '^\d+\.\d+\.\d+$') { throw 'Некорректные параметры' }
+          $run = gh api "repos/$env:GITHUB_REPOSITORY/actions/runs/$env:SOURCE_RUN" | ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0) { throw 'Нет исходной сборки' }
+          $tag = git rev-parse "v$env:VERSION^{}"
+          if ($LASTEXITCODE -ne 0 -or $tag -ne $run.head_sha -or $run.name -ne 'Release') { throw 'Архивы не соответствуют тегу' }
+          Write-Output "Исходники архивов: $tag, run $env:SOURCE_RUN"
+      - uses: actions/download-artifact@v7
+        with:
+          github-token: ${{ github.token }}
+          run-id: ${{ inputs.source_run }}
+          name: release-${{ matrix.flavor }}
+          path: archives
+      - name: Распаковка
+        shell: pwsh
+        env:
+          SUFFIX: ${{ matrix.suffix }}
+        run: Expand-Archive -LiteralPath "archives/Chimera-$env:VERSION-win64$env:SUFFIX.zip" -DestinationPath build
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: requirements-dev.txt
+      - name: Зависимости проверки
+        run: python -m pip install -r requirements-dev.txt
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+      - name: Дымовой тест готового архива
+        run: python tools/smoke_build.py build/${{ matrix.folder }} --flavor ${{ matrix.flavor }} --full
+      - name: WebView2 Runtime
+        if: matrix.flavor == 'webview'
+        run: ./tools/ensure_webview_runtime.ps1
+      - name: Нативное окно WebView2
+        if: matrix.flavor == 'webview'
+        run: python tools/smoke_build.py build/Chimera-webview --flavor webview --native-webview
+      - name: Настоящее обновление 1.0.1 → 1.0.2
+        if: matrix.flavor == 'qt'
+        run: python tools/verify_upgrade.py "archives/Chimera-$env:VERSION-win64.zip" --version $env:VERSION --from-version 1.0.1

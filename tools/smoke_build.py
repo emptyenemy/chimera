@@ -29,6 +29,7 @@ import subprocess
 import sys
 import tempfile
 import time
+import urllib.parse
 import urllib.request
 from pathlib import Path
 
@@ -52,12 +53,20 @@ def _wait_cdp(port: int, proc: subprocess.Popen, timeout: float = 60) -> None:
         try:
             pages = json.loads(urllib.request.urlopen(f"http://127.0.0.1:{port}/json", timeout=1).read())
             last_pages = [{"type": p.get("type"), "url": p.get("url", "").split("?", 1)[0].split("#", 1)[0]} for p in pages]
-            if any(p["type"] == "page" and p["url"].endswith("index.html") for p in last_pages):
+            if any(p["type"] == "page" and _app_page(p["url"]) for p in last_pages):
                 return
         except OSError:
             pass
         time.sleep(0.5)
     raise RuntimeError(f"страница программы не поднялась за минуту; CDP: {last_pages}")
+
+
+def _app_page(url: str) -> bool:
+    parsed = urllib.parse.urlsplit(url)
+    return (parsed.scheme == "file" and parsed.path.endswith("/index.html")) or (
+        parsed.scheme == "http" and parsed.hostname == "127.0.0.1"
+        and parsed.path in ("/", "/index.html")
+    )
 
 
 def _cli_step(app: Path, env: dict, name: str, args: list[str], check=None) -> dict:
