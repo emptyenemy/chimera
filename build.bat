@@ -59,6 +59,7 @@ python -m nuitka ^
     --remove-output ^
     --include-data-dir=ui/web-next=ui/web-next ^
     --include-data-dir=modules/locales=modules/locales ^
+    --include-data-dir=release-notes=release-notes ^
     --include-data-dir=strategies=strategies ^
     --include-data-dir=lists=lists ^
     --include-data-files=upstream/zapret-discord-youtube/.service/hosts=upstream/zapret-discord-youtube/.service/hosts ^

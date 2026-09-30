@@ -13,7 +13,7 @@ import os
 import threading
 import time
 
-from modules import appconfig, paths, selfupdate, service
+from modules import appconfig, paths, releasenotes, selfupdate, service
 from modules.version import VERSION
 
 UPDATE_DIR = selfupdate.UPDATE_DIR
@@ -44,7 +44,7 @@ class Updater:
     def snapshot(self) -> dict:
         cfg = appconfig.load()
         with self._lock:
-            return {**self._state, "channel": cfg.get("update_channel", "stable"),
+            return {**self._state, "current_release": releasenotes.read(VERSION), "channel": cfg.get("update_channel", "stable"),
                     "auto": bool(cfg.get("update_check", True))}
 
     # --- проверка ----------------------------------------------------------------

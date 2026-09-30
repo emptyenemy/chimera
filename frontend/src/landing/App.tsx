@@ -6,6 +6,8 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import { Separator } from '@/components/ui/separator'
+import { ReleaseNotes } from '@/components/app/release-notes'
+import { releaseNotes } from '@/lib/release-notes'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 
 const repo = 'https://github.com/emptyenemy/chimera'
@@ -18,6 +20,7 @@ type Release = {
   tag_name: string
   html_url: string
   name: string
+  body: string
   assets: { name: string; browser_download_url: string; size: number }[]
 }
 
@@ -74,14 +77,14 @@ export default function Landing() {
       <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3 px-5 py-4">
         <a className="flex items-center gap-2 text-lg font-semibold" href="#top"><img src={assetUrl('logo.svg')} alt="" className="size-7" />Chimera</a>
         <nav aria-label={t('Разделы', 'Navigation')} className="hidden items-center gap-6 text-sm text-muted-foreground md:flex">
-          <a href="#features">{t('Возможности', 'Features')}</a><a href="#agents">{t('Для агентов', 'For agents')}</a><a href="#download">{t('Скачать', 'Download')}</a><a href="#faq">FAQ</a>
+          <a href="#features">{t('Возможности', 'Features')}</a><a href="#agents">{t('Для агентов', 'For agents')}</a><a href="#download">{t('Скачать', 'Download')}</a><a href="#news">{t('Что нового', 'What’s new')}</a><a href="#faq">FAQ</a>
         </nav>
         <div className="flex items-center gap-2"><Button variant="ghost" nativeButton={false} render={<a href={new URL(en ? './' : 'en/', rootUrl).href} lang={en ? 'ru' : 'en'} />}>{en ? 'Русский' : 'English'}</Button><Button variant="outline" nativeButton={false} render={<a href={repo} rel="noopener noreferrer" />}><Code2 data-icon="inline-start" />GitHub</Button></div>
       </div>
     </header>
     <main id="top" className="mx-auto flex max-w-6xl flex-col gap-24 px-5 pb-24 md:gap-32">
       <section className="flex flex-col items-center gap-7 pt-20 text-center md:pt-28">
-        <Badge variant="outline"><Zap data-icon="inline-start" />{t('Готовим следующее обновление', 'Coming in the next update')}</Badge>
+        <Badge variant="outline"><Zap data-icon="inline-start" />{release ? `Chimera ${release.tag_name}` : t('Обход блокировок для Windows', 'Access blocked services on Windows')}</Badge>
         <h1 className="max-w-4xl text-4xl leading-tight font-semibold tracking-tight sm:text-6xl">{t('Обход блокировок.', 'Get past the blocks.')}<br /><span className="text-muted-foreground">{t('Всё под вашим контролем.', 'Keep control of your connection.')}</span></h1>
         <p className="max-w-2xl text-lg leading-relaxed text-muted-foreground">{t('Стратегии, прокси, Telegram, hosts и DNS в одном приложении. Настройте сами, поручите своему агенту или возьмите готовый конфиг у друга.', 'Strategies, proxy, Telegram, hosts and DNS in one app. Set it up yourself, ask your agent, or get a configuration from a friend.')}</p>
         <div className="flex flex-wrap justify-center gap-3"><LinkButton href={downloadUrl}><ArrowDown data-icon="inline-start" />{t('Скачать для Windows', 'Download for Windows')}</LinkButton><LinkButton outline href="#agents"><Bot data-icon="inline-start" />{t('Настроить с агентом', 'Set up with an agent')}</LinkButton></div>
@@ -124,6 +127,14 @@ export default function Landing() {
           return <TabsContent key={id} value={id}><Card className="mt-3"><CardHeader><CardTitle>{title}</CardTitle><CardDescription>{text}</CardDescription></CardHeader><CardContent><p className="text-sm text-muted-foreground">{archive ? `${release?.tag_name} · ${Math.round(archive.size / 1048576)} ${t('МБ', 'MB')}` : t('Вариант появится с ближайшим релизом. Доступные архивы — на GitHub.', 'This edition will be available with the next release. Find current archives on GitHub.')}</p></CardContent><CardFooter><LinkButton href={archive?.browser_download_url ?? `${repo}/releases/latest`}><ArrowDown data-icon="inline-start" />{archive ? t('Скачать', 'Download') : t('Текущий релиз', 'Current release')}</LinkButton></CardFooter></Card></TabsContent>
         })}</Tabs>
         <Alert><Terminal /><AlertTitle>{t('Команды есть во всех вариантах', 'Commands in every edition')}</AlertTitle><AlertDescription><code>chimera tui</code>{t(' — полный интерфейс в терминале. ', ' — the full terminal interface. ')}<code>chimera --help</code>{t(' — доступные команды.', ' — available commands.')}</AlertDescription></Alert>
+      </section>
+
+      <section id="news" className="flex flex-col gap-7">
+        <h2 className="text-3xl font-semibold tracking-tight">{t('Что нового', 'What’s new')}</h2>
+        <Card><CardHeader><CardTitle>{release?.name || t('История релизов', 'Release history')}</CardTitle><CardDescription>{release?.tag_name || t('Изменения опубликованных версий Chimera', 'Changes in published Chimera versions')}</CardDescription></CardHeader>
+          <CardContent>{release?.body ? <ReleaseNotes>{releaseNotes(release.tag_name, release.body, en ? 'en' : 'ru')}</ReleaseNotes> : <p className="text-muted-foreground">{t('Не удалось загрузить список изменений. Он доступен на странице релизов GitHub.', 'The release notes could not be loaded. Read them on the GitHub releases page.')}</p>}</CardContent>
+          <CardFooter><LinkButton outline href={release?.html_url || `${repo}/releases`}>{t('Страница релиза', 'Release page')}<ArrowRight data-icon="inline-end" /></LinkButton></CardFooter>
+        </Card>
       </section>
 
       <section id="faq" className="flex flex-col gap-7"><h2 className="text-3xl font-semibold tracking-tight">{t('Частые вопросы', 'Frequently asked questions')}</h2><div className="flex flex-col gap-2">{faqs.map(([question, answer]) => <Collapsible key={question} className="border-b py-3"><CollapsibleTrigger render={<Button variant="ghost" className="h-auto w-full justify-between gap-4 py-3 whitespace-normal text-left" />}><span>{question}</span><ChevronDown data-icon="inline-end" /></CollapsibleTrigger><CollapsibleContent><p className="px-3 pt-2 pb-5 text-sm leading-relaxed text-muted-foreground">{answer}</p></CollapsibleContent></Collapsible>)}</div></section>

@@ -10,12 +10,13 @@ import { t } from "@/lib/i18n"
 import { BackupsCard } from "@/pages/settings/backups"
 import { DoctorCard } from "@/pages/settings/doctor"
 import { GeneralCard, MaintenanceCard, ThemeCard, LanguageCard } from "@/pages/settings/general"
+import { WhatsNewCard } from "@/pages/settings/notes"
 import { ShareCard } from "@/pages/settings/share"
 import { refreshAutostart, refreshConfig } from "@/pages/settings/state"
 import { refreshSources } from "@/pages/settings/sources"
 import { AppUpdateCard, SourcesCard } from "@/pages/settings/updates"
 
-const TABS = ["general", "updates", "tools"] as const
+const TABS = ["general", "updates", "notes", "tools"] as const
 type Tab = (typeof TABS)[number]
 
 const TAB_KEY = "chimera.settings.tab"
@@ -65,9 +66,10 @@ export function SettingsPage() {
           <MaintenanceCard />
         </TabsContent>
         <TabsContent value="updates" className="flex flex-col gap-4">
-          <AppUpdateCard />
+          <AppUpdateCard onNotes={() => pick("notes")} />
           <SourcesCard />
         </TabsContent>
+        <TabsContent value="notes"><WhatsNewCard /></TabsContent>
         <TabsContent value="tools" className="flex flex-col gap-4">
           <ShareCard />
           <BackupsCard />

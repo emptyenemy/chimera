@@ -104,7 +104,7 @@ function StatusBadge({ badge }: { badge: NonNullable<AppStatus["badge"]> }) {
   )
 }
 
-export function AppUpdateCard() {
+export function AppUpdateCard({ onNotes }: { onNotes: () => void }) {
   const s = useStore<SelfUpdate>("selfupdate")
   const config = useConfig()
   const pending = usePending()
@@ -158,14 +158,14 @@ export function AppUpdateCard() {
               </div>
               <div className="truncate text-muted-foreground" title={s.error ?? undefined} data-testid="settings-app-status">
                 {st.text}
-                {s.update && s.url && (
+                {(
                   <>
                     {" · "}
                     <button
                       type="button"
                       className="text-foreground underline underline-offset-4"
                       data-testid="settings-app-notes"
-                      onClick={() => void api("open_url", s.url).catch(() => {})}
+                      onClick={onNotes}
                     >
                       {t("settings.app.notes")}
                     </button>
