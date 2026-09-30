@@ -1,10 +1,10 @@
 // Проверка собранного фронта в headless Edge через HTTP-мост; своего окна нет.
 import { spawn, spawnSync } from "node:child_process"
-import { mkdtempSync, readFileSync, rmSync } from "node:fs"
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { dirname, join, resolve } from "node:path"
 
-const [browser, url, checksPath, mode] = process.argv.slice(2)
+const [browser, url, checksPath, mode, screenshot] = process.argv.slice(2)
 const profile = mkdtempSync(join(tmpdir(), "chimera-http-smoke-"))
 const proc = spawn(browser, ["--headless=new", "--disable-gpu", "--no-first-run", "--no-default-browser-check",
   `--user-data-dir=${profile}`, "--remote-debugging-port=0", "about:blank"], { stdio: ["ignore", "ignore", "pipe"] })
@@ -30,6 +30,15 @@ try {
     const message = JSON.parse(event.data)
     if (message.id) { pending.get(message.id)?.(message); pending.delete(message.id) }
     else if (message.method === "Runtime.exceptionThrown") errors.push(message.params.exceptionDetails?.exception?.description || message.params.exceptionDetails?.text)
+    else if (message.method === "Runtime.bindingCalled" && message.params.name === "__smokeSystemMode") {
+      void call("Emulation.setEmulatedMedia", { features: [{ name: "prefers-color-scheme", value: message.params.payload }] })
+    }
+    else if (message.method === "Runtime.bindingCalled" && message.params.name === "__smokeKey") {
+      void (async () => {
+        await call("Input.dispatchKeyEvent", { type: "keyDown", key: message.params.payload, code: message.params.payload, windowsVirtualKeyCode: 39 })
+        await call("Input.dispatchKeyEvent", { type: "keyUp", key: message.params.payload, code: message.params.payload, windowsVirtualKeyCode: 39 })
+      })()
+    }
   }
   const call = (method, params = {}) => new Promise(resolve => {
     const id = ++seq
@@ -37,6 +46,9 @@ try {
     ws.send(JSON.stringify({ id, method, params }))
   })
   await call("Runtime.enable")
+  await call("Runtime.addBinding", { name: "__smokeSystemMode" })
+  await call("Runtime.addBinding", { name: "__smokeKey" })
+  await call("Page.addScriptToEvaluateOnNewDocument", { source: `requestAnimationFrame(() => { window.__SMOKE_FIRST_FRAME__ = { palette: document.documentElement.dataset.palette, background: getComputedStyle(document.documentElement).getPropertyValue('--background').trim() }; });` })
   await call("Page.enable")
   await call("Emulation.setDeviceMetricsOverride", { width: 1280, height: 820, deviceScaleFactor: 1, mobile: false })
   await call("Page.navigate", { url })
@@ -50,6 +62,10 @@ try {
   const result = await call("Runtime.evaluate", { expression: checks, awaitPromise: true, returnByValue: true, timeout: 180000 })
   const value = result.result?.result?.value
   if (!value) throw new Error(JSON.stringify(result.result?.exceptionDetails || result.error))
+  if (screenshot) {
+    const capture = await call("Page.captureScreenshot", { format: "png" })
+    writeFileSync(screenshot, Buffer.from(capture.result.data, "base64"))
+  }
   console.log(JSON.stringify({ steps: JSON.parse(value), pageErrors: errors }))
 } finally {
   ws?.close()

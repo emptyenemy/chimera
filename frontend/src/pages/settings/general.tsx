@@ -1,7 +1,7 @@
 import { LANGUAGE_SETTINGS, setLanguageSetting, useLanguageSetting } from "@/lib/language"
 
 import { useState, type ReactNode } from "react"
-import { MonitorIcon, MoonIcon, SettingsIcon, SparklesIcon, SunIcon, Trash2Icon, PaletteIcon } from "lucide-react"
+import { SettingsIcon, SparklesIcon, Trash2Icon } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -15,7 +15,6 @@ import { confirmDialog } from "@/lib/dialogs"
 import { t } from "@/lib/i18n"
 import { notify } from "@/lib/notify"
 import { useStore } from "@/lib/store"
-import { THEME_SETTINGS, setThemeSetting, useThemeSetting, type ThemeSetting } from "@/lib/theme"
 import {
   AUTOSTART_KEY,
   fmtBytes,
@@ -49,40 +48,7 @@ export function CardTitleIcon({ icon: Icon, children }: { icon: typeof SettingsI
   )
 }
 
-const THEME_ICONS = { system: MonitorIcon, light: SunIcon, dark: MoonIcon } satisfies Record<ThemeSetting, typeof SunIcon>
-
-export function ThemeCard() {
-  const theme = useThemeSetting()
-  return (
-    <Card data-testid="settings-theme">
-      <CardHeader>
-        <CardTitleIcon icon={PaletteIcon}>{t("settings.theme.title")}</CardTitleIcon>
-      </CardHeader>
-      <CardContent>
-        <FieldGroup>
-          <SettingRow title={t("settings.theme.label")} hint={t("settings.theme.hint")}>
-            <ToggleGroup
-              variant="outline"
-              value={[theme]}
-              onValueChange={(v) => v[0] && void setThemeSetting(v[0] as ThemeSetting)}
-              data-testid="settings-theme-group"
-            >
-              {THEME_SETTINGS.map((mode) => {
-                const Icon = THEME_ICONS[mode]
-                return (
-                  <ToggleGroupItem key={mode} value={mode} data-testid={`settings-theme-${mode}`} aria-label={t(`settings.theme.${mode}`)}>
-                    <Icon data-icon="inline-start" />
-                    {t(`settings.theme.${mode}`)}
-                  </ToggleGroupItem>
-                )
-              })}
-            </ToggleGroup>
-          </SettingRow>
-        </FieldGroup>
-      </CardContent>
-    </Card>
-  )
-}
+export { AppearanceCard as ThemeCard } from "@/pages/settings/appearance"
 
 export function LanguageCard() {
   const state = useLanguageSetting()

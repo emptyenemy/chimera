@@ -279,6 +279,8 @@ class ShareOps:
         if "config" in states:
             appconfig.restore_values(states["config"])
             if getattr(a, "push", None):
+                from modules import appearance
+                a._push("appearanceChanged", appearance.state())
                 from modules import i18n
                 with i18n.request_language(None):
                     a._push("langChanged", i18n.state())

@@ -121,6 +121,10 @@ Levels exist so that remote channels can be restricted. Secrets (the proxy link,
 | Settings → Config sharing → “Share” | `chimera config export [--sections <sections>] [--file <file>]` | read |
 | Settings → Config sharing → “Apply…” → “Check” | `chimera config import-preview <file>` | read |
 | Settings → Config sharing → “Apply” | `chimera config import <file> [--sections <sections>] [--confirm]` | app |
+| Settings → General → Appearance. | `chimera config appearance` | read |
+| Settings → General → Appearance. | `chimera config appearance-preview <settings>` | read |
+| Settings → General → Appearance. | `chimera config appearance-apply <settings>` | app |
+| Settings → General → Appearance. | `chimera config appearance-refresh` | app |
 | Settings → Tools → Settings backups → Create snapshot | `chimera config backup` | app |
 | Settings → Tools → Backups | `chimera config backups` | read |
 | Settings → Tools → Configuration backups → Compare. | `chimera config compare <first> <second>` | read |
@@ -392,6 +396,42 @@ Apply someone else's config (sections from --sections, by default all except the
 
 ```
 chimera config import friend.chimera --sections proxy,lists
+```
+
+#### `chimera config appearance`
+
+Current appearance. Level: read-only.
+
+```
+chimera config appearance --json
+```
+
+#### `chimera config appearance-preview <settings>`
+
+Preview appearance without saving. Level: read-only.
+
+- `settings` — JSON: theme and appearance.
+
+```
+chimera config appearance-preview '{"theme":"dark","appearance":{"palette":"dracula"}}' --json
+```
+
+#### `chimera config appearance-apply <settings>`
+
+Apply appearance with a configuration snapshot. Level: changes the app.
+
+- `settings` — JSON: theme and appearance.
+
+```
+chimera config appearance-apply '{"appearance":{"radius":"rounded"}}'
+```
+
+#### `chimera config appearance-refresh`
+
+Refresh the theme catalog from GitHub. Level: changes the app.
+
+```
+chimera config appearance-refresh
 ```
 
 #### `chimera config backup`

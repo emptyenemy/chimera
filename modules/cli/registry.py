@@ -322,6 +322,12 @@ ACTIONS: tuple[Action, ...] = (
              Arg("confirm", "switch", flag=True, default=False)),
        level=APP, examples=("chimera config import friend.chimera --sections proxy,lists",)),
 
+    _a("config", "appearance", "appearance_state", examples=("chimera config appearance --json",)),
+    _a("config", "appearance-preview", "appearance_preview", args=(Arg("settings", "value"),),
+       examples=('chimera config appearance-preview \'{"theme":"dark","appearance":{"palette":"dracula"}}\' --json',)),
+    _a("config", "appearance-apply", "appearance_apply", args=(Arg("settings", "value"),), level=APP,
+       examples=('chimera config appearance-apply \'{"appearance":{"radius":"rounded"}}\'',)),
+    _a("config", "appearance-refresh", "appearance_refresh", level=APP, examples=("chimera config appearance-refresh",)),
     _a("config", "backup", handler="config_backup", methods=("config_backup_create",), level=APP,
        examples=("chimera config backup", "chimera config backup --json")),
     _a("config", "backups", handler="config_backups", methods=("config_backups",),

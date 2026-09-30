@@ -3,7 +3,7 @@
 import json
 from pathlib import Path
 
-from modules import i18n
+from modules import appearance, i18n
 from modules.errors import ChimeraValueError
 from modules.fileutil import atomic_write_text
 from modules.version import FLAVOR, default_backend
@@ -15,7 +15,8 @@ CONFIG_PATH = Path(__file__).parent.parent / "config.json"
 # lang — язык программы: auto (как в Windows) | ru | en (см. modules/i18n.py)
 THEMES = ("system", "light", "dark")
 DEFAULTS = {"interface": "service" if FLAVOR == "lite" else "ui", "auto_elevate": True, "ui_backend": default_backend(), "close_to_tray": True,
-            "update_channel": "stable", "update_check": True, "theme": "system", "lang": "auto"}
+            "update_channel": "stable", "update_check": True, "theme": "system", "lang": "auto",
+            "appearance": dict(appearance.DEFAULTS), "appearance_custom": None}
 
 
 def load() -> dict:
@@ -26,6 +27,8 @@ def load() -> dict:
             data.update(json.loads(CONFIG_PATH.read_text(encoding="utf-8")))
         except (json.JSONDecodeError, ValueError):
             pass
+    data["appearance"] = appearance.normalize_settings(data.get("appearance", {}), fallback=True)
+    data["appearance_custom"] = appearance.normalize_custom(data.get("appearance_custom"), fallback=True)
     return data
 
 
@@ -47,6 +50,13 @@ def set_value(key: str, value) -> dict:
         raise ChimeraValueError("err.config.theme_unknown", value=repr(value), options=", ".join(THEMES))
     if key == "lang" and (not isinstance(value, str) or value not in i18n.SETTINGS):
         raise ChimeraValueError("err.config.lang_unknown", value=repr(value), options=", ".join(i18n.SETTINGS))
+    if key == "appearance_custom":
+        value = appearance.normalize_custom(value)
+    if key == "appearance":
+        value = appearance.normalize_settings(value)
+    allowed = set(DEFAULTS) | {"ui_port", "tray_hint_shown", "dns_probe", "game_filter", "game_filter_tcp", "game_filter_udp"}
+    if key not in allowed:
+        raise ChimeraValueError("err.appearance.settings")
     data = load()
     data[key] = value
     _write(data)

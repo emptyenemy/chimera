@@ -15,6 +15,7 @@ from pathlib import Path
 
 from modules import (
     appconfig,
+    appearance,
     applog,
     autostart,
     blockcheck,
@@ -373,7 +374,7 @@ class Api:
             from modules.cli import client
             result = client.connect().api(method, *args)
             refresh = method in ("config_backup_restore", "config_import_apply", "config_set", "tg_regen_secret",
-                                 "winws_start", "game_filter_set", "ipset_set", "ipset_update")
+                                 "winws_start", "game_filter_set", "ipset_set", "ipset_update", "appearance_apply")
             refresh |= method.startswith(("proxy_set_", "tg_set_", "winws_set_", "lists_", "hosts_", "dns_")) and not self.is_read(method)
             if refresh:
                 self.proxy.config = self.proxy._load()
@@ -389,6 +390,8 @@ class Api:
                 if getattr(self, "push", None):
                     with i18n.request_language(None):
                         self._push("langChanged", i18n.state())
+                    if method in ("appearance_apply", "config_set", "config_backup_restore", "config_import_apply"):
+                        self._push("appearanceChanged", appearance.state())
                 hub = getattr(self, "hub", None)
                 if hub is not None:
                     hub.poke("winws", "proxy", "tg", "hosts", "dns", "filters")
@@ -533,6 +536,8 @@ class Api:
     def _push(self, fn: str, payload) -> None:
         """Зовёт JS-функцию window.<fn>(payload) — для стриминга результатов в UI.
         Безопасно звать из фоновых потоков: доставку в поток UI разруливает бэкенд."""
+        if fn == "appearanceChanged" and getattr(self, "_native_theme_changed", None):
+            self._native_theme_changed(payload["styles"]["--background"])
         self.push(fn, payload)
 
     def dispatch(self, method: str, args_json: str) -> str:
@@ -582,7 +587,8 @@ class Api:
 
     # сверка с апстримом — только сеть, хотя в имени и есть «update»
     _READ_NAMES = frozenset({"tg_check_update", "upstream_check_updates", "doctor_run", "doctor_report",
-                             "config_export", "config_import_preview", "config_backups", "config_backup_preview", "config_backup_compare"})
+                             "config_export", "config_import_preview", "config_backups", "config_backup_preview", "config_backup_compare",
+                              "appearance_preview"})
 
     @classmethod
     def is_read(cls, method: str) -> bool:
@@ -1267,6 +1273,36 @@ class Api:
 
     # --- settings (config.json) ---------------------------------------------
 
+    def appearance_state(self, mode=None):
+        try:
+            result = appearance.state(mode=mode)
+            if mode is not None and getattr(self, "_native_theme_changed", None):
+                self._native_theme_changed(result["styles"]["--background"])
+            return _ok(result)
+        except Exception as e:
+            return _err(e)
+
+    def appearance_preview(self, patch, mode=None):
+        try:
+            return _ok(appearance.preview(appconfig.load(), patch, mode))
+        except Exception as e:
+            return _err(e)
+
+    @_auto_snapshot(("config",))
+    def appearance_apply(self, patch, mode=None):
+        try:
+            config = appearance.merged(appconfig.load(), patch)
+            result = appearance.preview(appconfig.load(), patch, mode)
+            appconfig.restore_values(config)
+            if getattr(self, "push", None):
+                self._push("appearanceChanged", result)
+            return _ok(result)
+        except Exception as e:
+            return _err(e)
+
+    def appearance_refresh(self):
+        return _ok({**appearance.refresh_catalog(), "state": appearance.state()})
+
     def config_read(self):
         try:
             return _ok(appconfig.load())
@@ -1279,6 +1315,8 @@ class Api:
             config = appconfig.set_value(key, value)
             if key == "lang" and getattr(self, "push", None):
                 self._push("langChanged", i18n.state())
+            if key in ("theme", "appearance", "appearance_custom") and getattr(self, "push", None):
+                self._push("appearanceChanged", appearance.state())
             return _ok(config)
         except Exception as e:
             return _err(e)

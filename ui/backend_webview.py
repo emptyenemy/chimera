@@ -8,6 +8,9 @@
 import json
 import os
 import sys
+import secrets
+import threading
+from http.server import ThreadingHTTPServer
 
 import webview
 
@@ -42,14 +45,36 @@ def run():
     api = Api()
     quitting = False
     hidden = "--tray" in sys.argv and sys.platform == "win32"
+    # Serve the normal assets with the Python boot script inserted before CSS/JS.
+    from ui.backend_browser import _Handler, _Hub
+    server = ThreadingHTTPServer(("127.0.0.1", 0), _Handler)
+    server.daemon_threads = True
+    server.api, server.hub, server.token = api, _Hub(), secrets.token_urlsafe(32)
+    server.web_dir, server.missing_next, server.native_bridge = web_dir(), False, True
+    threading.Thread(target=server.serve_forever, daemon=True).start()
     window = webview.create_window(
-        "Chimera", str(web_dir() / "index.html"), js_api=JsApi(api),
+        "Chimera", f"http://127.0.0.1:{server.server_address[1]}/", js_api=JsApi(api),
         width=1080, height=720, min_size=(860, 560),
         background_color=theme.window_bg(), hidden=hidden,
     )
     api.push = lambda fn, payload: window.evaluate_js(
         f"window.{fn} && window.{fn}({json.dumps(payload)})"
     )
+
+    def background_changed(color):
+        if sys.platform != "win32" or window.native is None:
+            return
+        from System import Action
+        from System.Drawing import ColorTranslator
+
+        def update():
+            native_color = ColorTranslator.FromHtml(color)
+            window.native.BackColor = native_color
+            window.native.browser.webview.DefaultBackgroundColor = native_color
+
+        window.native.BeginInvoke(Action(update))
+
+    api._native_theme_changed = background_changed
 
     def show():
         window.show()
@@ -71,11 +96,19 @@ def run():
             return False
         return True
 
+    cleaned = False
+
     def cleanup():
+        nonlocal cleaned
+        if cleaned:
+            return
+        cleaned = True
         if listener:
             listener.close()
         if tray:
             tray.close()
+        server.shutdown()
+        server.server_close()
         api.shutdown()
 
     window.events.closing += closing

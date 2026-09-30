@@ -50,7 +50,7 @@ _TYPES = {".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=
           ".json": "application/json; charset=utf-8"}
 
 
-def _mark_page(html: bytes, token: str, mode: str = "dark") -> bytes:
+def _mark_page(html: bytes, token: str, mode: str = "dark", *, native=False) -> bytes:
     """Помечает страницу как «отдана нами» и кладёт туда токен.
 
     Фронт не может опознать движок по протоколу: pywebview тоже поднимает свой
@@ -59,8 +59,8 @@ def _mark_page(html: bytes, token: str, mode: str = "dark") -> bytes:
     а токен заодно уезжает из адресной строки в скрипт. Туда же — класс темы на <html>:
     скрипт стоит в <head>, то есть исполняется до первой отрисовки (ui/theme.py).
     """
-    tag = ('<script>window.__CHIMERA_HTTP__=true;window.__CHIMERA_TOKEN__='
-           f'{json.dumps(token)};{theme.boot_script(mode)}</script>').encode()
+    marker = "" if native else f"window.__CHIMERA_HTTP__=true;window.__CHIMERA_TOKEN__={json.dumps(token)};"
+    tag = f"<script>{marker}{theme.boot_script(mode)}</script>".encode()
     return html.replace(b"</head>", tag + b"\n</head>", 1) if b"</head>" in html else tag + html
 
 
@@ -159,7 +159,7 @@ class _Handler(BaseHTTPRequestHandler):
             or "application/octet-stream"
         body = path.read_bytes()
         if path.name == "index.html":
-            body = _mark_page(body, self.server.token, theme.resolve_theme())
+            body = _mark_page(body, self.server.token, theme.resolve_theme(), native=getattr(self.server, "native_bridge", False))
             # cookie ставим на самой странице — дальше с ней ходят и статика, и мост
             return self._send(200, body, ctype, set_cookie=True)
         self._send(200, body, ctype)

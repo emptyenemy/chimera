@@ -121,6 +121,10 @@
 | Настройки → Обмен конфигом → «Поделиться» | `chimera config export [--sections <sections>] [--file <file>]` | read |
 | Настройки → Обмен конфигом → «Применить…» → «Проверить» | `chimera config import-preview <файл>` | read |
 | Настройки → Обмен конфигом → «Применить» | `chimera config import <файл> [--sections <sections>] [--confirm]` | app |
+| Настройки → Общее → Оформление. | `chimera config appearance` | read |
+| Настройки → Общее → Оформление. | `chimera config appearance-preview <settings>` | read |
+| Настройки → Общее → Оформление. | `chimera config appearance-apply <settings>` | app |
+| Настройки → Общее → Оформление. | `chimera config appearance-refresh` | app |
 | Настройки → Инструменты → Бэкапы настроек → Создать снимок | `chimera config backup` | app |
 | Настройки → Инструменты → Резервные копии | `chimera config backups` | read |
 | Настройки → Инструменты → Бэкапы → Сравнить. | `chimera config compare <first> <second>` | read |
@@ -392,6 +396,42 @@ chimera config import-preview friend.chimera
 
 ```
 chimera config import friend.chimera --sections proxy,lists
+```
+
+#### `chimera config appearance`
+
+Текущее оформление. Уровень: чтение.
+
+```
+chimera config appearance --json
+```
+
+#### `chimera config appearance-preview <settings>`
+
+Предпросмотр оформления без сохранения. Уровень: чтение.
+
+- `settings` — JSON: theme и appearance.
+
+```
+chimera config appearance-preview '{"theme":"dark","appearance":{"palette":"dracula"}}' --json
+```
+
+#### `chimera config appearance-apply <settings>`
+
+Применить оформление и сохранить снимок. Уровень: изменение приложения.
+
+- `settings` — JSON: theme и appearance.
+
+```
+chimera config appearance-apply '{"appearance":{"radius":"rounded"}}'
+```
+
+#### `chimera config appearance-refresh`
+
+Обновить каталог тем с GitHub. Уровень: изменение приложения.
+
+```
+chimera config appearance-refresh
 ```
 
 #### `chimera config backup`

@@ -72,3 +72,13 @@ jobs:
         env:
           QT_QPA_PLATFORM: offscreen
         run: python -m pytest -q
+
+      - name: Оформление — живой интерфейс
+        run: python tools/smoke_appearance.py --screenshot appearance.png
+
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: appearance-check
+          path: appearance.png
+          if-no-files-found: ignore

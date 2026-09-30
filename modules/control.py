@@ -46,7 +46,7 @@ ALLOWED_METHODS = allowed_methods()
 # (Настройки: движок окна, автоповышение, трей, канал и проверка обновлений, тема, язык).
 # Режим интерфейса (interface) и остальное — правкой config.json.
 CONFIG_KEYS_WRITABLE = frozenset({
-    "ui_backend", "auto_elevate", "close_to_tray", "update_channel", "update_check", "theme", "lang",
+    "ui_backend", "auto_elevate", "close_to_tray", "update_channel", "update_check", "theme", "lang", "appearance", "appearance_custom",
 })
 
 MAX_BODY = 1 << 20  # запросы CLI — доли килобайта; больше мегабайта — не наш клиент

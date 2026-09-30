@@ -42,6 +42,7 @@ class Bridge(QObject):
     """
 
     resolved = Signal(str, str)  # (callId, resultJson) — ответ на call()
+    background_changed = Signal(str)
     pushed = Signal(str, str)    # (jsFnName, payloadJson) — стриминг из Api._push
 
     def __init__(self, api: Api):
@@ -257,6 +258,11 @@ def run():
 
     window = MainWindow()
     window.setStyleSheet(f"QMainWindow {{ background: {bg}; }}")  # и до первой отрисовки страницы
+    def update_background(color):
+        view.page().setBackgroundColor(QColor(color))
+        window.setStyleSheet(f"QMainWindow {{ background: {color}; }}")
+    bridge.background_changed.connect(update_background)
+    api._native_theme_changed = bridge.background_changed.emit
     window.setWindowTitle("Chimera")
     window.setCentralWidget(view)
     window.resize(1080, 720)
