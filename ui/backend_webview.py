@@ -33,6 +33,17 @@ class JsApi:
         return self._api.dispatch(method, args_json)
 
 
+def _asset_server(api):
+    from ui.backend_browser import _Handler, _Hub
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), _Handler)
+    server.daemon_threads = True
+    server.api, server.hub, server.token = api, _Hub(), secrets.token_urlsafe(32)
+    server.web_dir, server.missing_next, server.native_bridge = web_dir(), False, True
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    return server, f"http://127.0.0.1:{server.server_address[1]}/?t={server.token}"
+
+
 def run():
     from modules import control, instance
     from ui.tray_win32 import Tray, close_to_tray
@@ -46,14 +57,9 @@ def run():
     quitting = False
     hidden = "--tray" in sys.argv and sys.platform == "win32"
     # Serve the normal assets with the Python boot script inserted before CSS/JS.
-    from ui.backend_browser import _Handler, _Hub
-    server = ThreadingHTTPServer(("127.0.0.1", 0), _Handler)
-    server.daemon_threads = True
-    server.api, server.hub, server.token = api, _Hub(), secrets.token_urlsafe(32)
-    server.web_dir, server.missing_next, server.native_bridge = web_dir(), False, True
-    threading.Thread(target=server.serve_forever, daemon=True).start()
+    server, url = _asset_server(api)
     window = webview.create_window(
-        "Chimera", f"http://127.0.0.1:{server.server_address[1]}/", js_api=JsApi(api),
+        "Chimera", url, js_api=JsApi(api),
         width=1080, height=720, min_size=(860, 560),
         background_color=theme.window_bg(), hidden=hidden,
     )
