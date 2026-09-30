@@ -1,0 +1,38 @@
+name: Verify native WebView2
+
+on:
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: "Release run с архивом release-webview"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  native-webview:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    env:
+      PYTHONUTF8: "1"
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+      - uses: actions/download-artifact@v7
+        with:
+          name: release-webview
+          run-id: ${{ inputs.run_id }}
+          github-token: ${{ github.token }}
+          path: archives
+      - name: Распаковать проверяемый архив
+        run: python -c "from pathlib import Path; from modules.selfupdate import stage; archives=list(Path('archives').glob('*.zip')); assert len(archives)==1; dest=Path('native').resolve(); assert dest.is_relative_to(Path.cwd()); print(stage(archives[0], dest))"
+      - name: Нативный WebView2 и канал CLI
+        run: python tools/smoke_build.py native\Chimera-webview --flavor webview --native-webview

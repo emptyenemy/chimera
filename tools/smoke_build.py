@@ -96,7 +96,7 @@ def _cli_check(app: Path, env: dict) -> dict:
     return _cli_step(app, env, "service status", ["service", "status"])
 
 
-def run(build: Path, full: bool = False, front: str = "next", flavor: str = "qt") -> int:
+def run(build: Path, full: bool = False, front: str = "next", flavor: str = "qt", native_webview: bool = False) -> int:
     if not (build / "Chimera.exe").exists():
         print(f"нет {build / 'Chimera.exe'} — сначала build.bat")
         return 2
@@ -108,6 +108,8 @@ def run(build: Path, full: bool = False, front: str = "next", flavor: str = "qt"
     # Изолированные настройки: автоматические системные действия отключены.
     port = _free_port()
     config = {"auto_elevate": False, "frontend": front, "ui_port": port, "update_check": False}
+    if native_webview:
+        config.update(ui_backend="pywebview", close_to_tray=False)
     (app / "config.json").write_text(json.dumps(config), encoding="utf-8")
     env = dict(os.environ)
     env.update({
@@ -118,14 +120,18 @@ def run(build: Path, full: bool = False, front: str = "next", flavor: str = "qt"
         "CHIMERA_INSTANCE_EVENT": rf"Local\Chimera_Smoke_{os.getpid()}",
     })
     token = secrets.token_urlsafe(24)
-    if flavor != "qt":
+    if native_webview:
+        env["WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS"] = f"--remote-debugging-port={port}"
+        env["WEBVIEW2_USER_DATA_FOLDER"] = str(tmp / "webview-profile")
+    elif flavor != "qt":
         env.update({"CHIMERA_NO_BROWSER": "1", "CHIMERA_HTTP_TOKEN": token})
     log = open(tmp / "engine.log", "wb")
     # --window: exe без аргументов из консоли печатает справку, а окно нужно именно оно
-    proc = subprocess.Popen([str(app / "Chimera.exe"), "--window" if flavor == "qt" else "--browser"], cwd=app, env=env, stdout=log,
+    flags = ["--window", "--tray"] if native_webview else ["--window" if flavor == "qt" else "--browser"]
+    proc = subprocess.Popen([str(app / "Chimera.exe"), *flags], cwd=app, env=env, stdout=log,
                             stderr=subprocess.STDOUT)
     try:
-        if flavor == "qt":
+        if flavor == "qt" or native_webview:
             _wait_cdp(port, proc)
             command = ["node", str(CDP), str(port), str(CHECKS)]
         else:
@@ -196,5 +202,9 @@ if __name__ == "__main__":
         del args[i:i + 2]
     if front not in ("next",):
         sys.exit("--frontend: next")
-    args = [a for a in args if a != "--full"]
-    sys.exit(run(Path(args[0]) if args else ROOT / "build" / "Chimera", full="--full" in sys.argv, front=front, flavor=flavor))
+    native_webview = "--native-webview" in args
+    if native_webview and flavor != "webview":
+        sys.exit("--native-webview requires --flavor webview")
+    args = [a for a in args if a not in ("--full", "--native-webview")]
+    sys.exit(run(Path(args[0]) if args else ROOT / "build" / "Chimera",
+                 full="--full" in sys.argv, front=front, flavor=flavor, native_webview=native_webview))
