@@ -147,6 +147,31 @@ python tools/verify_archive.py Chimera-1.0.3-win64-lite.zip --flavor lite --vers
 как HTTP-проверку, так и проверку нативного окна. Версии компонентов проверяются
 на русском и английском. Этот сценарий входит в Release workflow.
 
+Перед проверкой функций `tools/smoke_launch.py` запускает exe через
+`ShellExecuteExW("open")`: без аргументов, консоли, настроек и каталога данных.
+Путь содержит кириллицу и пробелы. Проверяются видимое окно Windows, повторный
+двойной клик без второго окна, интерфейс, CLI и клавиатурное меню TUI.
+Для WebView проверяется путь процессов движка: строго `bin/webview2` из архива.
+Для Lite дополнительно проверяется отсутствие Edge/Chrome с переходом на этот
+движок. Тестовая переменная отсутствия браузера действует только с
+`CHIMERA_SMOKE=1`. Проверка остаётся обязательной независимо от headless-тестов.
+`--screenshot <путь.png>` сохраняет интерфейс настоящего видимого окна; для Lite
+рядом появляется `<имя>-fallback.png`.
+
+Все варианты при двойном клике открывают окно, включая старые настройки
+`interface=service/tui`. Фоновый режим запускается явно: `service run`.
+На чистой установке UAC не запрашивается; кнопка «Права администратора»
+перезапускает окно для системных действий, отмена UAC оставляет окно открытым.
+Непредвиденная ошибка запуска записывается в `%LOCALAPPDATA%/Chimera/startup.log`
+и показывает сообщение средствами Windows.
+
+WebView и Lite включают полный Fixed Version WebView2 x64, версия и SHA256
+закреплены в `tools/fetch_webview.py`. Установка движка в Windows и загрузка
+во время запуска не требуются. Архивы выросли из-за комплекта Chromium.
+Целевая платформа — Windows 10/11 x64. На Windows 10 папке переносимого
+движка выдаётся требуемое Microsoft право чтения AppContainer; это локальная
+папка приложения. [Правила Microsoft для Fixed Version Runtime](https://learn.microsoft.com/en-us/microsoft-edge/webview2/concepts/distribution).
+
 В выводе `SKIP` означает пропущенный шаг: работающие в системе winws/sing-box
 не перезапускаются. Системные действия без `--full` не выполняются. Полная
 проверка возможна только на отдельном одноразовом Windows-раннере: нельзя
@@ -157,8 +182,8 @@ python tools/verify_archive.py Chimera-1.0.3-win64-lite.zip --flavor lite --vers
 | Команда | Папка | Интерфейс |
 |---|---|---|
 | `build.bat qt` | `build/Chimera` | Qt с собственным Chromium |
-| `build.bat webview` | `build/Chimera-webview` | системный WebView2, нативный WinAPI-трей |
-| `build.bat lite` | `build/Chimera-lite` | служба/CLI/TUI, `--browser` открывает интерфейс |
+| `build.bat webview` | `build/Chimera-webview` | переносимый WebView2, нативный WinAPI-трей |
+| `build.bat lite` | `build/Chimera-lite` | отдельное окно Edge/Chrome; без браузера — переносимый WebView2 |
 
 Во всех вариантах есть CLI, TUI и собранный интерфейс. Node 22+ обязателен только при сборке. `tools/set_flavor.py` создаёт временный модуль варианта для Nuitka, `tools/finish_build.py` упаковывает переносимую папку и манифест. Самообновление выбирает архив по встроенному `FLAVOR`.
 
