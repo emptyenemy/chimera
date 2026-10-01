@@ -82,6 +82,9 @@ jobs:
       - name: Пробы настроек — живой интерфейс
         run: python tools/smoke_trials.py --screenshot trial.png
 
+      - name: Проверенная конфигурация — живой интерфейс
+        run: python tools/smoke_verified_config.py --screenshot verified.png
+
       - name: WebView2 Runtime для проверки исходников
         run: ./tools/ensure_webview_runtime.ps1
 
@@ -95,4 +98,5 @@ jobs:
           path: |
             appearance.png
             trial.png
+            verified.png
           if-no-files-found: ignore

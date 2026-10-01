@@ -201,6 +201,9 @@ class FakeRemote:
         self.trial = {"active": None, "last": {"id": trial_id, "phase": "reverted"}}
         return self.trial
 
+    def m_config_verified(self):
+        return {"backup": None, "error": None}
+
     def m_config_read(self):
         return dict(self.config)
 

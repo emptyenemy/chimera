@@ -711,7 +711,7 @@ THEMES = (("system", _tr('tui.panes.system')), ("light", _tr('tui.panes.light'))
 
 
 class SettingsPane(Pane):
-    KEYS = ("config", "app")
+    KEYS = ("config", "app", "verified")
 
     def compose(self) -> ComposeResult:
         with VerticalScroll():
@@ -726,8 +726,15 @@ class SettingsPane(Pane):
                                    ("en", "tui.settings.language.en")):
                     yield RadioButton(_tr(key), id=f"lang-{value}")
 
+            yield Static(_tr("tui.verified.title"), classes="dim", markup=False)
+            yield Static("", id="se-verified", markup=False)
+            yield Input(placeholder="youtube.com, discord.com", id="se-domains")
+            with Horizontal(classes="row"):
+                yield Button(_tr("tui.verified.verify"), id="se-verify")
+                yield Button(_tr("tui.verified.restore"), id="se-restore", disabled=True)
+
     def sources(self) -> list:
-        return [("config", "config_read", (), 5)]
+        return [("config", "config_read", (), 5), ("verified", "config_verified", (), 5)]
 
     def focus_primary(self) -> None:
         self.query_one("#se-theme", RadioSet).focus()
@@ -740,6 +747,13 @@ class SettingsPane(Pane):
                 p1=_tr('tui.panes.yes') if a.get('admin') else _tr('tui.panes.no'),
                 p2=cfg.get('interface', '?'),
             ))
+        verified = self.app.data("verified") or {}
+        backup = verified.get("backup")
+        text = verified.get("error") or _tr("cli.verified.empty")
+        if backup:
+            text = backup["checked_at"] + " · " + ", ".join(c["domain"] for c in backup["checks"])
+        self.query_one("#se-verified", Static).update(text)
+        self.query_one("#se-restore", Button).disabled = not bool(backup)
         theme = cfg.get("theme", "system")
         btn = self.query_one(f"#theme-{theme}", RadioButton) if theme in dict(THEMES) else None
         if btn is not None and not btn.value:
@@ -754,6 +768,50 @@ class SettingsPane(Pane):
             selected = self.query_one(f"#lang-{setting}", RadioButton)
             if not selected.value:
                 selected.value = True
+
+    def _verify(self):
+        value = self.query_one("#se-domains", Input).value.replace(",", " ").replace(";", " ")
+        selected = list(dict.fromkeys(value.lower().split()))
+        def done(reply):
+            if not reply["saved"]:
+                self.app.status(reply["error"], error=True)
+            else:
+                self.app.status(_tr("cli.verified.saved", id=reply["backup"]["id"]))
+        self.app.act(_tr("tui.verified.verify"), "config_verify", selected, after=done)
+
+    def _restore(self):
+        backup = (self.app.data("verified") or {}).get("backup")
+        if not backup:
+            return
+        def preview(reply):
+            if not reply["ok"]:
+                self.app.status(reply.get("error") or "\n".join(reply["errors"]), error=True)
+                return
+            lines = [_tr("tui.verified.confirm", id=backup["id"])]
+            for section in reply["sections"]:
+                lines.append(section["title"] + ": " + "; ".join(section["changes"]))
+            lines.extend(reply.get("warnings", []))
+            if reply["requires_admin"]:
+                lines.append(_tr("msg.backup.admin_required"))
+            def restored(result):
+                if result["errors"] or result["rollback_errors"]:
+                    self.app.status("\n".join(result["errors"] + result["rollback_errors"]), error=True)
+            self.app.confirm("\n".join(lines), lambda: self.app.act(_tr("tui.verified.restore"),
+                "config_backup_restore", backup["id"], True, after=restored))
+        self.app.act(_tr("tui.verified.restore"), "config_backup_preview", backup["id"], after=preview)
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id in ("se-verify", "se-restore"):
+            event.stop()
+            if event.button.id == "se-verify":
+                self._verify()
+            else:
+                self._restore()
+
+    def on_input_submitted(self, event: Input.Submitted) -> None:
+        if event.input.id == "se-domains":
+            event.stop()
+            self._verify()
 
     def on_radio_set_changed(self, event: RadioSet.Changed) -> None:
         event.stop()

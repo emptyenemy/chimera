@@ -130,6 +130,8 @@
 | Настройки → Общее → Оформление. | `chimera config appearance-apply <settings>` | app |
 | Настройки → Общее → Оформление. | `chimera config appearance-refresh` | app |
 | Настройки → Инструменты → Бэкапы настроек → Создать снимок | `chimera config backup` | app |
+| Настройки → Инструменты → Бэкапы → Проверить и сохранить | `chimera config verify <домены…>` | app |
+| Настройки → Инструменты → Последняя проверенная конфигурация | `chimera config verified` | read |
 | Настройки → Инструменты → Резервные копии | `chimera config backups` | read |
 | Настройки → Инструменты → Бэкапы → Сравнить. | `chimera config compare <first> <second>` | read |
 | Настройки → Инструменты → Резервные копии → Предпросмотр | `chimera config restore-preview <id>` | read |
@@ -446,6 +448,24 @@ chimera config appearance-refresh
 ```
 chimera config backup
 chimera config backup --json
+```
+
+#### `chimera config verify <домены…>`
+
+Проверить сайты и сохранить полный проверенный снимок Уровень: изменение приложения.
+
+- `домены` — От 1 до 6 доменов через запятую; все должны ответить успешно
+
+```
+chimera config verify youtube.com,discord.com
+```
+
+#### `chimera config verified`
+
+Показать последний проверенный снимок и его сайты Уровень: чтение.
+
+```
+chimera config verified --json
 ```
 
 #### `chimera config backups`

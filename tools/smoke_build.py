@@ -107,6 +107,7 @@ def _cli_checks_while_running(app: Path, env: dict, flavor: str = "qt") -> list[
         _cli_step(app, env, "status --json (через канал, вариант сборки)", ["status", "--json"], lambda text: _json_flavor(text, flavor)),
         _cli_step(app, env, "winws state --json (через канал)", ["winws", "state", "--json"], _json_ok),
         _cli_step(app, env, "lists show --json", ["lists", "show", "--json"], _json_ok),
+        _cli_step(app, env, "config verified --json", ["config", "verified", "--json"], _json_ok),
         _cli_step(app, {**env, "CHIMERA_TUI_PROBE": "1"}, "Textual: клавиатурное меню без окна", ["tui"], _json_ok),
     ]
 

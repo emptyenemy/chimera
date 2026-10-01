@@ -22,6 +22,7 @@ from modules import (
     cheburcheck,
     control,
     configbackups,
+    verifiedconfig,
     doctor,
     domainrec,
     domains,
@@ -435,6 +436,32 @@ class Api:
         except Exception as e:
             return _err(e)
 
+    def config_verify(self, selected, lang=None):
+        try:
+            with i18n.request_language(lang), self._mutation_lock:
+                self._trial_guard("config_verify")
+                remote = self._backup_owner("config_verify", selected, lang)
+                if remote is not None:
+                    return remote
+                dns = getattr(self, "dns", None)
+                if dns is not None and dns.trials():
+                    raise ChimeraError("err.trial.busy")
+                def context():
+                    return {"modules": [{k: state.get(k) for k in ("running", "current", "mode", "external")}
+                                        for state in (self.winws.state(), self.proxy.state())],
+                            "hosts": self.hosts._read_hosts() if self.hosts.hosts_path.exists() else None}
+                return _ok(verifiedconfig.create(ShareOps(self), selected, TrialOps(self).check, context))
+        except Exception as e:
+            return _err(e)
+
+    def config_verified(self, lang=None):
+        try:
+            with i18n.request_language(lang):
+                remote = self._backup_owner("config_verified", lang)
+                return remote if remote is not None else _ok(verifiedconfig.state())
+        except Exception as e:
+            return _err(e)
+
     def config_backups(self, lang=None):
         try:
             with i18n.request_language(lang):
@@ -637,7 +664,7 @@ class Api:
 
     # сверка с апстримом — только сеть, хотя в имени и есть «update»
     _READ_NAMES = frozenset({"tg_check_update", "upstream_check_updates", "doctor_run", "doctor_report",
-                             "config_export", "config_import_preview", "config_backups", "config_backup_preview", "config_backup_compare",
+                             "config_export", "config_import_preview", "config_backups", "config_backup_preview", "config_backup_compare", "config_verified",
                               "appearance_preview"})
 
     @classmethod

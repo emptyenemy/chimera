@@ -244,6 +244,22 @@
     need(!off.enabled && off.supported, "задача не удалилась");
   });
 
+  await step("проверенная конфигурация: интерфейс и API", async () => {
+    const state = await api("config_verified");
+    need(state.backup === null && !state.error, "нечистые данные проверенного снимка");
+    Pages.go("settings");
+    for (let i = 0; i < 50 && !document.querySelector('[data-testid="settings-tab-tools"]'); i++) await sleep(100);
+    document.querySelector('[data-testid="settings-tab-tools"]').click();
+    for (let i = 0; i < 50 && !document.querySelector('[data-testid="verified-open"]'); i++) await sleep(100);
+    need(document.querySelector('[data-testid="verified-restore"]').disabled, "восстановление без снимка доступно");
+    document.querySelector('[data-testid="verified-open"]').click();
+    for (let i = 0; i < 50 && !document.querySelector('[data-testid="verified-dialog"]'); i++) await sleep(100);
+    const dialog = document.querySelector('[data-testid="verified-dialog"]');
+    need(dialog?.querySelector('[data-slot="dialog-title"]'), "нет заголовка диалога");
+    need(document.querySelector('[data-testid="verified-save"]').disabled, "пустые домены разрешены");
+    dialog.querySelector('[data-slot="dialog-close"]').click();
+    return "состояние, диалог, валидация; без изменения системы";
+  });
   await step("настройки", async () => { await api("config_read"); });
   await step("палитры и акцент готового exe", async () => {
     const original = await api("appearance_state");

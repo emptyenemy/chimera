@@ -47,6 +47,7 @@ import { notify } from "@/lib/notify"
 import { initTheme } from "@/lib/theme"
 import { CardTitleIcon } from "@/pages/settings/general"
 import { refreshAutostart, refreshConfig } from "@/pages/settings/state"
+import { VerifiedConfig } from "@/pages/settings/verified-config"
 
 interface Backup {
   id: string
@@ -54,6 +55,7 @@ interface Backup {
   kind: string
   sections: string[]
   valid: boolean
+  verified?: boolean
   error?: string | null
 }
 
@@ -99,7 +101,7 @@ const dateLabel = (date: string | null) => {
     : value.toLocaleString(currentLocale() === "en" ? "en-US" : "ru-RU")
 }
 
-function BackupBrowser({ onClose }: { onClose: () => void }) {
+function BackupBrowser({ onClose, initialId }: { onClose: () => void; initialId?: string }) {
   const [backups, setBackups] = useState<Backup[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -107,7 +109,7 @@ function BackupBrowser({ onClose }: { onClose: () => void }) {
   const [selected, setSelected] = useState<string[]>([])
   const [comparison, setComparison] = useState<BackupComparison | null>(null)
   const displayed = preview ?? comparison
-  const [checking, setChecking] = useState(false)
+  const [checking, setChecking] = useState(Boolean(initialId))
   const [restoring, setRestoring] = useState(false)
   const [result, setResult] = useState<RestoreReply | null>(null)
   const busy = checking || restoring
@@ -128,6 +130,16 @@ function BackupBrowser({ onClose }: { onClose: () => void }) {
       active = false
     }
   }, [])
+
+  useEffect(() => {
+    if (!initialId) return
+    let active = true
+    void api<BackupPreview>("config_backup_preview", initialId)
+      .then(value => { if (active) setPreview(value) })
+      .catch((e: unknown) => { if (active) setError(message(e)) })
+      .finally(() => { if (active) setChecking(false) })
+    return () => { active = false }
+  }, [initialId])
 
   async function compareSelected() {
     if (selected.length !== 2) return
@@ -373,6 +385,7 @@ function BackupBrowser({ onClose }: { onClose: () => void }) {
                               ? t("settings.backups.beforeRestore")
                               : t("settings.backups.beforeImport")}
                     </Badge>
+                    {backup.verified && <Badge>{t("settings.verified.badge")}</Badge>}
                   </CardTitle>
                   <CardDescription className="break-all">
                     {backup.id}
@@ -489,12 +502,14 @@ function BackupBrowser({ onClose }: { onClose: () => void }) {
 export function BackupsCard() {
   const [open, setOpen] = useState(false)
   const [creating, setCreating] = useState(false)
+  const [initialId, setInitialId] = useState<string | undefined>()
 
   async function createSnapshot() {
     setCreating(true)
     try {
       const backup = await api<Backup>("config_backup_create")
       notify.success(t("settings.backups.created"), backup.id)
+      setInitialId(undefined)
       setOpen(true)
     } catch (e) {
       notify.error(t("settings.backups.createFailed"), message(e))
@@ -510,6 +525,9 @@ export function BackupsCard() {
         </CardTitleIcon>
         <CardDescription>{t("settings.backups.description")}</CardDescription>
       </CardHeader>
+      <CardContent>
+        <VerifiedConfig onRestore={id => { setInitialId(id); setOpen(true) }} />
+      </CardContent>
       <CardFooter className="flex-wrap gap-2">
         <Button
           disabled={creating}
@@ -526,14 +544,14 @@ export function BackupsCard() {
         <Button
           variant="outline"
           disabled={creating}
-          onClick={() => setOpen(true)}
+          onClick={() => { setInitialId(undefined); setOpen(true) }}
           data-testid="settings-backups-open"
         >
           <ArchiveIcon data-icon="inline-start" />
           {t("settings.backups.open")}
         </Button>
       </CardFooter>
-      {open && <BackupBrowser onClose={() => setOpen(false)} />}
+      {open && <BackupBrowser initialId={initialId} onClose={() => setOpen(false)} />}
     </Card>
   )
 }

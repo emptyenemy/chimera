@@ -701,6 +701,25 @@ def h_config_backup(ctx, act, ns):
     return Result(backup, [t("cli.backup.created", id=backup["id"])])
 
 
+def h_config_verify(ctx, act, ns):
+    reply = ctx.call("config_verify", ns["a0"], i18n.current_lang())
+    lines = [f"{check['domain']}: {check['status']}" for check in reply["checks"]]
+    if reply["saved"]:
+        lines.append(t("cli.verified.saved", id=reply["backup"]["id"]))
+    else:
+        lines.append(reply["error"])
+    return Result(reply, lines, exit_code=0 if reply["saved"] else 1)
+
+
+def h_config_verified(ctx, act, ns):
+    reply = ctx.call("config_verified", i18n.current_lang())
+    backup = reply["backup"]
+    lines = ([f"{backup['id']}  {backup['checked_at']}",
+              ", ".join(c["domain"] for c in backup["checks"])] if backup else
+             [reply["error"] or t("cli.verified.empty")])
+    return Result(reply, lines, exit_code=1 if reply["error"] else 0)
+
+
 def h_config_backups(ctx, act, ns):
     backups = ctx.call("config_backups", i18n.current_lang())
     lines = [f"{b['id']}  {b.get('created_at') or '—'}  {', '.join(b['sections'])}" +
@@ -768,6 +787,7 @@ HANDLERS = {
     "path_remove": h_path_remove,
     "doctor": h_doctor, "config_export": h_config_export,
     "config_import_preview": h_config_import_preview, "config_import": h_config_import,
+    "config_verify": h_config_verify, "config_verified": h_config_verified,
     "config_compare": h_config_compare, "config_backup": h_config_backup, "config_backups": h_config_backups,
     "config_restore_preview": h_config_restore_preview,
     "config_restore": h_config_restore,

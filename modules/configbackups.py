@@ -377,7 +377,9 @@ def _publish(blobs, root, kind, complete_lists=False, prune=True):
 
 
 def _prune(base):
-    old = sorted((p for p in base.iterdir() if ID_RE.fullmatch(p.name) and p.is_dir() and not _is_link(p)),
+    from modules import verifiedconfig
+    pinned = verifiedconfig.pinned_id(base)
+    old = sorted((p for p in base.iterdir() if ID_RE.fullmatch(p.name) and p.name != pinned and p.is_dir() and not _is_link(p)),
                  key=lambda p: (p.name[:15], int(p.name.split("-")[2])))
     for p in old[:-KEEP]:
         if p.resolve().parent == base.resolve():
@@ -493,6 +495,8 @@ def list_backups(root=None):
     base = root_path(root)
     if not base.exists():
         return []
+    from modules import verifiedconfig
+    verified = verifiedconfig.state(root)["backup"]
     result = []
     for path in sorted(base.iterdir(), key=lambda p: (p.name[:15], int(p.name.split("-")[2])) if ID_RE.fullmatch(p.name) else ("", 0), reverse=True):
         if not ID_RE.fullmatch(path.name):
@@ -505,6 +509,7 @@ def list_backups(root=None):
                          sections=[sid for sid in SECTIONS if sid in backup["states"] or (sid == "lists" and (backup["lists"] or backup["complete_lists"]))])
         except Exception:
             entry["error"] = t("err.backup.invalid", name="")
+        entry["verified"] = bool(verified and entry["valid"] and path.name == verified["id"])
         result.append(entry)
     return result
 

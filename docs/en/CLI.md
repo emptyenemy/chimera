@@ -130,6 +130,8 @@ Levels exist so that remote channels can be restricted. Secrets (the proxy link,
 | Settings → General → Appearance. | `chimera config appearance-apply <settings>` | app |
 | Settings → General → Appearance. | `chimera config appearance-refresh` | app |
 | Settings → Tools → Settings backups → Create snapshot | `chimera config backup` | app |
+| Settings → Tools → Backups → Check and save | `chimera config verify <domains…>` | app |
+| Settings → Tools → Last verified configuration | `chimera config verified` | read |
 | Settings → Tools → Backups | `chimera config backups` | read |
 | Settings → Tools → Configuration backups → Compare. | `chimera config compare <first> <second>` | read |
 | Settings → Tools → Backups → Preview | `chimera config restore-preview <id>` | read |
@@ -446,6 +448,24 @@ Create a manual snapshot of all Chimera settings and user lists. Does not change
 ```
 chimera config backup
 chimera config backup --json
+```
+
+#### `chimera config verify <domains…>`
+
+Check sites and save a full verified snapshot Level: changes the app.
+
+- `domains` — 1 to 6 comma-separated domains; every site must respond successfully
+
+```
+chimera config verify youtube.com,discord.com
+```
+
+#### `chimera config verified`
+
+Show the last verified snapshot and its sites Level: read-only.
+
+```
+chimera config verified --json
 ```
 
 #### `chimera config backups`
