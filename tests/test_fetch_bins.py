@@ -86,6 +86,18 @@ def test_write_versions_pins_bundle_commit(tmp_path, monkeypatch):
     out = tmp_path / "versions.json"
     fetch_bins.write_versions(out)
     data = json.loads(out.read_text(encoding="utf-8"))
-    assert data["winws-бандл (bol-van)"] == fetch_bins.BUNDLE_COMMIT[:7]
-    assert data["Движок zapret2 (winws2)"] == "cur-tag"
+    assert data["bin/zapret-win-bundle"] == fetch_bins.BUNDLE_COMMIT[:7]
+    assert data["upstream/zapret2"] == "cur-tag"
     assert "Python" not in data  # не git-источники в файл не пишутся
+
+
+def test_build_metadata_does_not_depend_on_ui_language(tmp_path, monkeypatch):
+    from modules import i18n
+
+    monkeypatch.setattr(fetch_bins.upstream, "_current", lambda src: "v1.2.3")
+    with i18n.request_language("ru"):
+        russian = fetch_bins.write_versions(tmp_path / "ru.json")
+    with i18n.request_language("en"):
+        english = fetch_bins.write_versions(tmp_path / "en.json")
+    assert russian == english
+    assert russian["bin/zapret-win-bundle"] == fetch_bins.BUNDLE_COMMIT[:7]

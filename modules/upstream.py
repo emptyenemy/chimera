@@ -35,7 +35,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from contextlib import redirect_stdout
 from pathlib import Path
 
-from modules import paths
+from modules import i18n, paths
 
 ROOT = Path(__file__).resolve().parent.parent
 # Версии git-источников на момент сборки (пишет tools/fetch_bins.py --versions):
@@ -205,7 +205,17 @@ def _built_versions() -> dict:
 def _current(src: dict) -> str:
     kind = src["kind"]
     if kind in ("tag", "commit") and paths.IS_FROZEN:
-        return _built_versions().get(src["name"]) or "—"
+        stored = _built_versions()
+        value = stored.get(src["path"]) or stored.get(src["name"])
+        if value:
+            return value
+        # Старые архивы записывали переведённые названия вместо постоянных путей.
+        for lang in ("ru", "en"):
+            with i18n.request_language(lang):
+                legacy = next((s["name"] for s in _source_specs() if s.get("path") == src["path"]), None)
+            if legacy and stored.get(legacy):
+                return stored[legacy]
+        return "—"
     if kind == "tag":
         return _git_tag(ROOT / src["path"])
     if kind == "commit":

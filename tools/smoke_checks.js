@@ -167,10 +167,19 @@
 
   // источники и обновление программы
   await step("версии компонентов", async () => {
-    const v = await api("upstream_versions");
-    const git = v.filter(s => s.kind === "tag" || s.kind === "commit");
-    const empty = git.filter(s => !s.version || s.version === "—").map(s => s.name);
-    need(!empty.length, `нет версий: ${empty.join(", ")}`);
+    const original = (await api("lang_get")).setting;
+    try {
+      for (const language of ["ru", "en"]) {
+        await api("config_set", "lang", language);
+        const v = await api("upstream_versions");
+        const git = v.filter(s => s.kind === "tag" || s.kind === "commit");
+        const empty = git.filter(s => !s.version || s.version === "—").map(s => s.name);
+        need(!empty.length, `${language}: нет версий: ${empty.join(", ")}`);
+      }
+      return "RU / EN";
+    } finally {
+      await api("config_set", "lang", original);
+    }
   });
   await step("самообновление: состояние", async () => {
     const s = await api("selfupdate_state");

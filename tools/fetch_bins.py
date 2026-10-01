@@ -127,7 +127,7 @@ def write_versions(out: Path) -> dict:
         if src["kind"] not in ("tag", "commit"):
             continue
         # бандл в сборке — пиннутый коммит, а не то, что случайно лежит в bin/ у сборщика
-        data[src["name"]] = BUNDLE_COMMIT[:7] if src["name"] == BUNDLE_NAME else upstream._current(src)
+        data[src["path"]] = BUNDLE_COMMIT[:7] if src["path"] == "bin/zapret-win-bundle" else upstream._current(src)
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8", newline="\n")
     return data

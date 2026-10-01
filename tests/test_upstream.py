@@ -105,3 +105,22 @@ def test_latest_tag_all_prerelease_returns_none(monkeypatch):
     stdout = "abc\trefs/tags/1.0.0-alpha\n"
     monkeypatch.setattr(upstream, "_git", _fake_git_ok(stdout))
     assert upstream._latest_tag("https://example.invalid/repo.git") is None
+
+
+@pytest.mark.parametrize("stored_lang", ["ru", "en", "paths"])
+@pytest.mark.parametrize("ui_lang", ["ru", "en"])
+def test_frozen_versions_survive_switching_languages(tmp_path, monkeypatch, stored_lang, ui_lang):
+    import json
+    from modules import i18n
+
+    with i18n.request_language("ru" if stored_lang == "paths" else stored_lang):
+        records = {s["path"] if stored_lang == "paths" else s["name"]: "v1.2.3"
+                   for s in upstream._source_specs() if s["kind"] in ("tag", "commit")}
+    path = tmp_path / "versions.json"
+    path.write_text(json.dumps(records, ensure_ascii=False), encoding="utf-8")
+    monkeypatch.setattr(upstream, "VERSIONS_FILE", path)
+    monkeypatch.setattr(upstream.paths, "IS_FROZEN", True)
+    with i18n.request_language(ui_lang):
+        sources = [s for s in upstream.versions() if s["kind"] in ("tag", "commit")]
+    assert len(sources) == 4
+    assert all(s["version"] == "v1.2.3" for s in sources)
