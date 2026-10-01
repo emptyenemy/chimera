@@ -25,6 +25,8 @@ goto frontend
 set VARIANT=--nofollow-import-to=PySide6,shiboken6,webview,clr_loader,pythonnet,ui.backend_qt,ui.backend_webview,ui.tray_win32
 
 :frontend
+python tools\build_env.py
+if errorlevel 1 exit /b 1
 where node >nul 2>&1
 if errorlevel 1 (
     echo [!] Node 22+ is required to build the interface.
