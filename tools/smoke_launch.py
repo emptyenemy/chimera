@@ -75,6 +75,23 @@ class ShellProcess:
         self.kernel.CloseHandle(self.handle)
 
 
+def creation_time(pid):
+    kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel.OpenProcess.restype = wintypes.HANDLE
+    kernel.GetProcessTimes.argtypes = [wintypes.HANDLE, *([ctypes.POINTER(wintypes.FILETIME)] * 4)]
+    kernel.CloseHandle.argtypes = [wintypes.HANDLE]
+    handle = kernel.OpenProcess(0x1000, False, pid)
+    if not handle:
+        return 0
+    times = [wintypes.FILETIME() for _ in range(4)]
+    try:
+        if not kernel.GetProcessTimes(handle, *(ctypes.byref(value) for value in times)):
+            return 0
+        return (times[0].dwHighDateTime << 32) | times[0].dwLowDateTime
+    finally:
+        kernel.CloseHandle(handle)
+
+
 def processes(root_pid, owned=()):
     kernel = ctypes.WinDLL("kernel32", use_last_error=True)
     kernel.CreateToolhelp32Snapshot.restype = wintypes.HANDLE
@@ -92,6 +109,11 @@ def processes(root_pid, owned=()):
             more = kernel.Process32NextW(handle, ctypes.byref(entry))
     finally:
         kernel.CloseHandle(handle)
+    started = creation_time(root_pid)
+    if not started:
+        raise RuntimeError("The launched exe has exited")
+    # A dead parent's PID can be reused by Chimera while its old children survive.
+    rows = [(pid, parent, name) for pid, parent, name in rows if creation_time(pid) >= started]
     family = {root_pid, *owned}
     for _ in range(10):
         previous = len(family)

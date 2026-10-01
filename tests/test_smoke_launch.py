@@ -30,3 +30,23 @@ def test_shell_launch_has_no_arguments_or_console_streams_and_restores_runner(mo
         with pytest.raises(OSError):
             smoke_launch.ShellProcess(tmp_path / "Chimera.exe")
     assert active == original
+
+
+def test_reused_parent_pid_does_not_claim_older_processes(monkeypatch):
+    rows = iter([(10, 4, "Chimera.exe"), (20, 10, "old-browser.exe"),
+                 (21, 20, "old-helper.exe"), (30, 10, "msedge.exe"), (31, 30, "renderer.exe")])
+
+    def next_process(handle, pointer):
+        row = next(rows, None)
+        if row is None:
+            return False
+        pointer._obj.pid, pointer._obj.parent, pointer._obj.exe = row
+        return True
+
+    kernel = SimpleNamespace(CreateToolhelp32Snapshot=Mock(return_value=42),
+                             Process32FirstW=Mock(side_effect=next_process),
+                             Process32NextW=Mock(side_effect=next_process), CloseHandle=Mock())
+    monkeypatch.setattr(smoke_launch.ctypes, "WinDLL", lambda *args, **kwargs: kernel)
+    times = {10: 100, 20: 10, 21: 20, 30: 110, 31: 120}
+    monkeypatch.setattr(smoke_launch, "creation_time", times.get)
+    assert smoke_launch.processes(10) == [(10, "Chimera.exe"), (30, "msedge.exe"), (31, "renderer.exe")]
