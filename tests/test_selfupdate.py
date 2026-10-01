@@ -98,7 +98,7 @@ def test_check_up_to_date(frozen_app):
 def test_check_from_sources_is_not_installable(monkeypatch):
     monkeypatch.setattr(selfupdate.paths, "IS_FROZEN", False)
     res = selfupdate.check("stable", current="dev", fetch=_fetch([_release("v0.2.0")]))
-    assert res["update"] is True
+    assert res["update"] is False
     assert res["installable"] is False  # из исходников — только через git
 
 
@@ -418,3 +418,9 @@ def test_update_script_relaunches_the_window_not_a_bare_exe(layout):
                                      rollback=upd / "rollback")
     line = [ln for ln in script.read_text(encoding="utf-8", errors="replace").splitlines() if ln.startswith('start ""')]
     assert line and line[0].endswith("Chimera.exe\" --window")
+
+
+def test_dev_frozen_build_never_downgrades_to_public_release(frozen_app):
+    res = selfupdate.check("stable", current="dev", fetch=_fetch([_release("v1.0.2")]))
+    assert res["current"] == "dev" and res["latest"] == "1.0.2"
+    assert not res["update"] and not res["installable"] and res["error"] is None

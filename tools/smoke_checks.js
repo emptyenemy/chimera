@@ -184,9 +184,13 @@
   await step("самообновление: состояние", async () => {
     const s = await api("selfupdate_state");
     need(s.frozen === true, "сборка не распознала себя собранной");
+    if (s.current === "dev") need(!s.update && !s.installable, "dev предлагает установить старый релиз");
     return s.current;
   });
-  await step("самообновление: проверка", async () => { await api("selfupdate_check"); }, { network: true });
+  await step("самообновление: проверка", async () => {
+    const s = await api("selfupdate_check");
+    if (s.current === "dev") need(!s.update && !s.installable, "dev предлагает установить старый релиз");
+  }, { network: true });
 
   // --- полный режим (tools/smoke_build.py --full, только CI/одноразовые машины) ------
   // Всё, что требует прав администратора и меняет систему: каждый шаг возвращает её

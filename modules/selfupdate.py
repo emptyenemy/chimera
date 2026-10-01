@@ -140,7 +140,8 @@ def check(channel: str = "stable", current: str = VERSION, fetch=_fetch_json) ->
         return base
     asset = _asset_info(_zip_asset(rel))
     latest = rel["tag_name"].removeprefix("v")
-    update = is_newer(latest, current)
+    # dev has no release version to compare; never replace it with an older public build.
+    update = current != "dev" and is_newer(latest, current)
     return {**base, "latest": latest, "update": update,
             # ставим только в сборке, только поверх известного списка своих файлов
             # и только то, что есть с чем сверить
