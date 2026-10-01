@@ -79,6 +79,9 @@ jobs:
       - name: Оформление — живой интерфейс
         run: python tools/smoke_appearance.py --screenshot appearance.png
 
+      - name: Пробы настроек — живой интерфейс
+        run: python tools/smoke_trials.py --screenshot trial.png
+
       - name: WebView2 Runtime для проверки исходников
         run: ./tools/ensure_webview_runtime.ps1
 
@@ -89,5 +92,7 @@ jobs:
         if: always()
         with:
           name: appearance-check
-          path: appearance.png
+          path: |
+            appearance.png
+            trial.png
           if-no-files-found: ignore

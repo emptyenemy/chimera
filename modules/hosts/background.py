@@ -55,6 +55,7 @@ class HostsBackground:
         self.probe_fn = probe_fn or self._default_probe
         self.now = now
         self.tick_interval = tick_interval
+        self.can_mutate = lambda: True
         self._thread: threading.Thread | None = None
         self._stop = threading.Event()
         self._last_refresh = 0.0
@@ -105,6 +106,8 @@ class HostsBackground:
 
     def run_once(self, now: float | None = None) -> None:
         now = self.now() if now is None else now
+        if not self.can_mutate():
+            return
         opts = self.manager.background_options()
 
         if opts.get("refresh_enabled", True) and \
@@ -197,6 +200,8 @@ class HostsBackground:
         }
 
         with getattr(self, "mutation_lock", nullcontext()):
+            if not self.can_mutate():
+                return
             current = self.manager._load_state()
             if not self.same_state(st, current) or self.manager.background_options() != opts:
                 return
@@ -256,6 +261,8 @@ class HostsBackground:
                 continue  # переключить некуда — остаёмся на текущем, ждём восстановления
 
             with getattr(self, "mutation_lock", nullcontext()):
+                if not self.can_mutate():
+                    return
                 current = self.manager._load_state()
                 if not self.same_state(st, current) or self.manager.background_options() != opts:
                     continue

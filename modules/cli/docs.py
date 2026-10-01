@@ -44,6 +44,7 @@ LAYOUT_ITEMS = (
     ("changes_log", "data/changes.log", "log"),
     ("control_json", "data/control.json", "secret"),
     ("backups", "data/backups/", "secret"),
+    ("trial", "data/trial.json", "internal"),
     ("bin", "bin/", "external"),
     ("upstream", "upstream/", "external"),
 )

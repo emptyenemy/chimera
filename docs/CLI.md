@@ -64,6 +64,10 @@
 | Настройки → Язык | `chimera lang show` | read |
 | Настройки → Язык | `chimera lang set <auto|ru|en>` | app |
 | Окно: загрузка текстов интерфейса | `chimera lang catalog [ru|en]` | read |
+| Плашка пробы на всех страницах | `chimera trial state` | read |
+| Стратегии / Hosts / Прокси: Попробовать | `chimera trial start <strategy|hosts|tun> <target> [--seconds <seconds>] [--domains <domains>]` | system |
+| Проба: Оставить | `chimera trial confirm <id>` | app |
+| Проба: Вернуть | `chimera trial revert <id>` | system |
 | Стратегии: шапка, Обзор | `chimera winws state` | read |
 | Стратегии: список карточек | `chimera winws strategies` | read |
 | Стратегии → «Запустить» / Обзор → включатель | `chimera winws start [стратегия]` | system |
@@ -1293,6 +1297,53 @@ chimera docs --json
 chimera agent-info --json
 ```
 
+### trial
+
+Пробное применение с проверкой и автооткатом..
+
+#### `chimera trial state`
+
+Текущая проба, результаты проверки и последняя завершённая проба. Исходное состояние и секреты не выдаются. Уровень: чтение.
+
+```
+chimera trial state --json
+```
+
+#### `chimera trial start <strategy|hosts|tun> <target> [--seconds <seconds>] [--domains <domains>]`
+
+Пробно применить стратегию, выключатель hosts или режим TUN. Проверяет контрольные сайты; при сбое или без подтверждения возвращает исходное состояние. Одна проба за раз; другие изменения блокируются до её завершения. Уровень: изменение системы.
+
+- `kind` — strategy, hosts или tun
+- `target` — ID стратегии, on/off для hosts или split/tun
+- `--seconds` — время подтверждения: 15–300 секунд
+- `--domains` — контрольные домены через запятую (до 6); по умолчанию example.com,cloudflare.com
+
+```
+chimera trial start strategy general --seconds 60 --domains example.com,discord.com
+chimera trial start hosts on
+chimera trial start tun tun
+```
+
+#### `chimera trial confirm <id>`
+
+Оставить настройки после успешной проверки. Нужен ID текущей пробы; просроченную пробу подтвердить нельзя. Уровень: изменение приложения.
+
+- `id` — ID текущей пробы из trial state
+
+```
+chimera trial confirm 0123456789abcdef
+```
+
+#### `chimera trial revert <id>`
+
+Вернуть исходные настройки и состояние запуска модуля. При ошибке сохраняет данные для повторного отката. Уровень: изменение системы.
+
+- `id` — ID текущей пробы из trial state
+
+```
+chimera trial revert 0123456789abcdef
+```
+
 ## Файлы
 
 | Путь | Что это |
@@ -1318,5 +1369,6 @@ chimera agent-info --json
 | `data/changes.log` | лог, только читать: Журнал изменений: время, источник (`cli` — команда, `file` — правка списка на диске), команда, результат (`ok` или `error`). |
 | `data/control.json` | секрет: Порт и токен канала управления. Агенту читать не нужно, не показывать. |
 | `data/backups/` | секрет: Локальные снимки до импорта/восстановления (последние 10). Могут содержать секреты; не публиковать. Чтение и восстановление: chimera config backups / restore-preview / restore. |
+| `data/trial.json` | внутреннее состояние: Исходное состояние незавершённой пробы. Не править; chimera trial state / confirm / revert. |
 | `bin/` | внешнее, не править: Бинарники (sing-box, winws2). Не править. |
 | `upstream/` | внешнее, не править: Внешние проекты (сабмодули). Не править. |

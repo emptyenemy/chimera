@@ -41,6 +41,7 @@ class FakeRemote:
         self.dns = {"adapters": [{"index": 7, "name": "Ethernet", "status": "Up", "dns": ["1.1.1.1"]}],
                     "providers": [{"id": "cf", "name": "Cloudflare", "servers": ["1.1.1.1"]}], "trial": None, "trials": []}
         self.config = {"interface": "ui", "ui_backend": "pyside6"}
+        self.trial = {"active": None, "last": None}
         self.log = "строка лога 1\nстрока лога 2\n"
 
     # --- Remote -------------------------------------------------------------------------------
@@ -167,6 +168,22 @@ class FakeRemote:
 
     def m_tg_log(self, offset=0):
         return {"offset": 0, "data": "", "reset": False}
+
+    def m_trial_state(self):
+        return self.trial
+
+    def m_trial_start(self, kind, target, seconds, domains):
+        self.trial = {"active": {"id": "trial-1", "kind": kind, "target": target,
+                                 "phase": "pending", "seconds_left": seconds, "checks_done": True}, "last": None}
+        return self.trial
+
+    def m_trial_confirm(self, trial_id):
+        self.trial = {"active": None, "last": {"id": trial_id, "phase": "confirmed"}}
+        return self.trial
+
+    def m_trial_revert(self, trial_id):
+        self.trial = {"active": None, "last": {"id": trial_id, "phase": "reverted"}}
+        return self.trial
 
     def m_config_read(self):
         return dict(self.config)
@@ -675,4 +692,33 @@ def test_screenshot_exports_svg():
         app.action_goto(1)
         await pilot.pause(0.05)
         assert app.export_screenshot().lstrip().startswith("<svg")
+    drive(scenario)
+
+
+def test_trial_keyboard_flow_keeps_global_timer_visible_between_sections():
+    async def scenario(app, pilot, remote):
+        await online(pilot, app)
+        app.action_goto(2)
+        table = app.query_one("#st-table", DataTable)
+        await until(pilot, lambda: table.row_count == 2)
+        await pilot.press("down", "ctrl+t")
+        assert isinstance(app.screen, ConfirmScreen)
+        await pilot.press("y")
+        await until(pilot, lambda: "trial_start" in remote.methods())
+        assert ("trial_start", ("strategy", "discord", 60, None)) in remote.calls
+        await until(pilot, lambda: app.query_one("#trial-status").display)
+        await pilot.press("escape")
+        assert app.active_section == "home"
+        assert app.query_one("#trial-status").display
+        await pilot.press("ctrl+k")
+        await until(pilot, lambda: ("trial_confirm", ("trial-1",)) in remote.calls)
+        await until(pilot, lambda: not app.query_one("#trial-status").display)
+        app.action_goto(4)
+        await until(pilot, lambda: app.active_section == "proxy")
+        await pilot.press("ctrl+t")
+        await pilot.press("y")
+        await until(pilot, lambda: ("trial_start", ("tun", "tun", 60, None)) in remote.calls)
+        await until(pilot, lambda: app.query_one("#trial-status").display)
+        await pilot.press("ctrl+r")
+        await until(pilot, lambda: ("trial_revert", ("trial-1",)) in remote.calls)
     drive(scenario)

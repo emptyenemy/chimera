@@ -18,6 +18,7 @@ import {
 } from "lucide-react"
 import { cn } from "cn"
 
+import { TrialButton } from "@/components/app/trial"
 import { Fold } from "@/components/app/fold"
 import { LogView } from "@/components/app/log-view"
 import { Page } from "@/components/app/page"
@@ -183,6 +184,7 @@ function StatusCard({
               }
             />
           </Field>
+          <TrialButton kind="strategy" target={selected ?? ""} disabled={!admin || !selected || busy || !!st.external} />
           <Tooltip>
             <TooltipTrigger render={<span />}>
               <Button

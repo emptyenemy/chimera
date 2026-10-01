@@ -364,7 +364,8 @@ def run() -> int:
         logger.info("служба запущена, pid=%s", os.getpid())
         api = Api(service_owned=True)
         api.request_quit = lambda: interrupted.update(flag=True)
-        autostart_modules(api.tg, api.winws, api.proxy, log=logger.info, allow_proxy_pac=False)
+        if api._trial.active is None:
+            autostart_modules(api.tg, api.winws, api.proxy, log=logger.info, allow_proxy_pac=False)
         control.start_for(api)
         try:
             previous_handler = signal.signal(signal.SIGINT, _on_sigint)

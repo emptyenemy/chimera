@@ -27,6 +27,7 @@ def test_service_exposes_api_and_closes_discovery(monkeypatch, tmp_path):
         def __init__(self, *, service_owned):
             assert service_owned
             self.tg = self.winws = self.proxy = SimpleNamespace(config={"autostart": False})
+            self._trial = SimpleNamespace(active=None)
 
         def dispatch(self, method, args):
             return json.dumps({"ok": True, "data": {"service_running": True}})

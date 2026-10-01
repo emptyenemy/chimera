@@ -64,6 +64,10 @@ Levels exist so that remote channels can be restricted. Secrets (the proxy link,
 | Settings → Language | `chimera lang show` | read |
 | Settings → Language | `chimera lang set <auto|ru|en>` | app |
 | Window: loading the interface texts | `chimera lang catalog [ru|en]` | read |
+| Trial banner on every page | `chimera trial state` | read |
+| Strategies / Hosts / Proxy: Try | `chimera trial start <strategy|hosts|tun> <target> [--seconds <seconds>] [--domains <domains>]` | system |
+| Trial: Keep | `chimera trial confirm <id>` | app |
+| Trial: Revert | `chimera trial revert <id>` | system |
 | Strategies: header, Overview | `chimera winws state` | read |
 | Strategies: card list | `chimera winws strategies` | read |
 | Strategies → “Start” / Overview → toggle | `chimera winws start [strategy]` | system |
@@ -1293,6 +1297,53 @@ Summary for agents: program and protocol version, compatible skill version, comm
 chimera agent-info --json
 ```
 
+### trial
+
+Try settings with checks and automatic rollback..
+
+#### `chimera trial state`
+
+Current trial, check results and last completed trial. Original state and secrets are not returned. Level: read-only.
+
+```
+chimera trial state --json
+```
+
+#### `chimera trial start <strategy|hosts|tun> <target> [--seconds <seconds>] [--domains <domains>]`
+
+Try a strategy, the hosts switch or a TUN mode. Checks control sites; restores the original state on failure or without confirmation. One trial at a time; other changes are blocked until it finishes. Level: changes the system.
+
+- `kind` — strategy, hosts or tun
+- `target` — strategy ID, on/off for hosts, or split/tun
+- `--seconds` — confirmation window: 15–300 seconds
+- `--domains` — comma-separated control domains (up to 6); defaults to example.com,cloudflare.com
+
+```
+chimera trial start strategy general --seconds 60 --domains example.com,discord.com
+chimera trial start hosts on
+chimera trial start tun tun
+```
+
+#### `chimera trial confirm <id>`
+
+Keep settings after successful checks. Requires the current trial ID; expired trials cannot be confirmed. Level: changes the app.
+
+- `id` — current trial ID from trial state
+
+```
+chimera trial confirm 0123456789abcdef
+```
+
+#### `chimera trial revert <id>`
+
+Restore original settings and module runtime state. On error, keeps the data for another rollback attempt. Level: changes the system.
+
+- `id` — current trial ID from trial state
+
+```
+chimera trial revert 0123456789abcdef
+```
+
 ## Files
 
 | Path | What it is |
@@ -1318,5 +1369,6 @@ chimera agent-info --json
 | `data/changes.log` | log, read only: Change log: time, source (`cli` for a command, `file` for a list edit on disk), command, result (`ok` or `error`). |
 | `data/control.json` | secret: Port and token of the control channel. An agent does not need to read it; do not show it. |
 | `data/backups/` | secret: Local snapshots before import/restoration (last 10). May contain secrets; do not publish. List and restore with chimera config backups / restore-preview / restore. |
+| `data/trial.json` | internal state: Original state of an unfinished trial. Do not edit; chimera trial state / confirm / revert. |
 | `bin/` | external, do not edit: Binaries (sing-box, winws2). Do not edit. |
 | `upstream/` | external, do not edit: External projects (submodules). Do not edit. |

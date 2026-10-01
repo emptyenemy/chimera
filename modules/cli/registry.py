@@ -100,7 +100,7 @@ class Action:
 GROUPS = LazyMap((
     "status", "start", "tui", "stop", "restart", "version", "update", "autostart", "discord", "sources", "config",
     "lang", "winws", "proxy", "tg", "hosts", "dns", "panic", "doctor", "lists", "check", "logs", "service",
-    "path", "docs", "agent-info"), "cli.group")
+    "path", "docs", "agent-info", "trial"), "cli.group")
 
 # Что не превращается в команду и почему. Тест паритета падает на любом публичном методе
 # Api, которого нет ни в таблице действий, ни здесь.
@@ -163,6 +163,18 @@ ACTIONS: tuple[Action, ...] = (
     _a("lang", "catalog", handler="lang_catalog", methods=("i18n_get",), offline=True,
        args=(Arg("язык", "choice", optional=True, choices=("ru", "en")),),
        examples=("chimera lang catalog en --json",)),
+
+    # --- пробное применение ----------------------------------------------------------
+    _a("trial", "state", "trial_state", examples=("chimera trial state --json",)),
+    _a("trial", "start", handler="trial_start", methods=("trial_start",), level=SYSTEM,
+       args=(Arg("kind", "choice", choices=("strategy", "hosts", "tun")), Arg("target", "str"),
+             Arg("seconds", "int", flag=True, default=60), Arg("domains", "str", flag=True, default=None)),
+       examples=("chimera trial start strategy general --seconds 60 --domains example.com,discord.com",
+                 "chimera trial start hosts on", "chimera trial start tun tun")),
+    _a("trial", "confirm", "trial_confirm", args=(Arg("id", "str"),), level=APP,
+       examples=("chimera trial confirm 0123456789abcdef",)),
+    _a("trial", "revert", "trial_revert", args=(Arg("id", "str"),), level=SYSTEM,
+       examples=("chimera trial revert 0123456789abcdef",)),
 
     # --- обход DPI ------------------------------------------------------------------
     _a("winws", "state", "winws_state", examples=("chimera winws state",)),

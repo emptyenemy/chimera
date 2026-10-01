@@ -746,7 +746,14 @@ def h_config_restore(ctx, act, ns):
     return Result(res, lines, exit_code=1 if res["errors"] or res["rollback_errors"] else 0)
 
 
+def h_trial_start(ctx, act, ns):
+    kind, target, seconds, domains = arg_values(act, ns)
+    checks = [name.strip() for name in domains.split(",")] if domains is not None else None
+    return Result(ctx.call("trial_start", kind, target, seconds, checks))
+
+
 HANDLERS = {
+    "trial_start": h_trial_start,
     "status": h_status, "version": h_version, "start": h_start, "tui": h_tui, "stop": h_stop, "restart": h_restart,
     "sources_check": h_sources_check, "config_get": h_config_get, "config_set": h_config_set,
     "lang_show": h_lang_show, "lang_set": h_lang_set, "lang_catalog": h_lang_catalog,

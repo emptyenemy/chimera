@@ -32,7 +32,7 @@ from tui.remote import Offline, RemoteError
 from tui.screens import ConfirmScreen, HelpScreen
 
 BASE_SOURCES = (("app", "app_info"), ("winws", "winws_state"), ("proxy", "proxy_state"),
-                ("tg", "tg_state"), ("hosts_state", "hosts_state"))
+                ("tg", "tg_state"), ("hosts_state", "hosts_state"), ("trial", "trial_state"))
 
 SECTIONS = (("overview", _tr('tui.textual_app.overview'), panes.OverviewPane), ("strategies", _tr('tui.textual_app.strategies'), panes.StrategiesPane),
         ("lists", _tr('tui.textual_app.lists'), panes.ListsPane), ("proxy", _tr('tui.textual_app.proxy'), panes.ProxyPane),
@@ -51,6 +51,7 @@ Screen { background: $background; }
 #top.offline { color: $error; }
 #status { height: 1; padding: 0 1; color: $foreground 80%; }
 #status.error { color: $error; }
+#trial-status { height: auto; padding: 0 1; color: $primary; background: $surface; }
 ContentSwitcher { height: 1fr; }
 #home { width: 72; max-width: 100%; height: 1fr; margin: 0 2; padding: 1 2; }
 #logo { height: auto; color: $primary; text-style: bold; margin-bottom: 1; }
@@ -98,6 +99,9 @@ class ChimeraTui(App):
     BINDINGS = [
         Binding("q", "quit", _tr('tui.textual_app.quit')),
         Binding("ctrl+c", "quit", _tr('tui.textual_app.quit'), show=False, priority=True),
+        Binding("ctrl+t", "try_settings", _tr("tui.trial.try"), show=False),
+        Binding("ctrl+k", "keep_trial", _tr("tui.trial.keep"), show=False),
+        Binding("ctrl+r", "revert_trial", _tr("tui.trial.revert"), show=False),
         Binding("question_mark", "help", _tr('tui.textual_app.help')),
         Binding("escape", "back", _tr('tui.menu.back'), show=False),
         *[Binding(keys, f"navigate('{direction}')", "", show=False, priority=True)
@@ -124,7 +128,7 @@ class ChimeraTui(App):
         self._tick = 0
         self._busy = {"fast": False, "slow": False}
         self._starting = True
-        self._content = self._top = self._status = self._keys = self._home = None
+        self._content = self._top = self._status = self._keys = self._home = self._trial_status = None
         self._force = False
         self._full_render = False
 
@@ -161,6 +165,7 @@ class ChimeraTui(App):
             yield HomeMenu(SECTIONS)
             for sid, _, cls in SECTIONS:
                 yield cls(id=sid)
+        yield Static("", id="trial-status", markup=False)
         yield Static("", id="status", markup=False)
         yield Static(_tr("tui.menu.keys.home"), id="keys", markup=False)
 
@@ -172,6 +177,8 @@ class ChimeraTui(App):
         self._keys = self.query_one('#keys', Static)
         self._top = self.query_one("#top", Static)
         self._status = self.query_one("#status", Static)
+        self._trial_status = self.query_one("#trial-status", Static)
+        self._trial_status.display = False
         self.register_theme(THEME)
         self.theme = "chimera"
         self._update_top()
@@ -261,6 +268,44 @@ class ChimeraTui(App):
         if not self._blocked():
             self.push_screen(HelpScreen())
 
+    def action_try_settings(self) -> None:
+        if self._blocked():
+            return
+        pane = self._active_pane()
+        target = pane.trial_target() if pane is not None else None
+        if not target:
+            self.status(_tr("tui.trial.select"))
+            return
+        kind, value = target
+        self.confirm(_tr("tui.trial.confirm", target=value),
+                     lambda: self.act(_tr("tui.trial.try"), "trial_start", kind, value, 60, None))
+
+    def _finish_trial(self, keep):
+        if self._blocked():
+            return
+        active = (self.data("trial") or {}).get("active") or {}
+        if not active.get("id"):
+            self.status(_tr("tui.trial.none"))
+            return
+        self.act(_tr("tui.trial.keep") if keep else _tr("tui.trial.revert"),
+                 "trial_confirm" if keep else "trial_revert", active["id"])
+
+    def action_keep_trial(self):
+        self._finish_trial(True)
+
+    def action_revert_trial(self):
+        self._finish_trial(False)
+
+    def _render_trial(self):
+        active = (self.data("trial") or {}).get("active")
+        self._trial_status.display = bool(active)
+        if not active:
+            return
+        if active.get("error"):
+            self._trial_status.update(_tr(active["error"]))
+        else:
+            self._trial_status.update(_tr("tui.trial.status", target=active.get("target", ""), seconds=active.get("seconds_left", 0)))
+
     def confirm(self, text: str, on_yes) -> None:
         self.push_screen(ConfirmScreen(text), lambda ok: on_yes() if ok else None)
 
@@ -343,6 +388,8 @@ class ChimeraTui(App):
                 changed.append(key)
         if changed:
             self._home.render_state()
+            if "trial" in changed:
+                self._render_trial()
         if fast and self._full_render:
             self._full_render = False
             self.resync()

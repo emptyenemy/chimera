@@ -72,6 +72,9 @@ class Pane(Vertical):
     def focus_primary(self) -> None:
         """Куда ставить фокус при открытии разделы."""
 
+    def trial_target(self):
+        return None
+
     def action_cycle_focus(self) -> None:
         self.screen.focus_next()
 
@@ -203,6 +206,10 @@ class StrategiesPane(Pane):
 
     def focus_primary(self) -> None:
         self.query_one("#st-table", DataTable).focus()
+
+    def trial_target(self):
+        sid = selected_key(self.query_one("#st-table", DataTable))
+        return ("strategy", sid) if sid else None
 
     def action_search(self) -> None:
         self.query_one("#st-search", Input).focus()
@@ -386,6 +393,10 @@ class ProxyPane(Pane):
         if mode and mode != (self.app.data("proxy") or {}).get("mode", "pac"):
             self.app.act(_tr('tui.panes.proxy_mode', p0=mode), "proxy_set_mode", mode, journal=f"proxy mode {mode}")
 
+    def trial_target(self):
+        mode = (self.app.data("proxy") or {}).get("mode", "pac")
+        return "tun", "split" if mode == "split" else "tun"
+
     def _apps(self) -> list:
         return list((self.app.data("proxy") or {}).get("apps") or [])
 
@@ -456,6 +467,9 @@ class HostsPane(Pane):
         if want != bool((self.app.data("hosts_state") or {}).get("enabled")):
             self.app.act(_tr('tui.panes.enabling_hosts') if want else _tr('tui.panes.disabling_hosts'), "hosts_set_enabled", want,
                          journal="hosts on" if want else "hosts off")
+
+    def trial_target(self):
+        return "hosts", "off" if (self.app.data("hosts_state") or {}).get("applied") else "on"
 
     def on_data_table_row_selected(self, event: DataTable.RowSelected) -> None:
         event.stop()

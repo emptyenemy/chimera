@@ -39,7 +39,8 @@ The tools work independently and share domain lists:
 - **Agent setup**: bundled skill, instructions, versioned docs and JSON commands let your agent diagnose and configure Chimera at your request.
 - **Share configurations**: export selected sections to a `.chimera` file; preview the contents before importing.
 - **Import backups**: preview and restore through the window or CLI; save the current state before restoring and roll back on failure ([details, in Russian](docs/BACKUPS.md)).
-- **CLI and TUI**: commands and a full-screen terminal interface for controlling the running application or service.
+- **CLI and TUI**: commands and a keyboard menu with arrows/WASD for controlling the application or service.
+- **Configuration trials (next update)**: strategies, hosts on/off and TUN with control checks, confirmation and automatic rollback ([details, in Russian](docs/TRIALS.md)).
 - **Live lists**: edits to `lists/*.txt` are validated and applied automatically.
 - **Languages and themes**: Russian/English and system/light/dark themes, selectable in Settings.
 

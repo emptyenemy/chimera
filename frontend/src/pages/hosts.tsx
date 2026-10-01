@@ -21,6 +21,7 @@ import { cn } from "cn"
 
 import { Page } from "@/components/app/page"
 import { StatusDot } from "@/components/app/status-dot"
+import { TrialButton } from "@/components/app/trial"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -195,6 +196,7 @@ function StatusCard({ st }: { st: HostsView }) {
         <div className="min-w-0 grow truncate font-semibold" data-testid="hosts-status-title">
           {title}
         </div>
+        <TrialButton kind="hosts" target={on ? "off" : "on"} disabled={busy || noAdmin || (!on && !bound)} />
         <Button
           size="sm"
           variant={on ? "destructive" : "default"}

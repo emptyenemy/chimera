@@ -17,6 +17,7 @@ import { notify } from "@/lib/notify"
 import { router } from "@/lib/router"
 import { MODULE_TOTAL, useStatus } from "@/lib/status"
 import { optimistic, store, useStore, useStoreError } from "@/lib/store"
+import { useTrialPending } from "@/lib/trials"
 import type { AppInfo } from "@/lib/types"
 import { MODULES, proxyScope, type ModuleDef } from "@/pages/dashboard-modules"
 
@@ -107,6 +108,7 @@ function ModuleLine({ m, st, on, pending }: { m: ModuleDef<object>; st: object |
 function ModuleCard({ m }: { m: ModuleDef<object> }) {
   const st = useStore<object>(m.key)
   const app = useStore<AppInfo>("app")
+  const trialPending = useTrialPending()
   const pending = !!useStore<Pending>(PENDING_KEY)?.[m.key]
   const on = m.on(st)
   const blocked = !!m.blocked(st, app)
@@ -141,7 +143,7 @@ function ModuleCard({ m }: { m: ModuleDef<object> }) {
           className="relative"
           aria-label={t("dashboard.toggle", { module: title })}
           checked={on}
-          disabled={blocked || pending}
+          disabled={blocked || pending || trialPending}
           onCheckedChange={(checked) => void toggleModule(m, checked)}
         />
       </CardContent>

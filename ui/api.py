@@ -33,6 +33,7 @@ from modules import (
     service,
     shareconfig,
     upstream,
+    trials,
     winproc,
 )
 from modules import discord as discord_cache
@@ -47,6 +48,7 @@ from modules.hosts.manager import is_admin
 from ui.hub import StateHub
 from ui.shareops import ShareOps
 from ui.updater import Updater
+from ui.trials import TrialOps
 
 WEB_DIR = Path(__file__).parent / "web-next"
 
@@ -71,6 +73,7 @@ def _auto_snapshot(sections, list_args=()):
                 bound = signature.bind(self, *args, **kwargs)
                 bound.apply_defaults()
                 with self._mutation_lock:
+                    self._trial_guard(fn.__name__)
                     remote = self._backup_owner(fn.__name__, *list(bound.arguments.values())[1:])
                     if remote is not None:
                         return remote
@@ -107,12 +110,17 @@ class Api:
         self.hosts = HostsManager()
         self.hosts.background.mutation_lock = self._mutation_lock
         self._smoke = os.environ.get("CHIMERA_SMOKE") == "1"
-        if not self._smoke and (service_owned or not service.is_running()):
-            self.hosts.start_background()
         self.dns = DnsJumper()
         self.tg = TgProxy()
         self.winws = WinwsManager()
         self.proxy = ProxyManager()
+        self._trial = trials.TrialManager(TrialOps(self), paths.data_path("trial.json"), self._mutation_lock,
+                                          changed=self._trial_changed, load_pending=service_owned or not service.is_running())
+        self.hosts.background.can_mutate = lambda: self._trial.active is None
+        if service_owned or not service.is_running():
+            self._trial.recover()
+        if not self._smoke and self._trial.active is None and (service_owned or not service.is_running()):
+            self.hosts.start_background()
         # Автозапуски — в фоне: tg/winws/proxy поднимаются секундами (subprocess,
         # маршруты, TUN), и делать это до show() окна значит показывать пустой
         # экран всё это время. Дашборд подхватит их своим опросом, ошибки
@@ -142,6 +150,7 @@ class Api:
             ("tgStats", self.tg_stats, 1.0, True),
             ("dns", self.dns_state, 15.0, True),
             ("selfupdate", self.selfupdate_state, 5.0, False),
+            ("trial", self.trial_state, 1.0, False),
         ])
         self.hub.start()
         if not self._smoke:
@@ -156,6 +165,10 @@ class Api:
 
     def _lists_file_changed(self, kind, name) -> list:
         with self._mutation_lock:
+            trial = getattr(self, "_trial", None)
+            if trial is not None and trial.active is not None:
+                self._trial_list_events = [*getattr(self, "_trial_list_events", []), (kind, name)]
+                return [{"module": "trial", "error": str(ChimeraError("err.trial.busy"))}]
             errors = liveapply.apply_event(kind, name, self.winws, self.proxy, self.hosts)
         hub = getattr(self, "hub", None)
         if hub is not None:
@@ -184,7 +197,8 @@ class Api:
     def _autostart_all(self) -> None:
         # общая с service-режимом логика (modules/service.py) — ошибки одного
         # модуля не мешают остальным и уедут в UI через *_state, как и раньше.
-        service.autostart_modules(self.tg, self.winws, self.proxy)
+        if self._trial.active is None:
+            service.autostart_modules(self.tg, self.winws, self.proxy)
 
     @staticmethod
     def _refresh_autostart_task() -> None:
@@ -215,6 +229,9 @@ class Api:
         if watcher is not None:
             watcher.stop()  # применение правки не должно идти к уже погашенным модулям
         self.hosts.stop_background()
+        trial = getattr(self, '_trial', None)
+        if trial is not None and (getattr(self, '_service_owned', False) or not service.is_running()):
+            trial.recover()
         if getattr(self, "_smoke", False):
             self.tg.stop()
             return
@@ -240,6 +257,12 @@ class Api:
         Шаги независимы: сбой одного (нет прав, занятый файл) остальным не мешает. Ответ —
         по шагу на строку: {step, ok, error?}. Модули и настройки остаются как были, поэтому
         включить всё обратно можно обычными переключателями."""
+        trial = getattr(self, '_trial', None)
+
+        def trial_step():
+            if trial is not None:
+                trial.abandon()
+
         def service_step():
             if service.is_running():
                 service.send_stop()
@@ -270,6 +293,8 @@ class Api:
         # Прокси останавливается до остального — его stop() заодно снимает системный PAC.
         steps = (("service", service_step), ("winws", self.winws.stop), ("proxy", self.proxy.stop),
                  ("tg", self.tg.stop), ("hosts", hosts_step), ("dns", dns_step))
+        if trial is not None and trial.active is not None:
+            steps = (("trial", trial_step), *steps)
         report = []
         for name, fn in steps:
             try:
@@ -374,7 +399,8 @@ class Api:
             from modules.cli import client
             result = client.connect().api(method, *args)
             refresh = method in ("config_backup_restore", "config_import_apply", "config_set", "tg_regen_secret",
-                                 "winws_start", "game_filter_set", "ipset_set", "ipset_update", "appearance_apply")
+                                 "winws_start", "game_filter_set", "ipset_set", "ipset_update", "appearance_apply",
+                                 "trial_start", "trial_confirm", "trial_revert")
             refresh |= method.startswith(("proxy_set_", "tg_set_", "winws_set_", "lists_", "hosts_", "dns_")) and not self.is_read(method)
             if refresh:
                 self.proxy.config = self.proxy._load()
@@ -444,7 +470,18 @@ class Api:
                 if remote is not None:
                     return remote
                 with self._mutation_lock:
-                    return _ok(configbackups.restore(backup_id, confirmed, ShareOps(self)))
+                    trial = getattr(self, "_trial", None)
+                    interrupted = trial is not None and trial.active is not None
+                    if interrupted and trial.active["phase"] == "pending":
+                        raise ChimeraError("err.trial.busy")
+                    self._trial_restoring = interrupted
+                    try:
+                        result = configbackups.restore(backup_id, confirmed, ShareOps(self))
+                        if interrupted and not result["errors"]:
+                            trial.abandon()
+                        return _ok(result)
+                    finally:
+                        self._trial_restoring = False
         except Exception as e:
             return _err(e)
 
@@ -557,6 +594,7 @@ class Api:
             if self.is_read(method):
                 return json.dumps(fn(*args))
             with self._mutation_lock:
+                self._trial_guard(method)
                 return json.dumps(fn(*args))
         except Exception as e:
             return json.dumps(_err(e))
@@ -573,6 +611,7 @@ class Api:
         (("dns_",), ("dns",)),
         (("lists_",), ("proxy", "hosts", "winws")),  # счётчики доменов в выбранных списках
         (("selfupdate_",), ("selfupdate",)),
+        (("trial_",), ("trial", "winws", "proxy", "hosts")),
         (("panic_", "config_import_", "config_backup_restore"), ("winws", "proxy", "tg", "hosts", "dns", "filters")),
     )
     # чтения ничего не меняют — после них хаб не дёргаем
@@ -607,6 +646,65 @@ class Api:
         for prefixes, keys in self._POKE:
             if method.startswith(prefixes):
                 hub.poke(*keys)
+
+    # --- пробное применение -----------------------------------------------------
+
+    def _trial_changed(self):
+        hub = getattr(self, "hub", None)
+        if hub is not None:
+            hub.poke("trial", "winws", "proxy", "hosts")
+        trial = getattr(self, "_trial", None)
+        if trial is not None and trial.active is None:
+            events, self._trial_list_events = getattr(self, "_trial_list_events", []), []
+            for kind, name in events:
+                try:
+                    liveapply.apply_event(kind, name, self.winws, self.proxy, self.hosts)
+                except Exception:
+                    applog.write("Не удалось применить отложенную правку списка после пробы")
+
+    def _trial_guard(self, method):
+        trial = getattr(self, "_trial", None)
+        if getattr(self, "_trial_restoring", False):
+            return
+        if trial is None or method in ("trial_start", "trial_confirm", "trial_revert", "panic_all") or self.is_read(method):
+            return
+        state = self.trial_state()
+        if not state.get("ok"):
+            raise ChimeraError("err.trial.owner")
+        active = state["data"].get("active")
+        if method == "config_backup_restore" and active is not None and active["phase"] in ("invalid", "interrupted", "rollback_failed"):
+            return
+        if active is not None:
+            raise ChimeraError("err.trial.busy")
+
+    def trial_state(self):
+        try:
+            remote = self._backup_owner("trial_state")
+            return remote if remote is not None else _ok(self._trial.state())
+        except Exception as e:
+            return _err(e)
+
+    def trial_start(self, kind, target, seconds=60, domains=None):
+        try:
+            with self._mutation_lock:
+                remote = self._backup_owner("trial_start", kind, target, seconds, domains)
+                return remote if remote is not None else _ok(self._trial.start(kind, target, seconds, domains))
+        except Exception as e:
+            return _err(e)
+
+    def trial_confirm(self, trial_id):
+        try:
+            remote = self._backup_owner("trial_confirm", trial_id)
+            return remote if remote is not None else _ok(self._trial.confirm(trial_id))
+        except Exception as e:
+            return _err(e)
+
+    def trial_revert(self, trial_id):
+        try:
+            remote = self._backup_owner("trial_revert", trial_id)
+            return remote if remote is not None else _ok(self._trial.revert(trial_id))
+        except Exception as e:
+            return _err(e)
 
     # --- hosts -------------------------------------------------------------
 

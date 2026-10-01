@@ -33,7 +33,7 @@ HOSTS_PATH = Path(os.environ.get("SystemRoot", r"C:\Windows")) / "System32" / "d
 
 BEGIN_MARK = "# >>> chimera-hosts >>>"
 END_MARK = "# <<< chimera-hosts <<<"
-BLOCK_RE = re.compile(rf"\r?\n?{re.escape(BEGIN_MARK)}.*?{re.escape(END_MARK)}\r?\n?", re.S)
+BLOCK_RE = re.compile(rf"{re.escape(BEGIN_MARK)}.*?{re.escape(END_MARK)}\r?\n?", re.S)
 
 # по этому домену меряем работоспособность/пинг провайдеров
 PING_TEST_DOMAIN = "chatgpt.com"
@@ -202,10 +202,12 @@ class HostsManager:
     # --- hosts-файл ---------------------------------------------------------
 
     def _read_hosts(self) -> str:
-        return self.hosts_path.read_text(encoding="utf-8", errors="replace")
+        with open(self.hosts_path, encoding="utf-8", errors="replace", newline="") as file:
+            return file.read()
 
     def _write_hosts(self, text: str) -> None:
-        self.hosts_path.write_text(text, encoding="utf-8")
+        with open(self.hosts_path, "w", encoding="utf-8", newline="") as file:
+            file.write(text)
         subprocess.run(["ipconfig", "/flushdns"], capture_output=True,
                        creationflags=subprocess.CREATE_NO_WINDOW)
 
@@ -214,13 +216,20 @@ class HostsManager:
 
     def _write_block(self, groups: list[tuple[str, list[dict]]]) -> None:
         """Пишет один блок, сгруппированный по провайдерам (подзаголовок на группу)."""
-        text = BLOCK_RE.sub("\n", self._read_hosts())
+        text = self._read_hosts()
+        newline = "\r\n" if "\r\n" in text else "\n"
         lines = [BEGIN_MARK]
         for provider_name, entries in groups:
             lines.append(f"# {provider_name}")
             lines += [f"{e['ip']} {e['host']}" for e in entries]
         lines.append(END_MARK)
-        self._write_hosts(text.rstrip("\n") + "\n\n" + "\n".join(lines) + "\n")
+        block = newline.join(lines) + newline
+        match = BLOCK_RE.search(text)
+        if match:
+            text = text[:match.start()] + block + text[match.end():]
+        else:
+            text += ("" if text.endswith(("\n", "\r")) else newline) + newline + block
+        self._write_hosts(text)
 
     # --- синхронизация hosts с привязками -----------------------------------
 
@@ -242,12 +251,14 @@ class HostsManager:
 
         if not plan:
             with mutation_lock or nullcontext():
+                if expected_state is not None and not self.background.can_mutate():
+                    return self.state()
                 if expected_state is not None and not self.background.same_state(expected_state, self._load_state()):
                     return self.state()
                 if self._is_applied():
                     if not is_admin():
                         raise ChimeraPermissionError('err.hosts.manager.administrator_rights_are_required_to_write_hosts')
-                    self._write_hosts(BLOCK_RE.sub("\n", self._read_hosts()))
+                    self._write_hosts(BLOCK_RE.sub("", self._read_hosts()))
                 st = self._load_state()
                 st["entries"] = []
                 self._save_state(st)
@@ -284,6 +295,8 @@ class HostsManager:
                 raise ValueError("; ".join(unavailable))
             raise ChimeraValueError('err.hosts.manager.no_addresses_resolved_are_the_providers_unavaila')
         with mutation_lock or nullcontext():
+            if expected_state is not None and not self.background.can_mutate():
+                return self.state()
             if expected_state is not None and not self.background.same_state(expected_state, self._load_state()):
                 return self.state()
             self._write_block(groups)

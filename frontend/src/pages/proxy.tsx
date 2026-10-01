@@ -20,10 +20,11 @@ import {
 import { LogView } from "@/components/app/log-view"
 import { Page } from "@/components/app/page"
 import { StatusDot } from "@/components/app/status-dot"
+import { TrialButton } from "@/components/app/trial"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardAction, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty"
@@ -188,6 +189,7 @@ function ModeCard({ st }: { st: ProxyView }) {
     <Card size="sm" data-testid="proxy-mode">
       <CardHeader>
         <CardTitle>{t("proxy.mode.title")}</CardTitle>
+        <CardAction><TrialButton kind="tun" target={mode === "split" ? "split" : "tun"} disabled={!st.parsed || !st.core?.present || !!st.external} label={t("trial.tryTun")} /></CardAction>
       </CardHeader>
       <CardContent>
         <FieldGroup className="gap-3">

@@ -1,9 +1,11 @@
 import { useEffect, useState, type CSSProperties } from "react"
 
+import { TrialBanner } from "@/components/app/trial"
 import { AppSidebar } from "@/components/app/app-sidebar"
 import { DialogHost } from "@/components/app/dialog-host"
 import { SidebarResizer } from "@/components/app/sidebar-resizer"
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar"
+import { FieldSet } from "@/components/ui/field"
 import { Toaster } from "@/components/ui/toast"
 import { TooltipProvider } from "@/components/ui/tooltip"
 import { useLanguageSetting } from "@/lib/language"
@@ -15,6 +17,7 @@ import {
   loadSidebar,
   saveSidebar,
 } from "@/lib/sidebar-state"
+import { useTrialPending } from "@/lib/trials"
 import { useUpdateNotice } from "@/lib/update-notice"
 import { pageById } from "@/pages/registry"
 
@@ -28,6 +31,7 @@ function initialWidth(): number {
 export default function App() {
   useLanguageSetting()
   const page = useCurrentPage()
+  const trialPending = useTrialPending()
   const [open, setOpen] = useState(() => !loadSidebar().collapsed)
   const [width, setWidth] = useState(initialWidth)
   useUpdateNotice()
@@ -56,7 +60,10 @@ export default function App() {
           <AppSidebar />
           <SidebarResizer width={width} onWidth={setWidth} />
           <SidebarInset id="main" data-testid="main" className="h-svh overflow-y-auto overflow-x-hidden">
-            <Current />
+            <TrialBanner />
+            <FieldSet disabled={trialPending && page !== "dashboard"} className="contents">
+              <Current />
+            </FieldSet>
           </SidebarInset>
         </SidebarProvider>
         <DialogHost />
