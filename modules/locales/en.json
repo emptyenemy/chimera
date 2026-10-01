@@ -1128,7 +1128,7 @@
   "tui.panes.pac_no_administrator_rights": "PAC (no administrator rights)",
   "tui.panes.present": "present",
   "tui.panes.provider": "Provider",
-  "tui.panes.providers_and_their_assigned_lists_enter_to_sele": "Providers and their assigned lists (Enter to select lists)",
+  "tui.panes.providers_and_their_assigned_lists_enter_to_sele": "Providers: Enter to select lists or toggle a built-in set",
   "tui.panes.providers_enter_to_apply_with_rollback_after_s": "Providers (Enter to apply with rollback after {p0} s)",
   "tui.panes.proxy": "proxy: {p0}",
   "tui.panes.proxy_lists": "Proxy lists",

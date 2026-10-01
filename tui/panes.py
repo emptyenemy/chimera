@@ -457,8 +457,14 @@ class HostsPane(Pane):
                     sw.value = bool(st.get("enabled"))
         ov = self.app.data("hosts") or {}
         assigned = self._assignments()
-        rows = [(p["id"], p.get("name") or p["id"], p.get("type", ""), ", ".join(assigned.get(p["id"]) or []) or "—")
-                for p in ov.get("providers") or []]
+        rows = []
+        for provider in ov.get("providers") or []:
+            value = assigned.get(provider["id"])
+            if provider.get("type") == "static":
+                connection = _tr('tui.panes.enabled') if value else "—"
+            else:
+                connection = ", ".join(value or []) or "—"
+            rows.append((provider["id"], provider.get("name") or provider["id"], provider.get("type", ""), connection))
         fill(self.query_one("#hs-table", DataTable), rows)
 
     def on_switch_changed(self, event: Switch.Changed) -> None:
@@ -474,6 +480,18 @@ class HostsPane(Pane):
     def on_data_table_row_selected(self, event: DataTable.RowSelected) -> None:
         event.stop()
         pid = event.row_key.value
+        provider = next((p for p in (self.app.data("hosts") or {}).get("providers") or [] if p["id"] == pid), {})
+        if provider.get("type") == "static":
+            mapping = self._assignments()
+            enabled = not bool(mapping.get(pid))
+            if enabled:
+                mapping[pid] = True
+            else:
+                mapping.pop(pid, None)
+            label = _tr('tui.panes.enabled') if enabled else _tr('tui.panes.disabled')
+            self.app.act(f"{provider.get('name') or pid}: {label}", "hosts_set_assignments", mapping,
+                         journal=f"hosts assign {pid}={enabled}")
+            return
         names = [i["name"] for i in (self.app.data("hosts") or {}).get("lists") or []]
 
         def chosen(result):

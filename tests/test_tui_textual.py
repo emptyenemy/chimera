@@ -119,7 +119,8 @@ class FakeRemote:
         return {}
 
     def m_hosts_overview(self):
-        return {"providers": [{"id": "comss", "name": "Comss", "type": "dns"}, {"id": "xbox", "name": "Xbox", "type": "static"}],
+        return {"providers": [{"id": "comss", "name": "Comss", "type": "dns"}, {"id": "malw", "name": "Malw", "type": "dns"},
+                                 {"id": "flowseal", "name": "Flowseal", "type": "static"}],
                 "lists": [{"name": "discord", "count": 10}, {"name": "youtube", "count": 20}], "state": self.hosts}
 
     def m_hosts_set_assignments(self, mapping):
@@ -575,16 +576,16 @@ def test_hosts_switch_and_provider_lists_picker():
         await pilot.pause(0.05)
         await pilot.press("5")
         table = app.query_one("#hs-table", DataTable)
-        await until(pilot, lambda: table.row_count == 2)
+        await until(pilot, lambda: table.row_count == 3)
         assert table.get_row_at(0)[2] == "discord"
         table.focus()
-        await pilot.press("down", "enter")        # xbox: выбрать списки
+        await pilot.press("down", "enter")        # malw: выбрать списки
         assert isinstance(app.screen, ListPicker)
         await pilot.press("space")                # отметить первый список
         app.screen.query_one("#ok").focus()
         await pilot.press("enter")
         await until(pilot, lambda: any(c[0] == "hosts_set_assignments" for c in remote.calls))
-        assert ("hosts_set_assignments", ({"comss": ["discord"], "xbox": ["discord"]},)) in remote.calls
+        assert ("hosts_set_assignments", ({"comss": ["discord"], "malw": ["discord"]},)) in remote.calls
         app.query_one("#hs-enabled", Switch).focus()
         await pilot.press("space")
         await until(pilot, lambda: ("hosts_set_enabled", (False,)) in remote.calls)
@@ -722,3 +723,24 @@ def test_trial_keyboard_flow_keeps_global_timer_visible_between_sections():
         await pilot.press("ctrl+r")
         await until(pilot, lambda: ("trial_revert", ("trial-1",)) in remote.calls)
     drive(scenario)
+
+
+def test_static_hosts_provider_renders_and_toggles_boolean_with_enter():
+    remote = FakeRemote()
+    remote.hosts["assignments"]["flowseal"] = True
+
+    async def scenario(app, pilot, remote):
+        await online(pilot, app)
+        app.action_goto(5)
+        table = app.query_one("#hs-table", DataTable)
+        await until(pilot, lambda: table.row_count == 3)
+        assert table.get_row_at(2)[2] == "включено"
+        table.focus()
+        await pilot.press("down", "down", "enter")
+        await until(pilot, lambda: ("hosts_set_assignments", ({"comss": ["discord"]},)) in remote.calls)
+        assert not isinstance(app.screen, ListPicker)
+        await until(pilot, lambda: table.get_row_at(2)[2] == "—")
+        await pilot.press("enter")
+        await until(pilot, lambda: ("hosts_set_assignments", ({"comss": ["discord"], "flowseal": True},)) in remote.calls)
+        await until(pilot, lambda: table.get_row_at(2)[2] == "включено")
+    drive(scenario, remote)

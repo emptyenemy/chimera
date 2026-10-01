@@ -1136,7 +1136,7 @@
   "tui.panes.pac_no_administrator_rights": "PAC (без прав администратора)",
   "tui.panes.present": "есть",
   "tui.panes.provider": "Провайдер",
-  "tui.panes.providers_and_their_assigned_lists_enter_to_sele": "Провайдеры и привязанные к ним списки (Enter — выбрать списки)",
+  "tui.panes.providers_and_their_assigned_lists_enter_to_sele": "Провайдеры: Enter — выбрать списки или включить встроенный набор",
   "tui.panes.providers_enter_to_apply_with_rollback_after_s": "Провайдеры (Enter — применить к выбранному адаптеру с откатом через {p0} с)",
   "tui.panes.proxy": "прокси: {p0}",
   "tui.panes.proxy_lists": "Списки прокси",
