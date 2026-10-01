@@ -37,11 +37,17 @@ await new Promise((resolve, reject) => { ws.onopen = resolve; ws.onerror = rejec
 await call("Runtime.enable");
 for (let attempt = 0; attempt < 300; attempt++) {
   const ready = await call("Runtime.evaluate", {
-    expression: "document.body?.classList.contains('ready') && typeof api === 'function'",
+    expression: "typeof api === 'function' && typeof Bridge !== 'undefined' && typeof Bridge.call === 'function' && !!document.querySelector('[data-testid=sidebar]')",
     returnByValue: true,
   });
   if (ready.result?.result?.value) break;
-  if (attempt === 299) throw new Error("интерфейс окна не загрузился");
+  if (attempt === 299) {
+    const diagnostic = await call("Runtime.evaluate", {
+      expression: "JSON.stringify({ title: document.title, origin: location.origin, state: document.readyState, api: typeof api, body: document.body?.className, http: !!window.__CHIMERA_HTTP__, text: document.body?.innerText.slice(0, 200) })",
+      returnByValue: true,
+    });
+    throw new Error("интерфейс окна не загрузился: " + diagnostic.result?.result?.value + "; " + errors.join("; "));
+  }
   await new Promise(resolve => setTimeout(resolve, 100));
 }
 await call("Emulation.setDeviceMetricsOverride", { width: 1280, height: 820, deviceScaleFactor: 1, mobile: false });
