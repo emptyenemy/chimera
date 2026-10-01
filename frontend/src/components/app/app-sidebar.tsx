@@ -1,4 +1,4 @@
-import { PanelLeftCloseIcon, PanelLeftOpenIcon, ServerIcon } from "lucide-react"
+import { PanelLeftCloseIcon, PanelLeftOpenIcon, ServerIcon, ShieldIcon } from "lucide-react"
 
 import { BrandLogo } from "@/components/app/brand-logo"
 import { StatusDot } from "@/components/app/status-dot"
@@ -18,7 +18,10 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
+import { api } from "@/lib/bridge"
 import { fmtVersion } from "@/lib/format"
+import { useState } from "react"
+import { notify } from "@/lib/notify"
 import { t } from "@/lib/i18n"
 import { router, useCurrentPage } from "@/lib/router"
 import { MODULE_TOTAL, useStatus } from "@/lib/status"
@@ -27,6 +30,20 @@ import type { AppInfo, ModuleKey, SelfUpdateState } from "@/lib/types"
 import { PAGES, type PageDef } from "@/pages/registry"
 
 /** Точка у пункта меню: горит, когда модуль страницы включён, красная — при ошибке опроса. */
+function ElevateButton() {
+  const [pending, setPending] = useState(false)
+  return <Button variant="ghost" size="sm" data-testid="sidebar-elevate"
+    title={t("startup.elevate")} disabled={pending}
+    className="h-auto justify-start px-1.5 py-1 text-xs text-amber-500 group-data-[collapsible=icon]:px-0"
+    onClick={() => {
+      setPending(true)
+      void api("app_elevate").catch((error: Error) => notify.error(error.message)).finally(() => setPending(false))
+    }}>
+    <ShieldIcon className="size-3.5 shrink-0" />
+    <span className="group-data-[collapsible=icon]:hidden">{t("startup.elevate")}</span>
+  </Button>
+}
+
 function NavDot({ module }: { module: ModuleKey }) {
   const status = useStatus()
   const error = useStoreError(module)
@@ -194,7 +211,7 @@ export function AppSidebar() {
       <SidebarFooter className="border-t border-sidebar-border">
         <div data-testid="sidebar-status" className="flex flex-col gap-0.5">
           <StatusRow testId="sidebar-status-guard" tone={status.guard ? "on" : "off"} text={state} />
-          {app?.admin === false && <StatusRow testId="sidebar-status-admin" tone="warn" text={t("status.noAdmin")} />}
+          {app?.admin === false && <ElevateButton />}
         </div>
       </SidebarFooter>
     </Sidebar>

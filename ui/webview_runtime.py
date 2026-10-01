@@ -1,7 +1,27 @@
-"""Проверка установленного Evergreen WebView2 Runtime до создания окна."""
+"""Переносимый WebView2 и запасная проверка установленного Evergreen Runtime."""
+import os
+import subprocess
 import sys
+from modules import paths
 
 CLIENT = r"SOFTWARE\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}"
+
+
+def bundled():
+    folder = paths.APP_DIR / "bin/webview2"
+    required = ("msedgewebview2.exe", "msedge.dll", "icudtl.dat", "resources.pak")
+    return folder if all((folder / name).is_file() for name in required) else None
+
+
+def prepare():
+    folder = bundled()
+    if folder is not None and sys.platform == "win32" and sys.getwindowsversion().build < 22000:
+        # Fixed runtimes >=120 require AppContainer read access on Windows 10.
+        icacls = os.path.join(os.environ["WINDIR"], "System32", "icacls.exe")
+        for sid in ("S-1-15-2-1", "S-1-15-2-2"):
+            subprocess.run([icacls, str(folder), "/grant", f"*{sid}:(OI)(CI)(RX)"], check=True,
+                           capture_output=True, timeout=30, creationflags=subprocess.CREATE_NO_WINDOW)
+    return folder
 
 
 def installed() -> bool:

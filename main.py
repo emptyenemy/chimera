@@ -30,16 +30,8 @@ def relaunch_as_admin() -> bool:
     Возвращает True, если запрос на повышение отправлен (текущий процесс
     надо завершить), False — если пользователь отклонил UAC или запуск не на Windows.
     """
-    if sys.platform != "win32":
-        return False
-    if getattr(sys, "frozen", False) or "__compiled__" in globals():  # собранный .exe (PyInstaller/Nuitka)
-        program, params = sys.executable, sys.argv[1:]
-    else:
-        program, params = sys.executable, sys.argv
-    args = " ".join(f'"{a}"' for a in params)
-    # SW_SHOWNORMAL = 1; rc > 32 — успех
-    rc = ctypes.windll.shell32.ShellExecuteW(None, "runas", program, args, str(ROOT), 1)
-    return rc > 32
+    from modules.elevation import relaunch
+    return relaunch()
 
 
 def main() -> int:
@@ -53,8 +45,13 @@ def main() -> int:
         from modules.cli.app import main as cli_main
         return cli_main(argv)
 
+    from modules.gui_stdio import prepare
+    prepare()
+    if "--wait-ui-exit" in argv:
+        from modules.elevation import wait_for_process
+        wait_for_process(int(argv[argv.index("--wait-ui-exit") + 1]))
     config = load_config()
-    mode = "ui" if entry.forces_window(argv) else config.get("interface", "ui")
+    mode = "ui" if entry.forces_window(argv) or (paths.IS_FROZEN and not argv) else config.get("interface", "ui")
 
     # Окно уже открыто (или свёрнуто в трей) — показываем его, вторую копию не
     # поднимаем. До UAC: иначе повторный запуск сначала спросил бы права, а потом
@@ -66,10 +63,10 @@ def main() -> int:
                 instance.signal_existing()
             return 0
 
-    # Окно работает с hosts и DNS — без прав админа толку нет, повышаемся сразу. TUI — клиент
-    # работающей Chimera (tui/remote.py), права нужны ей, а не терминалу.
+    # Старый явный auto_elevate сохраняется; чистая установка открывает окно без UAC.
+    # Права для системных действий можно запросить кнопкой в сайдбаре.
     # service — фон от SYSTEM (см. modules/service.py), там UAC неуместен и невозможен.
-    if mode == "ui" and config.get("auto_elevate", True) and not is_admin():
+    if mode == "ui" and config.get("auto_elevate", False) and not is_admin():
         if relaunch_as_admin():
             return 0  # управление ушло в админский процесс
         print(_tr('msg.main.could_not_obtain_administrator_rights_uac_was_de'))
@@ -98,5 +95,17 @@ def main() -> int:
     return 1
 
 
+def launch() -> int:
+    try:
+        return main()
+    except Exception as error:
+        from modules.cli import entry
+        if entry.route(sys.argv[1:], frozen=paths.IS_FROZEN, console=entry.has_console()) == "cli":
+            raise
+        from ui.startup import show_failure
+        show_failure(error)
+        return 1
+
+
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(launch())

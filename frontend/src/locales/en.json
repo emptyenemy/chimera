@@ -1,4 +1,5 @@
 {
+  "startup.elevate": "Run as administrator",
   "common.failed": "Failed",
   "common.loading": "Loading…",
   "common.cancel": "Cancel",

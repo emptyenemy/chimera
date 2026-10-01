@@ -1,9 +1,9 @@
-"""Бэкенд «вкладка в браузере»: свой HTTP-сервер вместо окна.
+"""Бэкенд окна Chromium: локальный HTTP-сервер и отдельный профиль браузера.
 
 Третий вариант к PySide6 и pywebview (config.json -> "ui_backend": "browser").
-Своего окна нет вообще: фронт (ui/web) отдаётся локальным сервером на 127.0.0.1,
-а открывает его обычный браузер пользователя. Ничего ставить не надо — только
-стандартная библиотека, — и окно не лезет поверх полноэкранной игры.
+Фронт отдаётся локальным сервером на 127.0.0.1 и открывается в отдельном
+окне Edge/Chrome без адресной строки. Собственный профиль и группа процессов
+не затрагивают окна браузера пользователя.
 
 Мост тот же JSON-RPC, что у остальных движков, разложенный на два эндпоинта:
   • POST /api    — {method, args} -> Api.dispatch(...) (один вызов = один запрос);
@@ -15,9 +15,8 @@
 API (hosts, DNS, запуск winws). Токен живёт в памяти процесса, выдаётся один раз
 в адресе страницы и дальше ходит заголовком.
 
-Выход: окна нет, закрывать нечего — поэтому пока вкладка открыта, она держит
-long-poll; пропал клиент дольше IDLE_TIMEOUT — гасим свои процессы (Api.shutdown)
-и выходим, как при закрытии окна.
+Закрытие собственного окна завершает сервер и модули. Headless-проверка
+держит сервер long-poll запросами; без клиента дольше IDLE_TIMEOUT он завершается.
 """
 
 from modules.i18n import t as _tr
@@ -28,7 +27,6 @@ import mimetypes
 import secrets
 import threading
 import time
-import webbrowser
 from collections import deque
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
@@ -71,6 +69,7 @@ class _Hub:
         self._cv = threading.Condition()
         self._events = deque(maxlen=1000)
         self._seq = 0
+        self.connected = threading.Event()
         self.touched = time.monotonic()  # когда страница в последний раз давала о себе знать
 
     def push(self, fn: str, payload) -> None:
@@ -159,6 +158,7 @@ class _Handler(BaseHTTPRequestHandler):
             or "application/octet-stream"
         body = path.read_bytes()
         if path.name == "index.html":
+            self.server.hub.connected.set()
             body = _mark_page(body, self.server.token, theme.resolve_theme(), native=getattr(self.server, "native_bridge", False))
             # cookie ставим на самой странице — дальше с ней ходят и статика, и мост
             return self._send(200, body, ctype, set_cookie=True)
@@ -185,10 +185,10 @@ class _Handler(BaseHTTPRequestHandler):
         pass  # свой лог не ведём: страница одна, а шума от long-poll много
 
 
-def _watchdog(server, api: Api, hub: _Hub, stop: threading.Event) -> None:
+def _watchdog(server, api: Api, hub: _Hub, stop: threading.Event, browser=None) -> None:
     """Нет запросов дольше IDLE_TIMEOUT — вкладку закрыли, гасимся как по закрытию окна."""
     while not stop.wait(5.0):
-        if time.monotonic() - hub.touched > IDLE_TIMEOUT:
+        if (browser is not None and not browser.running()) or time.monotonic() - hub.touched > IDLE_TIMEOUT:
             print(_tr('msg.ui.backend_browser.tab_closed_stopping_chimera'))
             api.shutdown()
             threading.Thread(target=server.shutdown, daemon=True).start()
@@ -196,11 +196,16 @@ def _watchdog(server, api: Api, hub: _Hub, stop: threading.Event) -> None:
 
 
 def run():
-    from modules import appconfig
-
-    from modules import control
-
     api = Api()
+    try:
+        _run_server(api)
+    finally:
+        api.shutdown()
+
+
+def _run_server(api):
+    from modules import appconfig, control
+
     hub = _Hub()
     api.push = hub.push
     control.start_for(api)  # канал для `chimera ...` (modules/control.py)
@@ -220,13 +225,34 @@ def run():
     if not headless:
         print(_tr('msg.ui.backend_browser.chimera_is_open_in_the_browser_close_the_tab_or', p0=f'{url}'))
     stop = threading.Event()
-    threading.Thread(target=_watchdog, args=(server, api, hub, stop), daemon=True).start()
-    if not headless:
-        webbrowser.open(url)
+
+    worker = threading.Thread(target=server.serve_forever, daemon=True)
+    worker.start()
+    listener = browser = None
+    api.request_quit = server.shutdown
     try:
-        server.serve_forever()
+        if not headless:
+            unavailable = os.environ.get("CHIMERA_SMOKE") == "1" and os.environ.get("CHIMERA_SMOKE_NO_BROWSER") == "1"
+            if unavailable:
+                raise RuntimeError("No browser is available")
+            from ui.browser_window import BrowserWindow
+            browser = BrowserWindow(url)
+            api.window_pids = browser.pids
+            if not hub.connected.wait(12):
+                raise RuntimeError("The browser did not open the interface")
+            from modules import instance
+            listener = instance.listen(browser.show)
+        threading.Thread(target=_watchdog, args=(server, api, hub, stop, browser), daemon=True).start()
+        while worker.is_alive():
+            worker.join(0.5)
     except KeyboardInterrupt:
-        api.shutdown()
+        pass
     finally:
         stop.set()
+        if listener:
+            listener.close()
+        if browser:
+            browser.close()
+        server.shutdown()
         server.server_close()
+        api.shutdown()

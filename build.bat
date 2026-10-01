@@ -22,11 +22,15 @@ goto frontend
 set VARIANT=--include-module=ui.backend_webview --include-module=ui.tray_win32 --include-package=clr_loader --include-package=pythonnet --include-package=proxy_tools --include-package=bottle --include-package-data=clr_loader --include-package-data=pythonnet --nofollow-import-to=PySide6,shiboken6,ui.backend_qt
 goto frontend
 :variant_lite
-set VARIANT=--nofollow-import-to=PySide6,shiboken6,webview,clr_loader,pythonnet,ui.backend_qt,ui.backend_webview,ui.tray_win32
+set VARIANT=--include-module=ui.backend_webview --include-module=ui.tray_win32 --include-package=clr_loader --include-package=pythonnet --include-package=proxy_tools --include-package=bottle --include-package-data=clr_loader --include-package-data=pythonnet --nofollow-import-to=PySide6,shiboken6,ui.backend_qt
 
 :frontend
 python tools\build_env.py
 if errorlevel 1 exit /b 1
+if /I not "%FLAVOR%"=="qt" (
+    python tools\fetch_webview.py
+    if errorlevel 1 exit /b 1
+)
 where node >nul 2>&1
 if errorlevel 1 (
     echo [!] Node 22+ is required to build the interface.

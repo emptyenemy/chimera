@@ -485,13 +485,24 @@ class Api:
         except Exception as e:
             return _err(e)
 
+    def app_elevate(self):
+        from modules.elevation import relaunch
+        started = relaunch(["--window", "--wait-ui-exit", str(os.getpid())])
+        if started:
+            # Let the response reach the button before closing the current window.
+            timer = threading.Timer(0.5, self.request_quit)
+            timer.daemon = True
+            timer.start()
+        return _ok({"started": started})
+
     def app_info(self):
-        # frozen — собранная программа: в ней нет pywebview и git, фронт прячет то, что там не работает
+        # Доступные движки зависят от варианта сборки; Git нужен только исходникам.
         return _ok({"admin": is_admin(), "version": VERSION, "service_running": service.is_running(),
                     "frozen": paths.IS_FROZEN, "flavor": FLAVOR,
+                    "window_pids": getattr(self, "window_pids", lambda: [os.getpid()])(),
                     "ui_backends": (["pyside6", "pywebview", "browser"] if not paths.IS_FROZEN
                                     else {"qt": ["pyside6", "browser"], "webview": ["pywebview", "browser"],
-                                          "lite": ["browser"]}[FLAVOR])})
+                                          "lite": ["browser", "pywebview"]}[FLAVOR])})
 
     # --- обновление программы (ui/updater.py, modules/selfupdate.py) ----------
 

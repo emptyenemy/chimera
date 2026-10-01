@@ -26,6 +26,9 @@ def finish(flavor: str):
     missing = [relative for relative in required if not (ROOT / relative).is_file()]
     if missing:
         raise FileNotFoundError(f"Missing build inputs: {missing}. Run python tools/fetch_bins.py first.")
+    if flavor != "qt":
+        from tools.fetch_webview import validate
+        validate(ROOT / "bin/webview2")
     if output.exists():
         shutil.rmtree(output)
     shutil.move(str(source), str(output))
@@ -38,6 +41,8 @@ def finish(flavor: str):
     fetch_bins.write_versions(output / "versions.json")
     if flavor == "qt":
         fetch_bins.use_qt_runtime(output)
+    else:
+        shutil.copytree(ROOT / "bin/webview2", output / "bin/webview2")
     selfupdate.write_manifest(output)
     print(f"Done: {output / 'Chimera.exe'}")
     return output

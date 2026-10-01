@@ -15,7 +15,7 @@ BACKENDS = {
     "browser": ("ui.backend_browser", _tr('msg.ui.app.standard_library')),
 }
 DEFAULT_BACKEND = default_backend()  # тот, на котором собирается exe (см. build.bat)
-FALLBACK_BACKEND = "browser"  # без своих зависимостей — работает всегда
+FALLBACK_BACKEND = "browser"
 
 
 def _load(name: str):
@@ -34,20 +34,22 @@ def run(backend_name: str | None = None):
 
     from modules import paths
     from modules.version import FLAVOR
-    if paths.IS_FROZEN and name != "browser" and name != default_backend(FLAVOR):
-        name = default_backend(FLAVOR)
-    if name == "pywebview":
-        from ui.webview_runtime import installed
-        if not installed():
-            print(_tr('msg.ui.app.webview2_runtime_is_not_installed_opening_the_in'))
-            name = "browser"
-    try:
-        backend = _load(name)
-    except ImportError as e:
-        # движок выбран, но пакета нет — не падаем, а уходим на браузерный:
-        # ему ставить нечего, так что эта ветка всегда чем-то заканчивается
-        other = FALLBACK_BACKEND if name != FALLBACK_BACKEND else DEFAULT_BACKEND
-        print(_tr('msg.ui.app.engine_is_unavailable_not_installed_trying', p0=f'{name}', p1=f'{BACKENDS[name][1]}', p2=f'{e}', p3=f'{other}'))
-        backend = _load(other)
-
-    backend.run()
+    available = {"qt": ("pyside6", "browser"), "webview": ("pywebview", "browser"),
+                 "lite": ("browser", "pywebview")}[FLAVOR] if paths.IS_FROZEN else tuple(BACKENDS)
+    if name not in available:
+        name = available[0]
+    candidates = [name, *(other for other in ("browser", "pywebview", "pyside6") if other in available and other != name)]
+    error = None
+    for candidate in candidates:
+        try:
+            if candidate == "pywebview":
+                from ui.webview_runtime import bundled, installed
+                if bundled() is None and not installed():
+                    raise RuntimeError("WebView2 is unavailable")
+            _load(candidate).run()
+            return
+        except Exception as failure:
+            from ui.startup import log_failure
+            log_failure(candidate, failure)
+            error = failure
+    raise RuntimeError("No window engine could open Chimera") from error

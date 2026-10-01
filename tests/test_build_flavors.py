@@ -48,6 +48,7 @@ def test_missing_webview_runtime_falls_back_before_creating_window(monkeypatch):
     monkeypatch.setattr(appconfig, "load", lambda: {"ui_backend": "pywebview"})
     monkeypatch.setattr(paths, "IS_FROZEN", False)
     monkeypatch.setattr(webview_runtime, "installed", lambda: False)
+    monkeypatch.setattr(webview_runtime, "bundled", lambda: None)
     monkeypatch.setattr(app, "_load", lambda name: SimpleNamespace(run=lambda: calls.append(name)))
     app.run()
     assert calls == ["browser"]

@@ -1,4 +1,5 @@
 {
+  "startup.elevate": "Права администратора",
   "common.failed": "Не получилось",
   "common.loading": "Загрузка…",
   "common.cancel": "Отмена",

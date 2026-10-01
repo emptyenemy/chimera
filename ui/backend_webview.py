@@ -10,10 +10,12 @@ import os
 import sys
 import secrets
 import threading
+from contextlib import ExitStack
 from http.server import ThreadingHTTPServer
 
 import webview
 
+from modules import paths
 from . import theme
 from .api import Api
 from .frontend import web_dir
@@ -45,19 +47,33 @@ def _asset_server(api):
 
 
 def run():
-    from modules import control, instance
-    from ui.tray_win32 import Tray, close_to_tray
-
     smoke_port = os.environ.get("QTWEBENGINE_REMOTE_DEBUGGING") if os.environ.get("CHIMERA_SMOKE") == "1" else None
     if smoke_port:
         webview.settings["REMOTE_DEBUGGING_PORT"] = int(smoke_port)
         webview.settings["OPEN_DEVTOOLS_IN_DEBUG"] = False
 
-    api = Api()
+    from ui.webview_runtime import prepare
+    runtime = prepare()
+    if runtime is not None:
+        webview.settings["WEBVIEW2_RUNTIME_PATH"] = str(runtime)
+        os.environ["WEBVIEW2_BROWSER_EXECUTABLE_FOLDER"] = str(runtime)
+    os.environ["WEBVIEW2_USER_DATA_FOLDER"] = str(paths.DATA_DIR / "webview-profile")
+    with ExitStack() as resources:
+        api = Api()
+        resources.callback(api.shutdown)
+        _run_window(api, resources, smoke_port)
+
+
+def _run_window(api, resources, smoke_port):
+    from modules import control, instance
+    from ui.tray_win32 import Tray, close_to_tray
+
     quitting = False
     hidden = "--tray" in sys.argv and sys.platform == "win32"
     # Serve the normal assets with the Python boot script inserted before CSS/JS.
     server, url = _asset_server(api)
+    resources.callback(server.server_close)
+    resources.callback(server.shutdown)
     window = webview.create_window(
         "Chimera", url, js_api=JsApi(api),
         width=1080, height=720, min_size=(860, 560),
@@ -93,6 +109,10 @@ def run():
 
     tray = Tray(api, show, quit_app) if sys.platform == "win32" else None
     listener = instance.listen(show)
+    if tray:
+        resources.callback(tray.close)
+    if listener:
+        resources.callback(listener.close)
     api.request_quit = quit_app
     control.start_for(api)
 
@@ -109,19 +129,14 @@ def run():
         if cleaned:
             return
         cleaned = True
-        if listener:
-            listener.close()
-        if tray:
-            tray.close()
-        server.shutdown()
-        server.server_close()
-        api.shutdown()
+        resources.close()
 
     window.events.closing += closing
     window.events.closed += cleanup
     if hidden and not (tray and tray.available):
         window.events.loaded += show
     try:
-        webview.start(gui="edgechromium" if sys.platform == "win32" else None, debug=bool(smoke_port))
+        webview.start(gui="edgechromium" if sys.platform == "win32" else None, debug=bool(smoke_port),
+                      storage_path=str(paths.DATA_DIR / "webview-profile"))
     finally:
         cleanup()

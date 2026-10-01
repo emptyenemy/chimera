@@ -6,7 +6,7 @@ from pathlib import Path
 from modules import appearance, i18n
 from modules.errors import ChimeraValueError
 from modules.fileutil import atomic_write_text
-from modules.version import FLAVOR, default_backend
+from modules.version import default_backend
 
 CONFIG_PATH = Path(__file__).parent.parent / "config.json"
 # close_to_tray — крестик окна прячет его в трей (движок pyside6), а не закрывает программу;
@@ -14,7 +14,7 @@ CONFIG_PATH = Path(__file__).parent.parent / "config.json"
 # theme — оформление окна: system (как в Windows) | light | dark (см. ui/theme.py);
 # lang — язык программы: auto (как в Windows) | ru | en (см. modules/i18n.py)
 THEMES = ("system", "light", "dark")
-DEFAULTS = {"interface": "service" if FLAVOR == "lite" else "ui", "auto_elevate": True, "ui_backend": default_backend(), "close_to_tray": True,
+DEFAULTS = {"interface": "ui", "auto_elevate": False, "ui_backend": default_backend(), "close_to_tray": True,
             "update_channel": "stable", "update_check": True, "theme": "system", "lang": "auto",
             "appearance": dict(appearance.DEFAULTS), "appearance_custom": None}
 
@@ -24,8 +24,10 @@ def load() -> dict:
     data = dict(DEFAULTS)
     if CONFIG_PATH.exists():
         try:
-            data.update(json.loads(CONFIG_PATH.read_text(encoding="utf-8")))
-        except (json.JSONDecodeError, ValueError):
+            stored = json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
+            if isinstance(stored, dict):
+                data.update(stored)
+        except (OSError, ValueError):
             pass
     data["appearance"] = appearance.normalize_settings(data.get("appearance", {}), fallback=True)
     data["appearance_custom"] = appearance.normalize_custom(data.get("appearance_custom"), fallback=True)

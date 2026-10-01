@@ -105,7 +105,7 @@ GROUPS = LazyMap((
 # Что не превращается в команду и почему. Тест паритета падает на любом публичном методе
 # Api, которого нет ни в таблице действий, ни здесь.
 EXCLUDED = LazyMap((
-    "dispatch", "shutdown", "open_url", "tg_open_link", "hub_snapshot", "hub_watch", "hub_refresh",
+    "dispatch", "shutdown", "app_elevate", "open_url", "tg_open_link", "hub_snapshot", "hub_watch", "hub_refresh",
     "block_check_start", "chebur_check_start"), "cli.excluded")
 
 ONOFF = Arg("значение", "bool")

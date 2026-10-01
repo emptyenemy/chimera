@@ -158,6 +158,7 @@ Not turned into commands (with reasons):
 
 - `dispatch` — internal entry point of the window bridge; the control channel has its own
 - `shutdown` — stops the modules when the window closes; in a terminal that is `chimera stop`
+- `app_elevate` — UAC belongs to the local window; run commands from a terminal with the required privileges.
 - `open_url` — opens a link in the browser on the user's computer; in a terminal the address is already visible
 - `tg_open_link` — opens Telegram on this computer; `chimera tg link` gives you the link
 - `hub_snapshot` — the window's subscription to state push events
