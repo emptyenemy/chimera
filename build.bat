@@ -51,6 +51,7 @@ if errorlevel 1 exit /b 1
 
 python -m nuitka ^
     --standalone ^
+    --experimental=force-dependencies-pefile ^
     %VARIANT% ^
     --windows-console-mode=attach ^
     --windows-icon-from-ico=assets/logo/chimera.ico ^
