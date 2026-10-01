@@ -14,6 +14,8 @@ import sys
 import tempfile
 from pathlib import Path
 
+import pytest
+
 ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
@@ -25,3 +27,11 @@ os.environ["CHIMERA_LANG"] = "ru"
 import modules.paths as _paths  # noqa: E402 - после правки sys.path/CHIMERA_DATA
 
 _paths.migrate = lambda *a, **kw: None
+
+
+@pytest.fixture(autouse=True)
+def isolate_app_config(tmp_path, monkeypatch):
+    """Настройки теста не зависят от работающего приложения и не меняют его конфиг."""
+    from modules import appconfig
+
+    monkeypatch.setattr(appconfig, "CONFIG_PATH", tmp_path / "config.json")
