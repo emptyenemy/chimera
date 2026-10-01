@@ -263,5 +263,7 @@ def test_panic_still_stops_modules_when_trial_record_cannot_be_cleared(trial, mo
     result = api.panic_all()["data"]
     assert result["failed"] == 1 and result["steps"][0]["step"] == "trial"
     assert stopped == [True, True, True, False]
+    assert trial.manager.state()["active"] is None
+    trial.manager.recover()
     trial.timers[0].callback()
     assert trial.ops.restored == 0

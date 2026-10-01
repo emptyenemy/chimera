@@ -33,6 +33,7 @@ class TrialManager:
         self.changed = changed or (lambda: None)
         self.active = self.last = self.timer = None
         self.deadline = 0.0
+        self._cancelled_id = None
         if load_pending:
             self._load()
 
@@ -49,7 +50,7 @@ class TrialManager:
                     or not ID_RE.fullmatch(value["id"]) or value.get("kind") not in KINDS
                     or not isinstance(value.get("before"), dict) or not isinstance(value.get("target"), str)):
                 raise ValueError
-            if value.get("phase") == "cancelled":
+            if value.get("phase") == "cancelled" or value["id"] == self._cancelled_id:
                 return
             self.active = {**value, "phase": "interrupted", "checks": [], "checks_done": False}
         except (OSError, ValueError, TypeError, AttributeError):
@@ -160,6 +161,7 @@ class TrialManager:
                 if self.timer is not None:
                     self.timer.cancel()
                     self.timer = None
+                self._cancelled_id = self.active.get("id")
                 self.active["phase"] = "cancelled"
                 saved = False
                 try:
