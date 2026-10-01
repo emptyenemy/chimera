@@ -89,7 +89,7 @@
   // где в сборке не хватало модулей; порт свой, чтобы не спорить с открытой программой
   await step("tg-прокси: запуск и остановка", async () => {
     const st = await api("tg_state");
-    await api("tg_set_config", "127.0.0.1", 19443, st.secret, false);
+    await api("tg_set_config", "127.0.0.1", window.__SMOKE_TG_PORT__ || 19443, st.secret, false);
     await api("tg_start");
     let running = false;
     for (let i = 0; i < 40 && !running; i++) { await sleep(150); running = (await api("tg_state")).running; }

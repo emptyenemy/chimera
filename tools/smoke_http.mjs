@@ -58,7 +58,7 @@ try {
     if (attempt === 299) throw new Error("Interface did not become ready")
     await new Promise(resolve => setTimeout(resolve, 100))
   }
-  const checks = (mode === "full" ? "window.__SMOKE_FULL__=true;\n" : "") + readFileSync(checksPath, "utf8")
+  const checks = `window.__SMOKE_TG_PORT__ = ${Number(process.env.CHIMERA_SMOKE_TG_PORT) || 19443};\n` + (mode === "full" ? "window.__SMOKE_FULL__=true;\n" : "") + readFileSync(checksPath, "utf8")
   const result = await call("Runtime.evaluate", { expression: checks, awaitPromise: true, returnByValue: true, timeout: 180000 })
   const value = result.result?.result?.value
   if (!value) throw new Error(JSON.stringify(result.result?.exceptionDetails || result.error))
@@ -74,5 +74,10 @@ try {
   } else proc.kill()
   await new Promise(resolve => setTimeout(resolve, 500))
   if (dirname(resolve(profile)) !== resolve(tmpdir())) throw new Error("Unsafe browser profile cleanup path")
-  rmSync(profile, { recursive: true, force: true, maxRetries: 10, retryDelay: 250 })
+  try {
+    rmSync(profile, { recursive: true, force: true, maxRetries: 20, retryDelay: 250 })
+  } catch (error) {
+    if (!["EPERM", "EBUSY", "ENOTEMPTY"].includes(error.code)) throw error
+    process.stderr.write(`Browser profile cleanup deferred (${error.code}): ${profile}\n`)
+  }
 }

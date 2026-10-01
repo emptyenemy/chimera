@@ -3,11 +3,11 @@
 // WebSocket встроен в Node 22.
 //
 //   node tools/smoke_build.mjs <cdp-port> <checks.js> [full]
-import { readFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 
-const [port, checksPath, mode] = process.argv.slice(2);
+const [port, checksPath, mode, screenshot] = process.argv.slice(2);
 // full — шаги с правами администратора, которые меняют систему (см. smoke_checks.js)
-const checks = (mode === "full" ? "window.__SMOKE_FULL__ = true;\n" : "") + readFileSync(checksPath, "utf8");
+const checks = `window.__SMOKE_TG_PORT__ = ${Number(process.env.CHIMERA_SMOKE_TG_PORT) || 19443};\n` + (mode === "full" ? "window.__SMOKE_FULL__ = true;\n" : "") + readFileSync(checksPath, "utf8");
 
 const targets = await (await fetch(`http://127.0.0.1:${port}/json`)).json();
 const page = targets.find(t => t.type === "page" && t.url?.includes("index.html")) || targets.find(t => t.type === "page");
@@ -48,6 +48,13 @@ for (let attempt = 0; attempt < 1800; attempt++) {
   }
   await new Promise(resolve => setTimeout(resolve, 100));
   if (attempt === 1799) throw new Error("проверки не завершились за три минуты");
+}
+if (screenshot) {
+  await call("Runtime.evaluate", { expression: "Pages.go('dashboard')" });
+  await new Promise(resolve => setTimeout(resolve, 500));
+  const capture = await call("Page.captureScreenshot", { format: "png" });
+  if (!capture.result?.data) throw new Error(JSON.stringify(capture.error));
+  writeFileSync(screenshot, Buffer.from(capture.result.data, "base64"));
 }
 ws.close();
 const value = res.result?.result?.value;

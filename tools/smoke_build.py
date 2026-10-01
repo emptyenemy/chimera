@@ -17,7 +17,8 @@ hosts и Flowseal, DNS, списки, версии, самообновление
 Ничего не меняет в системе и не мешает открытой программе: своя копия, своя папка
 данных (CHIMERA_DATA), своё имя защиты от второго экземпляра (CHIMERA_INSTANCE_EVENT),
 свой порт Telegram-прокси. Проверки с пометкой «сеть» при отсутствии интернета не
-валят тест. Код выхода 0 — всё работает.
+валят тест. Код выхода 0 — нет ошибок в выполненных несетевых проверках;
+пропуски и сетевые ошибки перечисляются отдельно.
 """
 
 import json
@@ -90,15 +91,23 @@ def _json_ok(text: str) -> bool:
         return False
 
 
-def _cli_checks_while_running(app: Path, env: dict) -> list[dict]:
+def _json_flavor(text: str, flavor: str) -> bool:
+    try:
+        value = json.loads(text)
+        return value.get("ok") is True and value["data"]["app"]["flavor"] == flavor
+    except (ValueError, KeyError, TypeError, AttributeError):
+        return False
+
+
+def _cli_checks_while_running(app: Path, env: dict, flavor: str = "qt") -> list[dict]:
     """Пока окно работает: команды идут в него по каналу управления — сквозная проверка."""
     return [
         _cli_step(app, env, "--version", ["--version"], lambda t: "Chimera" in t),
         _cli_step(app, env, "agent-info --json", ["agent-info", "--json"], _json_ok),
-        _cli_step(app, env, "status --json (через канал)", ["status", "--json"], _json_ok),
+        _cli_step(app, env, "status --json (через канал, вариант сборки)", ["status", "--json"], lambda text: _json_flavor(text, flavor)),
         _cli_step(app, env, "winws state --json (через канал)", ["winws", "state", "--json"], _json_ok),
         _cli_step(app, env, "lists show --json", ["lists", "show", "--json"], _json_ok),
-        _cli_step(app, {**env, "CHIMERA_TUI_PROBE": "1"}, "Textual: девять вкладок без окна", ["tui"], _json_ok),
+        _cli_step(app, {**env, "CHIMERA_TUI_PROBE": "1"}, "Textual: клавиатурное меню без окна", ["tui"], _json_ok),
     ]
 
 
@@ -107,7 +116,7 @@ def _cli_check(app: Path, env: dict) -> dict:
     return _cli_step(app, env, "service status", ["service", "status"])
 
 
-def run(build: Path, full: bool = False, front: str = "next", flavor: str = "qt", native_webview: bool = False) -> int:
+def run(build: Path, full: bool = False, front: str = "next", flavor: str = "qt", native_webview: bool = False, screenshot: Path | None = None) -> int:
     if not (build / "Chimera.exe").exists():
         print(f"нет {build / 'Chimera.exe'} — сначала build.bat")
         return 2
@@ -165,13 +174,19 @@ def run(build: Path, full: bool = False, front: str = "next", flavor: str = "qt"
                     time.sleep(0.2)
             command = ["node", str(ROOT / "tools" / "smoke_http.mjs"), browser,
                        f"http://127.0.0.1:{port}/?t={token}", str(CHECKS)]
-        r = subprocess.run([*command, *(["full"] if full else [])],
-                           capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=420)
+        options = ["full" if full else "check"]
+        if screenshot is not None:
+            screenshot = screenshot.resolve()
+            screenshot.parent.mkdir(parents=True, exist_ok=True)
+            options.append(str(screenshot))
+        r = subprocess.run([*command, *options],
+                           capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=420,
+                           env={**os.environ, "CHIMERA_SMOKE_TG_PORT": str(_free_port())})
         if r.returncode != 0:
             print(r.stdout.replace(token, "<token>"), r.stderr.replace(token, "<token>"))
             return 1
         result = json.loads(r.stdout.strip().splitlines()[-1])
-        result["steps"] += _cli_checks_while_running(app, env)
+        result["steps"] += _cli_checks_while_running(app, env, flavor)
     except Exception:
         tail = (tmp / "engine.log").read_bytes()[-8000:].decode("utf-8", "replace")
         print("---- лог ошибки запуска ----\n" + tail.replace(token, "<token>"), flush=True)
@@ -191,9 +206,11 @@ def run(build: Path, full: bool = False, front: str = "next", flavor: str = "qt"
         log.close()
     result["steps"].append(_cli_check(app, env))
 
-    failed = 0
+    failed = skipped = 0
     for s in result["steps"]:
-        mark = "OK  " if s["ok"] else ("СЕТЬ" if s.get("network") else "FAIL")
+        is_skip = str(s.get("detail", "")).startswith("пропуск:")
+        skipped += is_skip
+        mark = "SKIP" if is_skip else "OK  " if s["ok"] else ("СЕТЬ" if s.get("network") else "FAIL")
         print(f"{mark}  {s['name']}{' — ' + s['detail'] if s['detail'] else ''}")
         failed += not s["ok"] and not s.get("network")
     for e in result["pageErrors"]:
@@ -204,7 +221,7 @@ def run(build: Path, full: bool = False, front: str = "next", flavor: str = "qt"
         print("---- хвост лога движка ----\n" + tail.replace(token, "<token>"))
     else:
         shutil.rmtree(tmp, ignore_errors=True)
-    print(f"\n{'всё работает' if not failed else f'сломано: {failed}'}")
+    print(f"\nОшибок: {failed}; пропущено: {skipped}.")
     return 1 if failed else 0
 
 
@@ -217,6 +234,13 @@ if __name__ == "__main__":
         del args[i:i + 2]
     if flavor not in ("qt", "webview", "lite"):
         sys.exit("--flavor: qt, webview или lite")
+    screenshot = None
+    if "--screenshot" in args:
+        i = args.index("--screenshot")
+        if i + 1 >= len(args):
+            sys.exit("--screenshot: specify a PNG path")
+        screenshot = Path(args[i + 1])
+        del args[i:i + 2]
     front = "next"
     if "--frontend" in args:
         i = args.index("--frontend")
@@ -229,4 +253,4 @@ if __name__ == "__main__":
         sys.exit("--native-webview requires --flavor webview")
     args = [a for a in args if a not in ("--full", "--native-webview")]
     sys.exit(run(Path(args[0]) if args else ROOT / "build" / "Chimera",
-                 full="--full" in sys.argv, front=front, flavor=flavor, native_webview=native_webview))
+                 full="--full" in sys.argv, front=front, flavor=flavor, native_webview=native_webview, screenshot=screenshot))

@@ -28,3 +28,13 @@ def test_wait_cdp_rejects_unrelated_page(monkeypatch, url):
     monkeypatch.setattr(smoke_build.time, "time", lambda: next(ticks))
     with pytest.raises(RuntimeError, match="CDP"):
         smoke_build._wait_cdp(9222, Mock(poll=Mock(return_value=None)), timeout=0.1)
+
+
+def test_status_validates_the_compiled_flavor():
+    import json
+
+    text = json.dumps({"ok": True, "data": {"app": {"flavor": "lite"}}})
+    assert smoke_build._json_flavor(text, "lite")
+    assert not smoke_build._json_flavor(text, "qt")
+    assert not smoke_build._json_flavor('{"ok":true}', "qt")
+    assert not smoke_build._json_flavor('not json', "qt")

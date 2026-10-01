@@ -74,15 +74,6 @@ jobs:
       - name: Сборка
         shell: cmd
         run: call build.bat ${{ matrix.flavor }}
-      - name: Архив
-        if: steps.ver.outputs.version != ''
-        run: python -c "import shutil; shutil.make_archive('Chimera-${{ steps.ver.outputs.version }}-win64${{ matrix.suffix }}', 'zip', root_dir='build', base_dir='${{ matrix.folder }}')"
-      - uses: actions/upload-artifact@v6
-        if: steps.ver.outputs.version != ''
-        with:
-          name: release-${{ matrix.flavor }}
-          path: Chimera-*-win64*.zip
-          if-no-files-found: error
       - name: Сохранить кэш компиляции
         if: steps.nuitka-cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@v6
@@ -99,6 +90,18 @@ jobs:
       - name: Нативное окно WebView2
         if: matrix.flavor == 'webview'
         run: python tools/smoke_build.py build\${{ matrix.folder }} --flavor webview --native-webview
+      - name: Архив
+        if: steps.ver.outputs.version != ''
+        run: python -c "import shutil; shutil.make_archive('Chimera-${{ steps.ver.outputs.version }}-win64${{ matrix.suffix }}', 'zip', root_dir='build', base_dir='${{ matrix.folder }}')"
+      - name: Проверка распакованного архива
+        if: steps.ver.outputs.version != ''
+        run: python tools/verify_archive.py "Chimera-${{ steps.ver.outputs.version }}-win64${{ matrix.suffix }}.zip" --flavor ${{ matrix.flavor }} --version ${{ steps.ver.outputs.version }}
+      - uses: actions/upload-artifact@v6
+        if: steps.ver.outputs.version != ''
+        with:
+          name: release-${{ matrix.flavor }}
+          path: Chimera-*-win64*.zip
+          if-no-files-found: error
 
   release:
     needs: build
