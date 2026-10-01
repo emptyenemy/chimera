@@ -1,15 +1,15 @@
-"""Окна поверх вкладок: подтверждение, подсказка по клавишам, выбор списков."""
+"""Диалоги разделов: подтверждение, подсказка по клавишам, выбор списков."""
 
 from modules.i18n import t as _tr
 
 from rich.markup import escape
 from textual.app import ComposeResult
 from textual.binding import Binding
-from textual.containers import Horizontal, Vertical
+from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.screen import ModalScreen
 from textual.widgets import Button, SelectionList, Static
 
-HELP_TEXT = _tr('tui.screens.tabs_1_9_go_to_a_tab_by_number_tab_next_tab_shif')
+HELP_TEXT = _tr('tui.menu.help')
 
 
 class ConfirmScreen(ModalScreen[bool]):
@@ -46,7 +46,7 @@ class HelpScreen(ModalScreen[None]):
     BINDINGS = [Binding("escape,question_mark,enter", "close", _tr('tui.screens.close'), show=False)]
 
     def compose(self) -> ComposeResult:
-        with Vertical(classes="dialog help"):
+        with VerticalScroll(classes="dialog help"):
             yield Static(HELP_TEXT, markup=False, classes="dialog-text")
             yield Static(_tr('tui.screens.esc_to_close'), classes="dim")
 
@@ -72,6 +72,9 @@ class ListPicker(ModalScreen[list | None]):
             with Horizontal(classes="dialog-buttons"):
                 yield Button(_tr('tui.screens.apply'), id="ok")
                 yield Button(_tr('tui.screens.cancel'), id="cancel")
+
+    def on_mount(self) -> None:
+        self.query_one("#picker", SelectionList).focus()
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         event.stop()

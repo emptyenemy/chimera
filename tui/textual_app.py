@@ -5,9 +5,9 @@ tui/remote.py теми же методами, что у командной ст�
 останавливает.
 
 Живое состояние — фоновые воркеры Textual раз в ~1 с (в потоках, интерфейс не блокируется):
-  быстрый  — состояние модулей для «Обзора» и шапок вкладок;
-  ленивый  — тяжёлое (списки, hosts, DNS, логи, настройки) только для открытой вкладки.
-Во вкладки состояние попадает лишь при изменении. Нет связи — в шапке «нет связи с Chimera»,
+  быстрый  — состояние модулей для «Обзора» и меню;
+  ленивый  — тяжёлое (списки, hosts, DNS, логи, настройки) только для открытого раздела.
+В разделы состояние попадает лишь при изменении. Нет связи — в шапке «нет связи с Chimera»,
 опрос продолжается и подключается заново сам.
 """
 
@@ -23,7 +23,9 @@ from textual.app import App, ComposeResult, SuspendNotSupported
 from textual.binding import Binding
 from textual.screen import ModalScreen
 from textual.theme import Theme
-from textual.widgets import Footer, Static, TabbedContent, TabPane
+from textual.widgets import ContentSwitcher, DataTable, OptionList, Static
+
+from tui.navigation import HomeMenu, editing, move_focus
 
 from tui import panes
 from tui.remote import Offline, RemoteError
@@ -32,16 +34,16 @@ from tui.screens import ConfirmScreen, HelpScreen
 BASE_SOURCES = (("app", "app_info"), ("winws", "winws_state"), ("proxy", "proxy_state"),
                 ("tg", "tg_state"), ("hosts_state", "hosts_state"))
 
-TABS = (("overview", _tr('tui.textual_app.overview'), panes.OverviewPane), ("strategies", _tr('tui.textual_app.strategies'), panes.StrategiesPane),
+SECTIONS = (("overview", _tr('tui.textual_app.overview'), panes.OverviewPane), ("strategies", _tr('tui.textual_app.strategies'), panes.StrategiesPane),
         ("lists", _tr('tui.textual_app.lists'), panes.ListsPane), ("proxy", _tr('tui.textual_app.proxy'), panes.ProxyPane),
         ("hosts", "Hosts", panes.HostsPane), ("dns", "DNS", panes.DnsPane),
         ("tg", "Telegram", panes.TgPane), ("logs", _tr('tui.textual_app.logs'), panes.LogsPane),
         ("settings", _tr('tui.textual_app.settings'), panes.SettingsPane))
 
-# Спокойная тёмная схема без цветного акцента (цветной акцент появится вместе с темами).
-THEME = Theme(name="chimera", primary="#b9bdc5", secondary="#8d929b", accent="#b9bdc5", warning="#c2ae7d",
-              error="#c98f8f", success="#93b59a", foreground="#d3d5da", background="#15171b",
-              surface="#1b1e23", panel="#23262c", dark=True)
+# Один акцент для выбора и фокуса; состояния модулей сохраняют свои цвета.
+THEME = Theme(name="chimera", primary="#a78bfa", secondary="#78718c", accent="#a78bfa", warning="#e3bb6b",
+              error="#e5949e", success="#91c9a0", foreground="#e3e0eb", background="#111015",
+              surface="#19171f", panel="#24212d", dark=True)
 
 CSS = """
 Screen { background: $background; }
@@ -49,8 +51,18 @@ Screen { background: $background; }
 #top.offline { color: $error; }
 #status { height: 1; padding: 0 1; color: $foreground 80%; }
 #status.error { color: $error; }
-TabbedContent { height: 1fr; }
-TabPane { padding: 0 1; }
+ContentSwitcher { height: 1fr; }
+#home { width: 72; max-width: 100%; height: 1fr; margin: 0 2; padding: 1 2; }
+#logo { height: auto; color: $primary; text-style: bold; margin-bottom: 1; }
+#tagline { height: auto; margin-bottom: 1; }
+#home-summary { height: auto; margin-bottom: 1; }
+#menu { height: 11; border: round $panel; background: $surface; padding: 0 1; }
+#menu:focus { border: round $primary; }
+#menu-description { height: auto; margin-top: 1; }
+#keys { height: auto; padding: 0 1; background: $panel; color: $foreground 70%; }
+Pane { padding: 1 2; overflow-y: auto; }
+Button:focus { text-style: bold; }
+DataTable:focus { border: round $primary; }
 .dim { color: $foreground 55%; }
 .hidden { display: none; }
 .row { height: auto; margin: 0 0 1 0; }
@@ -87,10 +99,15 @@ class ChimeraTui(App):
         Binding("q", "quit", _tr('tui.textual_app.quit')),
         Binding("ctrl+c", "quit", _tr('tui.textual_app.quit'), show=False, priority=True),
         Binding("question_mark", "help", _tr('tui.textual_app.help')),
-        Binding("tab", "tab_step(1)", _tr('tui.textual_app.next_tab'), show=False, priority=True),
-        Binding("shift+tab", "tab_step(-1)", _tr('tui.textual_app.previous_tab'), show=False, priority=True),
-        *[Binding(str(i), f"goto({i})", TABS[i - 1][1], show=False) for i in range(1, len(TABS) + 1)],
+        Binding("escape", "back", _tr('tui.menu.back'), show=False),
+        *[Binding(keys, f"navigate('{direction}')", "", show=False, priority=True)
+          for keys, direction in (("up,w", "up"), ("down,s", "down"), ("left,a", "left"), ("right,d", "right"))],
+        *[Binding(str(i), f"goto({i})", SECTIONS[i - 1][1], show=False) for i in range(1, len(SECTIONS) + 1)],
     ]
+
+    def run(self, **kwargs):
+        kwargs["mouse"] = False
+        return super().run(**kwargs)
 
     def __init__(self, remote, *, poll_interval: float = 1.0, editor=None, lists_dir=None):
         super().__init__()
@@ -107,7 +124,7 @@ class ChimeraTui(App):
         self._tick = 0
         self._busy = {"fast": False, "slow": False}
         self._starting = True
-        self._tabs = self._top = self._status = None
+        self._content = self._top = self._status = self._keys = self._home = None
         self._force = False
         self._full_render = False
 
@@ -127,30 +144,32 @@ class ChimeraTui(App):
         self._state.pop(key, None)
 
     @property
-    def active_tab(self) -> str:
-        return self._tabs.active
+    def active_section(self) -> str:
+        return self._content.current
 
     def _panes(self) -> list:
-        return list(self._tabs.query(panes.Pane))
+        return list(self._content.query(panes.Pane))
 
     def _active_pane(self):
-        return next((p for p in self._panes() if p.parent is not None and p.parent.id == self.active_tab), None)
+        return next((p for p in self._panes() if p.id == self.active_section), None)
 
     # --- вид ---------------------------------------------------------------------------------
 
     def compose(self) -> ComposeResult:
         yield Static("Chimera", id="top", markup=False)
-        with TabbedContent(initial="overview", id="tabs"):
-            for i, (tid, title, cls) in enumerate(TABS, 1):
-                with TabPane(f"{i} {title}", id=tid):
-                    yield cls()
+        with ContentSwitcher(initial="home", id="content"):
+            yield HomeMenu(SECTIONS)
+            for sid, _, cls in SECTIONS:
+                yield cls(id=sid)
         yield Static("", id="status", markup=False)
-        yield Footer()
+        yield Static(_tr("tui.menu.keys.home"), id="keys", markup=False)
 
     def on_mount(self) -> None:
-        # ссылки на постоянные виджеты: поверх вкладок бывает окно (подтверждение, подсказка), и
+        # ссылки на постоянные виджеты: поверх разделов бывает окно (подтверждение, подсказка), и
         # query_one() у приложения ищет только на верхнем экране
-        self._tabs = self.query_one(TabbedContent)
+        self._content = self.query_one(ContentSwitcher)
+        self._home = self.query_one(HomeMenu)
+        self._keys = self.query_one('#keys', Static)
         self._top = self.query_one("#top", Static)
         self._status = self.query_one("#status", Static)
         self.register_theme(THEME)
@@ -158,7 +177,12 @@ class ChimeraTui(App):
         self._update_top()
         self.set_interval(self.poll_interval, self._on_tick)
         self.run_worker(self._startup, thread=True, name="startup")
-        self._focus_pane()
+        self._home.compact(self.size.height)
+        self.query_one('#menu', OptionList).focus()
+
+    def on_resize(self, event) -> None:
+        if self._home is not None:
+            self._home.compact(event.size.height)
 
     def _update_top(self) -> None:
         app = self._state.get("app") or {}
@@ -168,7 +192,8 @@ class ChimeraTui(App):
             note = _tr('tui.textual_app.no_connection_to_chimera')
             if self.link_note and self.link_note != note:
                 note += f" ({self.link_note})"
-        self._top.update(f"Chimera{ver} · {note}")
+        title = next((title for sid, title, _ in SECTIONS if sid == self.active_section), _tr("tui.menu.title"))
+        self._top.update(f"Chimera{ver} / {title} · {note}")
         self._top.set_class(self.link is False, "offline")
 
     def status(self, text: str, error: bool = False) -> None:
@@ -186,23 +211,55 @@ class ChimeraTui(App):
     def _blocked(self) -> bool:
         return isinstance(self.screen, ModalScreen)
 
-    def action_goto(self, n: int) -> None:
-        if not self._blocked() and 1 <= n <= len(TABS):
-            self._tabs.active = TABS[n - 1][0]
+    def check_action(self, action: str, parameters: tuple) -> bool:
+        if action == "navigate":
+            return not editing(self.screen.focused)
+        if action == "goto":
+            return not self._blocked() and not editing(self.screen.focused)
+        return True
 
-    def action_tab_step(self, step: int) -> None:
+    def open_section(self, sid: str) -> None:
+        if self._blocked() or sid not in {sid for sid, _, _ in SECTIONS}:
+            return
+        self._content.current = sid
+        self._keys.update(_tr("tui.menu.keys.section"))
+        self._update_top()
+        self.call_after_refresh(self._focus_pane)
+        self.refresh_now(force=True)
+
+    def action_goto(self, n: int) -> None:
+        if 1 <= n <= len(SECTIONS):
+            self.open_section(SECTIONS[n - 1][0])
+
+    def action_back(self) -> None:
         if self._blocked():
             return
-        ids = [t[0] for t in TABS]
-        self._tabs.active = ids[(ids.index(self.active_tab) + step) % len(ids)]
+        previous = self.active_section
+        self._content.current = "home"
+        menu = self._home.query_one(OptionList)
+        if previous != "home":
+            menu.highlighted = next(i for i, (sid, _, _) in enumerate(SECTIONS) if sid == previous)
+        self._keys.update(_tr("tui.menu.keys.home"))
+        self._update_top()
+        menu.focus()
+
+    def action_navigate(self, direction: str) -> None:
+        if not self._blocked() and self.active_section == "home":
+            menu = self._home.query_one(OptionList)
+            if direction in ("up", "down"):
+                menu.highlighted = ((menu.highlighted or 0) + (1 if direction == "down" else -1)) % len(SECTIONS)
+            elif direction == "right":
+                menu.action_select()
+        elif not self._blocked() and direction == "left" and not (
+            isinstance(self.screen.focused, DataTable) and self.screen.focused.cursor_type == "cell"
+        ):
+            self.action_back()
+        else:
+            move_focus(self.screen, direction)
 
     def action_help(self) -> None:
         if not self._blocked():
             self.push_screen(HelpScreen())
-
-    def on_tabbed_content_tab_activated(self, event: TabbedContent.TabActivated) -> None:
-        self.call_after_refresh(self._focus_pane)
-        self.refresh_now(force=True)
 
     def confirm(self, text: str, on_yes) -> None:
         self.push_screen(ConfirmScreen(text), lambda ok: on_yes() if ok else None)
@@ -284,6 +341,8 @@ class ChimeraTui(App):
                 self._state[key] = value
                 self.pushes[key] += 1
                 changed.append(key)
+        if changed:
+            self._home.render_state()
         if fast and self._full_render:
             self._full_render = False
             self.resync()
@@ -304,7 +363,7 @@ class ChimeraTui(App):
         self._update_top()
 
     def resync(self) -> None:
-        """Перерисовать все вкладки по текущему состоянию (вернуть тумблеры на место после отказа)."""
+        """Перерисовать все разделы по текущему состоянию (вернуть тумблеры на место после отказа)."""
         keys = list(self._state)
         for pane in self._panes():
             pane.state_changed(keys)

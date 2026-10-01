@@ -191,11 +191,11 @@ chimera start
 
 ### tui
 
-Full-screen terminal interface (tabs, toggles, live state).
+Keyboard terminal menu (arrows/WASD, live state)..
 
 #### `chimera tui [--simple]`
 
-Full-screen terminal interface: Overview, Strategies, Lists, Proxy, Hosts, DNS, Telegram, Logs, Settings. Connects to a running Chimera (starts it without a window if needed); quitting (q) keeps Chimera running. Falls back to a simple menu without a terminal or Textual. --simple uses the old numbered menu with its own Api. Level: changes the app. Works without a running Chimera.
+Keyboard menu: Overview, Strategies, Lists, Proxy, Hosts, DNS, Telegram, Logs, Settings. Arrows/WASD select an item, Enter/D opens a section, Esc/A returns to the menu. Tab and Shift+Tab move between form controls. Mouse is disabled. Connects to Chimera (starts it without a window if needed); quitting (q) keeps Chimera running. Falls back to a simple menu without a terminal or Textual. --simple uses a numbered menu with its own Api. Level: changes the app. Works without a running Chimera.
 
 - `--simple` — simple numbered menu instead of the full-screen interface
 

@@ -3,7 +3,7 @@ import asyncio
 import json
 
 from tui.remote import Remote
-from tui.textual_app import ChimeraTui, TABS
+from tui.textual_app import ChimeraTui, SECTIONS
 
 
 class ExistingRemote(Remote):
@@ -22,14 +22,14 @@ def run() -> int:
                 await pilot.pause(0.1)
             if app.link is not True:
                 raise RuntimeError("TUI did not connect to the smoke instance")
-            for i, (tab, _, _) in enumerate(TABS, 1):
+            for i, (tab, _, _) in enumerate(SECTIONS, 1):
                 await pilot.press(str(i))
                 await pilot.pause(0.1)
-                if app.active_tab != tab:
-                    raise RuntimeError(f"TUI tab did not open: {tab}")
+                if app.active_section != tab:
+                    raise RuntimeError(f"TUI section did not open: {tab}")
             if not app.export_screenshot().lstrip().startswith("<svg"):
                 raise RuntimeError("TUI did not render")
-        print(json.dumps({"ok": True, "tabs": len(TABS)}))
+        print(json.dumps({"ok": True, "sections": len(SECTIONS)}))
 
     asyncio.run(check())
     return 0
