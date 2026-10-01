@@ -324,8 +324,13 @@ class ChimeraTui(App):
         self.refresh_now(force=True)
 
     def _post(self, fn, *args) -> None:
+        def deliver():
+            # Ответ уже в очереди, но экран может быть разобран при закрытии.
+            if self.is_running:
+                fn(*args)
+
         try:
-            self.call_from_thread(fn, *args)
+            self.call_from_thread(deliver)
         except RuntimeError:
             pass  # приложение уже закрывается
 

@@ -18,6 +18,21 @@ from tui.textual_app import SECTIONS, ChimeraTui
 SECRET = "ddaa11bb22cc33dd44ee55ff66aa77bb88"
 
 
+def test_late_worker_callback_is_ignored_after_screen_shutdown(monkeypatch):
+    from unittest.mock import Mock
+    app = ChimeraTui(FakeRemote())
+    monkeypatch.setattr(app, "call_from_thread", lambda callback, *args: callback(*args))
+    update = Mock()
+    app._post(update, "late response")
+    update.assert_not_called()
+    app._running = True
+    try:
+        app._post(update, "live response")
+        update.assert_called_once_with("live response")
+    finally:
+        app._running = False
+
+
 class FakeRemote:
     """Поддельная Chimera: состояние в памяти, действия меняют его как настоящие."""
 
