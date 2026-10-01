@@ -33,6 +33,12 @@ def extract(archive, destination, flavor):
         "bin/sing-box/sing-box.exe", "bin/zapret-win-bundle/zapret-winws/winws2.exe",
         "bin/zapret-win-bundle/zapret-winws/WinDivert.dll", "bin/zapret-win-bundle/zapret-winws/WinDivert64.sys",
     )
+    if flavor != "qt":
+        required += ("bin/webview2/msedgewebview2.exe", "bin/webview2/msedge.dll",
+                     "bin/webview2/icudtl.dat", "bin/webview2/resources.pak",
+                     "bin/webview2/chimera-runtime.json", "webview/lib/runtimes/win-x64/native/WebView2Loader.dll",
+                     "webview/lib/Microsoft.Web.WebView2.Core.dll",
+                     "clr_loader/ffi/dlls/amd64/ClrLoader.dll", "pythonnet/runtime/Python.Runtime.dll")
     missing = [name for name in required if not (app / name).is_file()]
     if missing:
         raise ValueError(f"Archive is incomplete: {missing}")
@@ -58,17 +64,19 @@ def verify(archive, flavor, version, full=False, screenshot=None):
         if not payload.get("ok") or payload["data"]["program"]["version"] != version:
             raise ValueError("Archive executable version mismatch")
         print(f"Archive structure, manifest and CLI verified: {flavor} {version}", flush=True)
+        shell = [sys.executable, str(ROOT / "tools/smoke_launch.py"), str(app), "--flavor", flavor]
+        if screenshot is not None:
+            shell.extend(["--screenshot", str(screenshot)])
+        subprocess.run(shell, cwd=ROOT, check=True)
+        if flavor == "lite":
+            fallback = [*shell, "--no-browser"]
+            if screenshot is not None:
+                fallback[fallback.index("--screenshot") + 1] = str(screenshot.with_stem(screenshot.stem + "-fallback"))
+            subprocess.run(fallback, cwd=ROOT, check=True)
         command = [sys.executable, str(ROOT / "tools/smoke_build.py"), str(app), "--flavor", flavor]
         if full:
             command.append("--full")
-        if screenshot is not None and flavor != "webview":
-            command.extend(["--screenshot", str(screenshot)])
         subprocess.run(command, cwd=ROOT, check=True)
-        if flavor == "webview":
-            native = [sys.executable, str(ROOT / "tools/smoke_build.py"), str(app), "--flavor", flavor, "--native-webview"]
-            if screenshot is not None:
-                native.extend(["--screenshot", str(screenshot)])
-            subprocess.run(native, cwd=ROOT, check=True)
 
 
 if __name__ == "__main__":

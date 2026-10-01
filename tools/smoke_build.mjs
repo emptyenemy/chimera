@@ -9,8 +9,14 @@ const [port, checksPath, mode, screenshot] = process.argv.slice(2);
 // full — шаги с правами администратора, которые меняют систему (см. smoke_checks.js)
 const checks = `window.__SMOKE_TG_PORT__ = ${Number(process.env.CHIMERA_SMOKE_TG_PORT) || 19443};\n` + (mode === "full" ? "window.__SMOKE_FULL__ = true;\n" : "") + readFileSync(checksPath, "utf8");
 
-const targets = await (await fetch(`http://127.0.0.1:${port}/json`)).json();
-const page = targets.find(t => t.type === "page" && t.url?.includes("index.html")) || targets.find(t => t.type === "page");
+let page;
+for (let attempt = 0; attempt < 300 && !page; attempt++) {
+  const targets = await (await fetch(`http://127.0.0.1:${port}/json`)).json();
+  const candidates = targets.filter(t => t.type === "page" &&
+    (t.url?.includes("index.html") || /^http:\/\/127\.0\.0\.1:/.test(t.url || "")));
+  page = candidates.find(t => t.title === "Chimera") || candidates[0];
+  if (!page) await new Promise(resolve => setTimeout(resolve, 100));
+}
 if (!page) { console.error("страница программы не найдена"); process.exit(2); }
 
 const ws = new WebSocket(page.webSocketDebuggerUrl);
@@ -29,6 +35,15 @@ ws.onmessage = m => {
 };
 await new Promise((resolve, reject) => { ws.onopen = resolve; ws.onerror = reject; });
 await call("Runtime.enable");
+for (let attempt = 0; attempt < 300; attempt++) {
+  const ready = await call("Runtime.evaluate", {
+    expression: "document.body?.classList.contains('ready') && typeof api === 'function'",
+    returnByValue: true,
+  });
+  if (ready.result?.result?.value) break;
+  if (attempt === 299) throw new Error("интерфейс окна не загрузился");
+  await new Promise(resolve => setTimeout(resolve, 100));
+}
 await call("Emulation.setDeviceMetricsOverride", { width: 1280, height: 820, deviceScaleFactor: 1, mobile: false });
 // WebView2 не всегда ожидает Promise в Runtime.evaluate. Результат читается
 // отдельным синхронным вызовом после завершения проверок.
