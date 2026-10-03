@@ -267,7 +267,8 @@ ACTIONS: tuple[Action, ...] = (
        "hosts_ping_one", (Arg("id", "str"),), examples=("chimera hosts ping comss",)),
     _a("hosts", "background", handler="hosts_background", methods=("hosts_set_background", "hosts_overview"),
        level=APP, args=(Arg("настройки", "names", optional=True),),
-       examples=("chimera hosts background", "chimera hosts background auto_update=true")),
+       examples=("chimera hosts background", "chimera hosts background refresh_enabled=true refresh_interval=21600",
+                 "chimera hosts background check_enabled=true check_interval=900")),
 
     # --- DNS --------------------------------------------------------------------------
     _a("dns", "state", "dns_state",

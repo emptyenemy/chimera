@@ -916,13 +916,14 @@ chimera hosts ping comss
 
 #### `chimera hosts background [настройки…]`
 
-Настройки фонового потока hosts: ключ=значение (значение — JSON). Уровень: изменение приложения.
+Настройки фонового потока hosts: ключ=значение (значение — JSON). refresh_interval и check_interval — целое число секунд больше нуля, refresh_enabled/check_enabled/autoswitch_enabled — true/false, provider_order — массив идентификаторов. Уровень: изменение приложения.
 
 - `настройки` — ключ=значение …
 
 ```
 chimera hosts background
-chimera hosts background auto_update=true
+chimera hosts background refresh_enabled=true refresh_interval=21600
+chimera hosts background check_enabled=true check_interval=900
 ```
 
 ### dns

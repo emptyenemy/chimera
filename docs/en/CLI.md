@@ -916,13 +916,14 @@ chimera hosts ping comss
 
 #### `chimera hosts background [settings…]`
 
-Settings of the hosts background thread: key=value (the value is JSON). Level: changes the app.
+Hosts background settings: key=value (JSON values). refresh_interval and check_interval are positive integer seconds; refresh_enabled/check_enabled/autoswitch_enabled are true/false; provider_order is an array of IDs. Level: changes the app.
 
 - `settings` — key=value …
 
 ```
 chimera hosts background
-chimera hosts background auto_update=true
+chimera hosts background refresh_enabled=true refresh_interval=21600
+chimera hosts background check_enabled=true check_interval=900
 ```
 
 ### dns

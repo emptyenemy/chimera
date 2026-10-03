@@ -11,6 +11,7 @@
 """
 
 from modules.errors import ChimeraPermissionError, ChimeraValueError
+from modules.fileutil import atomic_write_text
 
 import ctypes
 import json
@@ -56,6 +57,16 @@ def _wall_stamped(rec, key):
     if not isinstance(rec, dict) or not isinstance(rec.get(key), (int, float)) or rec[key] < 1e9:
         return None
     return rec
+
+def _valid_background_option(key, value):
+    if key in ("refresh_enabled", "check_enabled", "autoswitch_enabled"):
+        return type(value) is bool
+    if key in ("refresh_interval", "check_interval"):
+        return type(value) is int and value > 0
+    return isinstance(value, list) and all(
+        isinstance(item, str) and re.fullmatch(r"[A-Za-z0-9._-]{1,64}", item) for item in value
+    )
+
 
 class HostsManager:
     def __init__(self, state_path: Path = STATE_PATH, hosts_path: Path = HOSTS_PATH):
@@ -127,16 +138,16 @@ class HostsManager:
     def _load_state(self) -> dict:
         if self.state_path.exists():
             try:
-                return json.loads(self.state_path.read_text(encoding="utf-8"))
+                saved = json.loads(self.state_path.read_text(encoding="utf-8"))
+                if isinstance(saved, dict):
+                    return saved
             except (json.JSONDecodeError, ValueError):
                 pass
         # assignments: {provider_id: [list_name, ...]} — какой список через кого
         return {"assignments": {}, "entries": [], "enabled": True}
 
     def _save_state(self, state: dict) -> None:
-        self.state_path.write_text(
-            json.dumps(state, ensure_ascii=False, indent=2), encoding="utf-8"
-        )
+        atomic_write_text(self.state_path, json.dumps(state, ensure_ascii=False, indent=2))
 
     def assignments(self) -> dict:
         return self._load_state().get("assignments", {})
@@ -187,13 +198,23 @@ class HostsManager:
 
     def background_options(self) -> dict:
         st = self._load_state()
-        return {**BACKGROUND_DEFAULTS, **st.get("background", {})}
+        saved = st.get("background")
+        saved = saved if isinstance(saved, dict) else {}
+        return {key: (saved[key] if key in saved and _valid_background_option(key, saved[key])
+                      else value.copy() if isinstance(value, list) else value)
+                for key, value in BACKGROUND_DEFAULTS.items()}
 
     def set_background(self, options: dict) -> dict:
         """Сохраняет настройки автообновления/чекера/автопереключения.
         Неизвестные ключи молча отбрасываются — фронт шлёт только то, что знает."""
+        if options is not None and not isinstance(options, dict):
+            raise ChimeraValueError('err.hosts.manager.background_options_must_be_object')
+        patch = {key: value for key, value in (options or {}).items() if key in BACKGROUND_DEFAULTS}
+        for key, value in patch.items():
+            if not _valid_background_option(key, value):
+                raise ChimeraValueError('err.hosts.manager.invalid_background_option', p0=key)
         current = self.background_options()
-        current.update({k: v for k, v in (options or {}).items() if k in BACKGROUND_DEFAULTS})
+        current.update(patch)
         st = self._load_state()
         st["background"] = current
         self._save_state(st)
@@ -251,7 +272,7 @@ class HostsManager:
 
         if not plan:
             with mutation_lock or nullcontext():
-                if expected_state is not None and not self.background.can_mutate():
+                if expected_state is not None and not self.background.can_apply():
                     return self.state()
                 if expected_state is not None and not self.background.same_state(expected_state, self._load_state()):
                     return self.state()
@@ -295,7 +316,7 @@ class HostsManager:
                 raise ValueError("; ".join(unavailable))
             raise ChimeraValueError('err.hosts.manager.no_addresses_resolved_are_the_providers_unavaila')
         with mutation_lock or nullcontext():
-            if expected_state is not None and not self.background.can_mutate():
+            if expected_state is not None and not self.background.can_apply():
                 return self.state()
             if expected_state is not None and not self.background.same_state(expected_state, self._load_state()):
                 return self.state()

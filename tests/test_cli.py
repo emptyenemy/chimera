@@ -41,7 +41,7 @@ class FakeApi:
                          "autostart": False, "link": "tg://proxy?server=1.2.3.4&port=1443&secret=ddabcdef",
                          "error": None},
             "hosts_state": {"applied": True, "enabled": True, "count": 3,
-                            "assignments": {"comss": ["youtube"]}, "background": {"auto_update": True}},
+                            "assignments": {"comss": ["youtube"]}, "background": {"refresh_enabled": True}},
             "dns_state": {"adapters": [{"index": 12, "name": "Ethernet", "servers": ["1.1.1.1"]}]},
             "dns_probe_config": {"bypass": ["rutracker.org"], "ad": "doubleclick.net"},
             "lists_read": "# youtube\nyoutube.com\nggpht.com\n",
@@ -233,7 +233,7 @@ def test_json_returns_what_the_api_returned(capsys, running):
     code, data, _ = run_json(capsys, "hosts", "state")
     assert code == 0
     assert data["data"] == {"applied": True, "enabled": True, "count": 3,
-                            "assignments": {"comss": ["youtube"]}, "background": {"auto_update": True}}
+                            "assignments": {"comss": ["youtube"]}, "background": {"refresh_enabled": True}}
 
 
 def test_winws_start_with_explicit_strategy(capsys, running):
@@ -404,9 +404,9 @@ def test_hosts_assign_keeps_unmentioned(capsys, running):
 def test_hosts_background_show_and_set(capsys, running):
     api, _ = running
     code, data, _ = run_json(capsys, "hosts", "background")
-    assert data["data"] == {"auto_update": True}
-    assert run(capsys, "hosts", "background", "auto_update=false")[0] == 0
-    assert api.called("hosts_set_background") == [[{"auto_update": False}]]
+    assert data["data"] == {"refresh_enabled": True}
+    assert run(capsys, "hosts", "background", "refresh_enabled=false")[0] == 0
+    assert api.called("hosts_set_background") == [[{"refresh_enabled": False}]]
 
 
 def test_dns_commands(capsys, running):

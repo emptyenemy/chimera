@@ -58,6 +58,8 @@ class HostsBackground:
         self.can_mutate = lambda: True
         self._thread: threading.Thread | None = None
         self._stop = threading.Event()
+        self._lifecycle_lock = threading.Lock()
+        self._restart_requested = False
         self._last_refresh = 0.0
         self._last_check = 0.0
         self._degraded_streak: dict[str, int] = {}
@@ -65,32 +67,52 @@ class HostsBackground:
     # --- запуск/остановка потока ---------------------------------------------
 
     def start(self) -> None:
-        if self._thread and self._thread.is_alive():
-            return
-        self._stop.clear()
-        # На старте hosts уже применён прошлым запуском — пересолв ждёт полный
-        # интервал, а первая проверка идёт через минуту. Иначе окно, закрытое в
-        # первые секунды, ждало бы выхода, пока пулы добегут сетевые таймауты.
+        with self._lifecycle_lock:
+            if self._thread and self._thread.is_alive():
+                if self._stop.is_set():
+                    self._restart_requested = True
+                return
+            self._start_locked()
+
+    def _start_locked(self) -> None:
+        self._stop = threading.Event()
+        self._restart_requested = False
+        self._degraded_streak.clear()
+        # Первую проверку откладываем на минуту, обновление IP — на полный интервал.
         now = self.now()
         opts = self.manager.background_options()
         self._last_refresh = now
         self._last_check = now - opts.get("check_interval", DEFAULT_OPTIONS["check_interval"]) + STARTUP_CHECK_DELAY
-        self._thread = threading.Thread(target=self._loop, daemon=True)
+        self._thread = threading.Thread(target=self._loop, daemon=True, name="hosts-background")
         self._thread.start()
 
     def stop(self) -> None:
-        self._stop.set()
-        if self._thread:
-            self._thread.join(timeout=2.0)
-            self._thread = None
+        with self._lifecycle_lock:
+            self._restart_requested = False
+            self._stop.set()
+            worker = self._thread
+        if worker and worker is not threading.current_thread():
+            worker.join(timeout=2.0)
+        with self._lifecycle_lock:
+            if self._thread is worker and worker and not worker.is_alive():
+                self._thread = None
 
     def _loop(self) -> None:
-        while not self._stop.is_set():
-            try:
-                self.run_once()
-            except Exception:
-                pass  # фон не должен ронять программу; последняя ошибка видна по health/логу
-            self._stop.wait(self.tick_interval)
+        try:
+            while not self._stop.is_set():
+                try:
+                    self.run_once()
+                except Exception:
+                    pass
+                self._stop.wait(self.tick_interval)
+        finally:
+            with self._lifecycle_lock:
+                self._thread = None
+                if self._restart_requested:
+                    self._start_locked()
+
+    def can_apply(self) -> bool:
+        return not self._stop.is_set() and self.can_mutate()
 
     # --- один тик (вызывается и потоком, и тестами напрямую) -----------------
 
@@ -99,14 +121,12 @@ class HostsBackground:
         return all(before.get(k) == after.get(k) for k in ("assignments", "enabled", "background", "entries"))
 
     def _sync_current(self, state):
-        if hasattr(self, "mutation_lock"):
-            self.manager._sync(expected_state=state, mutation_lock=self.mutation_lock)
-        else:
-            self.manager._sync()
+        if self.can_apply():
+            self.manager._sync(expected_state=state, mutation_lock=getattr(self, "mutation_lock", None))
 
     def run_once(self, now: float | None = None) -> None:
         now = self.now() if now is None else now
-        if not self.can_mutate():
+        if not self.can_apply():
             return
         opts = self.manager.background_options()
 
@@ -137,6 +157,8 @@ class HostsBackground:
 
         changed = False
         for pid, lists in plan.items():
+            if not self.can_apply():
+                return
             try:
                 provider = self.manager.get_provider(pid)
             except KeyError:
@@ -161,12 +183,16 @@ class HostsBackground:
     # --- TCP+TLS чекер применённых записей ------------------------------------
 
     def _check_one(self, host: str) -> bool:
+        if not self.can_apply():
+            return False
         try:
             return bool(self.check_fn(host))
         except Exception:
             return False
 
     def _do_check(self, opts: dict) -> None:
+        if not self.can_apply():
+            return
         st = self.manager._load_state()
         entries = st.get("entries", [])
         if not entries:
@@ -200,7 +226,7 @@ class HostsBackground:
         }
 
         with getattr(self, "mutation_lock", nullcontext()):
-            if not self.can_mutate():
+            if not self.can_apply():
                 return
             current = self.manager._load_state()
             if not self.same_state(st, current) or self.manager.background_options() != opts:
@@ -226,6 +252,8 @@ class HostsBackground:
         else:
             candidates = [p for p in order if p != current]
         for pid in candidates:
+            if not self.can_apply():
+                return None
             if self.probe_fn(pid):
                 return pid
         return None
@@ -261,7 +289,7 @@ class HostsBackground:
                 continue  # переключить некуда — остаёмся на текущем, ждём восстановления
 
             with getattr(self, "mutation_lock", nullcontext()):
-                if not self.can_mutate():
+                if not self.can_apply():
                     return
                 current = self.manager._load_state()
                 if not self.same_state(st, current) or self.manager.background_options() != opts:

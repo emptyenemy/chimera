@@ -73,9 +73,9 @@ def test_refresh_is_noop_when_ip_unchanged(hm, monkeypatch):
     calls = []
     real_sync = hm._sync
 
-    def spy_sync():
+    def spy_sync(**kwargs):
         calls.append(1)
-        return real_sync()
+        return real_sync(**kwargs)
 
     monkeypatch.setattr(hm, "_sync", spy_sync)
     bg = HostsBackground(hm, resolve_fn=lambda d, doh, s: [{"ip": "9.9.9.9", "host": x} for x in d])
@@ -290,3 +290,181 @@ def test_background_refresh_discards_result_after_foreground_changes_settings(hm
     bg._refresh()
     assert not hm.state()["enabled"]
     assert "example.com" not in hm._read_hosts()
+
+
+@pytest.mark.parametrize("key", ["refresh_interval", "check_interval"])
+@pytest.mark.parametrize("value", [0, -1, True, 1.5, "15", None, [], {}])
+def test_background_rejects_invalid_interval_without_saving(hm, key, value):
+    hm.set_background({"refresh_interval": 7200, "check_interval": 120})
+    before = hm.state_path.read_bytes()
+    with pytest.raises(ValueError):
+        hm.set_background({"refresh_enabled": False, key: value})
+    assert hm.state_path.read_bytes() == before
+
+
+@pytest.mark.parametrize("key", ["refresh_enabled", "check_enabled", "autoswitch_enabled"])
+@pytest.mark.parametrize("value", [0, 1, "false", None, []])
+def test_background_rejects_non_boolean_flags(hm, key, value):
+    with pytest.raises(ValueError):
+        hm.set_background({key: value})
+    assert not hm.state_path.exists()
+
+
+@pytest.mark.parametrize("options", [[], "bad", 15])
+def test_background_rejects_non_object_options(hm, options):
+    with pytest.raises(ValueError):
+        hm.set_background(options)
+
+
+def test_background_recovers_malformed_saved_options_without_rewriting(hm):
+    hm._save_state({"background": {"refresh_interval": -1, "check_interval": "invalid",
+                                    "autoswitch_enabled": "false", "provider_order": 123,
+                                    "refresh_enabled": False}})
+    before = hm.state_path.read_bytes()
+    assert hm.background_options() == {**DEFAULT_OPTIONS, "refresh_enabled": False}
+    hm.background.run_once(now=0)
+    assert hm.state_path.read_bytes() == before
+
+
+def test_cancelled_checker_does_not_publish_health(hm, monkeypatch):
+    _seed_dns_assignment(hm, monkeypatch)
+    bg = hm.background
+
+    def check(host):
+        bg.stop()
+        return True
+
+    bg.check_fn = check
+    bg._do_check(hm.background_options())
+    assert hm._load_state().get("health") is None
+
+
+def test_cancelled_refresh_does_not_apply_hosts(hm, monkeypatch):
+    _seed_dns_assignment(hm, monkeypatch)
+    before = hm.hosts_path.read_bytes()
+    bg = hm.background
+
+    def resolve(domains, doh, servers):
+        bg.stop()
+        return [{"host": host, "ip": "8.8.8.8"} for host in domains]
+
+    bg.resolve_fn = resolve
+    monkeypatch.setattr(hosts_manager, "resolve_domains",
+                        lambda domains_, doh, servers: [{"host": host, "ip": "8.8.8.8"} for host in domains_])
+    bg._refresh()
+    assert hm.hosts_path.read_bytes() == before
+
+
+def test_restart_waits_for_cancelled_worker_without_overlapping_ticks(hm, monkeypatch):
+    import threading
+    bg = hm.background
+    entered = [threading.Event(), threading.Event()]
+    release = [threading.Event(), threading.Event()]
+    calls = []
+    active = []
+    max_active = []
+
+    def tick():
+        index = len(calls)
+        calls.append(threading.current_thread())
+        active.append(True)
+        max_active.append(len(active))
+        entered[index].set()
+        assert release[index].wait(3)
+        active.pop()
+
+    bg.run_once = tick
+    bg.start()
+    first = bg._thread
+    original_join = first.join
+    try:
+        assert entered[0].wait(1)
+        monkeypatch.setattr(first, "join", lambda timeout=None: None)
+        bg.stop()
+        assert bg._thread is first
+        bg.start()
+        bg.start()
+        assert bg._stop.is_set()
+        assert calls == [first]
+        release[0].set()
+        assert entered[1].wait(1)
+        assert calls[1] is not first
+        assert max(max_active) == 1
+        assert bg._thread is calls[1]
+    finally:
+        release[0].set()
+        release[1].set()
+        bg.stop()
+        original_join(timeout=1)
+
+
+def test_stop_cancels_requested_restart(hm, monkeypatch):
+    import threading
+    bg = hm.background
+    entered, release = threading.Event(), threading.Event()
+    calls = []
+
+    def tick():
+        calls.append(True)
+        entered.set()
+        assert release.wait(3)
+
+    bg.run_once = tick
+    bg.start()
+    first = bg._thread
+    original_join = first.join
+    try:
+        assert entered.wait(1)
+        monkeypatch.setattr(first, "join", lambda timeout=None: None)
+        bg.stop()
+        bg.start()
+        bg.stop()
+        release.set()
+        original_join(timeout=1)
+        assert not first.is_alive()
+        assert bg._thread is None
+        assert calls == [True]
+    finally:
+        release.set()
+        bg.stop()
+        original_join(timeout=1)
+
+
+@pytest.mark.parametrize("value", [123, [None], [15], [""], ["bad id"], ["x" * 65], "xbox"])
+def test_background_rejects_invalid_provider_order(hm, value):
+    with pytest.raises(ValueError):
+        hm.set_background({"provider_order": value})
+
+
+def test_background_defaults_do_not_share_mutable_provider_order(hm):
+    options = hm.background_options()
+    options["provider_order"].append("xbox")
+    assert hm.background_options()["provider_order"] == []
+    assert DEFAULT_OPTIONS["provider_order"] == []
+
+
+@pytest.mark.parametrize("saved", [None, [], "bad", 15, True])
+def test_non_object_hosts_state_uses_defaults_without_rewriting(hm, saved):
+    import json
+    hm.state_path.write_text(json.dumps(saved), encoding="utf-8")
+    before = hm.state_path.read_bytes()
+    assert hm.background_options() == DEFAULT_OPTIONS
+    assert hm.state()["assignments"] == {}
+    assert hm.state_path.read_bytes() == before
+
+
+def test_cancelled_provider_probe_does_not_switch_assignment(hm, monkeypatch):
+    _seed_dns_assignment(hm, monkeypatch)
+    hm.set_background({"autoswitch_enabled": True, "provider_order": ["xbox", "comss"]})
+    before = hm.state_path.read_bytes()
+    bg = hm.background
+    bg._degraded_streak["xbox"] = 1
+
+    def probe(provider):
+        bg.stop()
+        return True
+
+    bg.probe_fn = probe
+    bg._maybe_autoswitch(hm.background_options(), {"xbox": {"total": 1, "alive": 0, "ratio": 0.0}})
+    assert hm.state_path.read_bytes() == before
+    assert hm.assignments() == {"xbox": ["discord"]}
