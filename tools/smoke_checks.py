@@ -112,7 +112,7 @@ def main():
             browser = Path(os.environ.get("ProgramFiles(x86)", "C:/Program Files (x86)")) / "Microsoft/Edge/Application/msedge.exe"
             result = subprocess.run(["node", str(ROOT / "tools/smoke_http.mjs"), str(browser),
                                      f"http://127.0.0.1:{server.server_address[1]}/?t=checks-test",
-                                     str(ROOT / "tools/smoke_checks.js"), "checks"], capture_output=True,
+                                     str(ROOT / "tools/smoke_sites.js"), "checks"], capture_output=True,
                                     text=True, encoding="utf-8", errors="replace", timeout=180)
             print(result.stdout)
             assert result.returncode == 0, result.stderr
