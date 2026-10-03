@@ -894,6 +894,7 @@
   "msg.modules.domains.looks_like_a_url_keep_only_the_domain": "Looks like a URL: keep only the domain",
   "msg.modules.domains.looks_like_an_ip_address_or_subnet_but_cannot_be": "Looks like an IP address or subnet, but cannot be parsed",
   "msg.modules.domains.not_a_domain_empty_parts_or_invalid_characters": "Not a domain: empty parts or invalid characters",
+  "msg.modules.domains.read_as": "read as {p0}",
   "msg.modules.domains.the_file_is_not_utf_8_first_invalid_byte": "The file is not UTF-8 (first invalid byte: {p0})",
   "msg.modules.domains.whitespace_inside_the_entry": "Whitespace inside the entry",
   "msg.modules.hosts.background.degraded_alive": "Degraded: {p0}/{p1} alive",

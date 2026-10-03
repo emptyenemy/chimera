@@ -902,6 +902,7 @@
   "msg.modules.domains.looks_like_a_url_keep_only_the_domain": "похоже на URL: оставьте только домен",
   "msg.modules.domains.looks_like_an_ip_address_or_subnet_but_cannot_be": "похоже на IP-адрес или подсеть, но не разбирается",
   "msg.modules.domains.not_a_domain_empty_parts_or_invalid_characters": "не домен: пустые части, дефис по краям или недопустимые символы",
+  "msg.modules.domains.read_as": "прочитается как {p0}",
   "msg.modules.domains.the_file_is_not_utf_8_first_invalid_byte": "файл не в кодировке UTF-8 (первый непонятный байт: {p0})",
   "msg.modules.domains.whitespace_inside_the_entry": "пробел внутри записи",
   "msg.modules.hosts.background.degraded_alive": "деградация: {p0}/{p1} живы",

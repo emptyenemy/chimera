@@ -16,6 +16,7 @@ import re
 import time
 from contextlib import contextmanager
 from pathlib import Path
+from urllib.parse import urlsplit
 
 from modules.fileutil import atomic_write_text
 
@@ -234,12 +235,17 @@ def validate_list(name: str) -> dict:
         if not entry:
             continue
         result["entries"] += 1
+        normalized = normalize_entry(entry)
         doms, nets = split_entries([entry])
         if not nets:
-            problem = _entry_problem(entry)
+            problem = _entry_problem(normalized)
             if problem:
                 errors.append({"line": number, "entry": entry, "problem": problem})
                 continue
+        if normalized != entry.lower().strip("."):
+            # ссылку, www. или кириллицу программа читает сама — подсказываем, во что превратится
+            warnings.append({"line": number, "entry": entry,
+                             "problem": _tr('msg.modules.domains.read_as', p0=normalized)})
         key = nets[0] if nets else doms[0]
         if key in seen:
             warnings.append({"line": number, "entry": entry, "problem": _tr('msg.modules.domains.duplicate_of_the_entry_on_line', p0=f'{seen[key]}')})
@@ -266,6 +272,37 @@ def as_network(entry: str) -> ipaddress.IPv4Network | ipaddress.IPv6Network | No
         return None
 
 
+def normalize_entry(entry: str) -> str:
+    """Запись к виду, который понимают winws, sing-box и hosts: из ссылки — хост, без порта,
+    пути, www., *. и точек по краям, кириллица — в punycode. IP и подсети не трогаем.
+    Файл списка при этом не меняется: так читаются вставленные как есть адреса страниц."""
+    entry = entry.strip()
+    if not entry or as_network(entry) is not None:
+        return entry
+    if "://" in entry:
+        try:
+            entry = urlsplit(entry).hostname or entry
+        except ValueError:
+            return entry
+    else:
+        entry = re.split(r"[/?#]", entry, maxsplit=1)[0].rsplit("@", 1)[-1]
+        if entry.count(":") == 1:
+            entry = entry.split(":", 1)[0]  # домен:порт
+    entry = entry.strip().strip(".").lower()
+    if as_network(entry) is not None:
+        return entry
+    for prefix in ("*.", "www."):
+        # *.example.com и www.example.com — тот же сайт: суффикс example.com покрывает поддомены
+        if entry.startswith(prefix) and entry.count(".") > 1:
+            entry = entry[len(prefix):]
+    if not entry.isascii():
+        try:
+            entry = entry.encode("idna").decode("ascii")
+        except UnicodeError:
+            pass
+    return entry
+
+
 def split_entries(entries: list[str]) -> tuple[list[str], list[str]]:
     """Разделяет вперемешку заданные записи на (домены, IP-подсети).
 
@@ -277,7 +314,7 @@ def split_entries(entries: list[str]) -> tuple[list[str], list[str]]:
     seen_d: set[str] = set()
     seen_n: set[str] = set()
     for entry in entries:
-        entry = entry.strip()
+        entry = normalize_entry(entry)
         if not entry:
             continue
         net = as_network(entry)
