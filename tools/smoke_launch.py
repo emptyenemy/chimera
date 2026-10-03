@@ -208,7 +208,9 @@ def run(build, flavor, screenshot=None, no_browser=False, timeout=90):
                 raise RuntimeError("The packaged native window did not open")
             if native:
                 engines = [image_path(pid) for pid, name in family if name.lower() == "msedgewebview2.exe"]
-                if not engines or not all(path.is_relative_to(app / "bin/webview2") for path in engines):
+                # TEMP раннера — короткий путь 8.3 (RUNNER~1), а путь процесса раскрыт полностью
+                packaged = (app / "bin/webview2").resolve()
+                if not engines or not all(path.is_relative_to(packaged) for path in engines):
                     raise RuntimeError("The window used a system engine instead of the packaged runtime")
             print(json.dumps({"shell": "open", "arguments": [], "clean_config": True,
                               "flavor": flavor, "no_browser": no_browser, "visible": windows,
