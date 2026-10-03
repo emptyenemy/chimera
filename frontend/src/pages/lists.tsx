@@ -27,6 +27,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardAction, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { ContextMenu, ContextMenuContent, ContextMenuTrigger } from "@/components/ui/context-menu"
 import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
@@ -218,6 +219,20 @@ function TransportField({ item }: { item: ListInfo }) {
   )
 }
 
+const ESCAPES: Record<string, string> = { "&": "&amp;", "<": "&lt;", ">": "&gt;" }
+
+// строка списка: запись обычным цветом, всё после # — тусклым комментарием
+function highlightList(text: string): string {
+  return text
+    .split("\n")
+    .map((line) => {
+      const safe = line.replace(/[&<>]/g, (c) => ESCAPES[c])
+      const at = safe.indexOf("#")
+      return at < 0 ? safe : `${safe.slice(0, at)}<span class="text-muted-foreground/70">${safe.slice(at)}</span>`
+    })
+    .join("\n")
+}
+
 function ListEditor({ name, item }: { name: string; item?: ListInfo }) {
   const [text, setText] = useState<string | null>(null) // null — читается
   const [loadError, setLoadError] = useState("")
@@ -233,6 +248,24 @@ function ListEditor({ name, item }: { name: string; item?: ListInfo }) {
   const saveSequence = useRef(0)
   const retired = useRef(false)
   const lastSave = useRef<Promise<boolean>>(Promise.resolve(true))
+  const area = useRef<HTMLTextAreaElement>(null)
+  const layer = useRef<HTMLPreElement>(null)
+  const paintFrame = useRef(0)
+
+  // textarea неуправляемая, поэтому слой подсветки рисуем напрямую — без перерисовки React
+  const paint = useCallback(() => {
+    cancelAnimationFrame(paintFrame.current)
+    paintFrame.current = requestAnimationFrame(() => {
+      if (!area.current || !layer.current) return
+      // перевод строки в конце: иначе пустая последняя строка не займёт высоту
+      layer.current.innerHTML = highlightList(area.current.value) + "\n"
+      layer.current.scrollTop = area.current.scrollTop
+    })
+  }, [])
+  useEffect(() => {
+    if (text !== null) paint()
+    return () => cancelAnimationFrame(paintFrame.current)
+  }, [text, paint])
 
   useEffect(() => {
     let cancelled = false
@@ -322,6 +355,7 @@ function ListEditor({ name, item }: { name: string; item?: ListInfo }) {
   }, [name, flush])
 
   const onChange = (e: ChangeEvent<HTMLTextAreaElement>) => {
+    paint()
     latest.current = e.target.value
     writeListDraft(name, latest.current)
     dirty.current = true
@@ -358,18 +392,30 @@ function ListEditor({ name, item }: { name: string; item?: ListInfo }) {
                 ))}
               </div>
             ) : loadError ? null : (
-              <Textarea
-                id="lists-textarea"
-                data-testid="lists-textarea"
-                className="field-sizing-fixed h-[420px] resize-none font-mono"
-                spellCheck={false}
-                placeholder={t("lists.editor.placeholder")}
-                readOnly={frozen}
-                aria-busy={frozen}
-                defaultValue={text}
-                onChange={onChange}
-                onBlur={() => void flush()}
-              />
+              <div className="relative rounded-md dark:bg-input/30">
+                {/* тот же шрифт, отступы и рамка, что у textarea: строки совпадают пиксель в пиксель */}
+                <pre
+                  ref={layer}
+                  aria-hidden
+                  className="pointer-events-none absolute inset-0 m-0 overflow-hidden rounded-md border border-transparent px-2.5 py-2 font-mono text-base break-words whitespace-pre-wrap [scrollbar-gutter:stable] md:text-sm"
+                />
+                <Textarea
+                  ref={area}
+                  id="lists-textarea"
+                  data-testid="lists-textarea"
+                  className="relative field-sizing-fixed h-[420px] resize-none bg-transparent font-mono text-transparent caret-foreground [scrollbar-gutter:stable] selection:bg-primary/30 dark:bg-transparent"
+                  spellCheck={false}
+                  placeholder={t("lists.editor.placeholder")}
+                  readOnly={frozen}
+                  aria-busy={frozen}
+                  defaultValue={text}
+                  onChange={onChange}
+                  onScroll={(e) => {
+                    if (layer.current) layer.current.scrollTop = e.currentTarget.scrollTop
+                  }}
+                  onBlur={() => void flush()}
+                />
+              </div>
             )}
           </Field>
         </FieldGroup>
@@ -388,24 +434,32 @@ function ListEditor({ name, item }: { name: string; item?: ListInfo }) {
 
 // --- левая колонка --------------------------------------------------------------
 
-function RowMenu({
-  item,
-  onRenamed,
-  onDeleted,
-}: {
+interface RowMenuProps {
   item: ListInfo
   onRenamed: (from: string, to: string) => void
   onDeleted: (name: string) => void
-}) {
+}
+
+function RowMenu(props: RowMenuProps) {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger
-        render={<Button variant="ghost" size="icon-xs" data-testid={`list-menu-${item.name}`} />}
-        aria-label={t("lists.menu.label", { name: item.name })}
+        render={<Button variant="ghost" size="icon-xs" data-testid={`list-menu-${props.item.name}`} />}
+        aria-label={t("lists.menu.label", { name: props.item.name })}
       >
         <EllipsisIcon />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="min-w-52">
+        <RowMenuItems {...props} />
+      </DropdownMenuContent>
+    </DropdownMenu>
+  )
+}
+
+// пункты общие для «⋯» и правого клика: контекстное меню Base UI собрано из тех же частей Menu
+function RowMenuItems({ item, onRenamed, onDeleted }: RowMenuProps) {
+  return (
+    <>
         <DropdownMenuGroup>
           <DropdownMenuLabel>{t("lists.transport.title")}</DropdownMenuLabel>
           <DropdownMenuCheckboxItem
@@ -455,8 +509,7 @@ function RowMenu({
             {t("lists.menu.delete")}
           </DropdownMenuItem>
         </DropdownMenuGroup>
-      </DropdownMenuContent>
-    </DropdownMenu>
+    </>
   )
 }
 
@@ -518,8 +571,9 @@ function ListsSide({
         <Table data-testid="lists-table">
           <TableBody>
             {items.map((f) => (
-              <TableRow
-                key={f.name}
+              <ContextMenu key={f.name}>
+              <ContextMenuTrigger
+                render={<TableRow />}
                 data-testid={`list-row-${f.name}`}
                 data-state={f.name === current ? "selected" : undefined}
                 className="cursor-pointer"
@@ -558,7 +612,12 @@ function ListsSide({
                 <TableCell className="pl-0" onClick={(e) => e.stopPropagation()}>
                   <RowMenu item={f} onRenamed={onRenamed} onDeleted={onDeleted} />
                 </TableCell>
-              </TableRow>
+              </ContextMenuTrigger>
+              {/* клики по пунктам всплывают через портал к строке — гасим, чтобы не открывать список */}
+              <ContextMenuContent className="min-w-52" onClick={(e) => e.stopPropagation()}>
+                <RowMenuItems item={f} onRenamed={onRenamed} onDeleted={onDeleted} />
+              </ContextMenuContent>
+              </ContextMenu>
             ))}
           </TableBody>
         </Table>
