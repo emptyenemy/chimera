@@ -106,10 +106,6 @@
 | Hosts → привязка списков | `chimera hosts assign [привязки…] [--replace]` | system |
 | Hosts → «Добавить провайдера» | `chimera hosts provider-add <имя> <doh> <серверы…>` | app |
 | Hosts → провайдер → «Удалить» | `chimera hosts provider-delete <id>` | app |
-| Hosts → провайдер → «Изменить» | `chimera hosts provider-edit <id> <имя> <doh> [серверы…]` | app |
-| Hosts → встроенный провайдер → «Скрыть», «Скрытые» | `chimera hosts provider-hide <id> [on|off]` | app |
-| Hosts → провайдер → «Пинг» | `chimera hosts ping <id>` | read |
-| Hosts → фоновые опции | `chimera hosts background [настройки…]` | app |
 | DNS: вся вкладка | `chimera dns state` | read |
 | DNS → «Проверить скорость» | `chimera dns ping [id]` | read |
 | DNS → «Проба» у провайдера | `chimera dns probe <id>` | read |
@@ -118,8 +114,11 @@
 | DNS → «Сбросить» | `chimera dns reset <адаптер>` | system |
 | DNS → «Добавить провайдера» | `chimera dns provider-add <имя> <серверы…> [--ipv6 <ipv6>] [--doh <doh>] [--dot <dot>] [--unblock] [--filtering]` | app |
 | DNS → провайдер → «Удалить» | `chimera dns provider-delete <id>` | app |
-| DNS → провайдер → «Изменить» | `chimera dns provider-edit <id> <имя> <серверы…> [--ipv6 <ipv6>] [--doh <doh>] [--dot <dot>] [--unblock] [--filtering]` | app |
-| DNS → встроенный провайдер → «Скрыть», «Скрытые» | `chimera dns provider-hide <id> [on|off]` | app |
+| Провайдеры | `chimera providers list` | read |
+| Провайдеры → «Добавить» | `chimera providers add <имя> [серверы…] [--ipv6 <ipv6>] [--doh <doh>] [--dot <dot>] [--unblock] [--filtering]` | app |
+| Провайдеры → провайдер → «Изменить» | `chimera providers edit <id> <имя> [серверы…] [--ipv6 <ipv6>] [--doh <doh>] [--dot <dot>] [--unblock] [--filtering]` | app |
+| Провайдеры → провайдер → «Удалить» | `chimera providers delete <id>` | app |
+| Провайдеры → встроенный провайдер → «Скрыть», «Скрытые» | `chimera providers hide <id> [on|off]` | app |
 | DNS → провайдер → «Применить» (плашка «Оставить / Вернуть») | `chimera dns trial <адаптер> <провайдер> [--seconds <seconds>]` | system |
 | DNS → плашка → «Оставить» | `chimera dns trial-confirm [адаптер]` | app |
 | DNS → плашка → «Вернуть сейчас» | `chimera dns trial-revert [адаптер]` | system |
@@ -909,53 +908,6 @@ chimera hosts provider-add my https://dns.example/dns-query 1.2.3.4
 chimera hosts provider-delete my
 ```
 
-#### `chimera hosts provider-edit <id> <имя> <doh> [серверы…]`
-
-Изменить своего провайдера hosts: имя, DoH и IP задаются заново. Уровень: изменение приложения.
-
-- `id` — id провайдера
-- `имя` — str
-- `doh` — адрес DoH
-- `серверы` — IP серверов
-
-```
-chimera hosts provider-edit my Comss https://dns.comss.one/dns-query 83.220.169.155
-```
-
-#### `chimera hosts provider-hide <id> [on|off]`
-
-Скрыть встроенного провайдера hosts из списка или вернуть его. Уровень: изменение приложения.
-
-- `id` — id встроенного провайдера
-- `hidden` — true — скрыть, false — вернуть
-
-```
-chimera hosts provider-hide flowseal
-chimera hosts provider-hide flowseal false
-```
-
-#### `chimera hosts ping <id>`
-
-Проверить доступность hosts-провайдера. Уровень: чтение.
-
-- `id` — id провайдера
-
-```
-chimera hosts ping comss
-```
-
-#### `chimera hosts background [настройки…]`
-
-Настройки фонового потока hosts: ключ=значение (значение — JSON). refresh_interval и check_interval — целое число секунд больше нуля, refresh_enabled/check_enabled/autoswitch_enabled — true/false, provider_order — массив идентификаторов. Уровень: изменение приложения.
-
-- `настройки` — ключ=значение …
-
-```
-chimera hosts background
-chimera hosts background refresh_enabled=true refresh_interval=21600
-chimera hosts background check_enabled=true check_interval=900
-```
-
 ### dns
 
 Системный DNS и DNS-провайдеры.
@@ -1045,35 +997,6 @@ chimera dns provider-add my 9.9.9.9 149.112.112.112 --doh https://dns.quad9.net/
 
 ```
 chimera dns provider-delete my
-```
-
-#### `chimera dns provider-edit <id> <имя> <серверы…> [--ipv6 <ipv6>] [--doh <doh>] [--dot <dot>] [--unblock] [--filtering]`
-
-Изменить своего DNS-провайдера: имя и адреса задаются заново целиком. Уровень: изменение приложения.
-
-- `id` — id провайдера
-- `имя` — str
-- `серверы` — IPv4-адреса
-- `--ipv6` — IPv6-адреса через запятую
-- `--doh` — адрес DoH
-- `--dot` — имя DoT
-- `--unblock` — разблокирующий
-- `--filtering` — с фильтрацией
-
-```
-chimera dns provider-edit my Quad9 9.9.9.9 149.112.112.112
-```
-
-#### `chimera dns provider-hide <id> [on|off]`
-
-Скрыть встроенного DNS-провайдера из списка или вернуть его. Уровень: изменение приложения.
-
-- `id` — id встроенного провайдера
-- `hidden` — true — скрыть, false — вернуть
-
-```
-chimera dns provider-hide google
-chimera dns provider-hide google false
 ```
 
 #### `chimera dns trial <адаптер> <провайдер> [--seconds <seconds>]`
@@ -1440,6 +1363,75 @@ chimera trial revert 0123456789abcdef
 chimera explain youtube.com
 chimera explain 192.168.1.1 --app chrome.exe
 chimera explain discord.com --app Discord.exe --json
+```
+
+### providers
+
+Провайдеры DNS и hosts: одно место настройки, вкладки DNS и Hosts выбирают из них..
+
+#### `chimera providers list`
+
+Все провайдеры, включая скрытые встроенные, и сколько списков hosts на каждом. Уровень: чтение.
+
+```
+chimera providers list
+chimera providers list --json
+```
+
+#### `chimera providers add <имя> [серверы…] [--ipv6 <ipv6>] [--doh <doh>] [--dot <dot>] [--unblock] [--filtering]`
+
+Добавить провайдера. Уровень: изменение приложения.
+
+- `имя` — str
+- `серверы` — IPv4-адреса
+- `--ipv6` — IPv6-адреса через запятую
+- `--doh` — адрес DoH
+- `--dot` — имя DoT
+- `--unblock` — умеет обходить блокировки (для hosts)
+- `--filtering` — фильтрует рекламу или угрозы
+
+```
+chimera providers add Quad9 9.9.9.9 149.112.112.112 --doh https://dns.quad9.net/dns-query
+chimera providers add Мой --doh https://dns.example/dns-query --unblock
+```
+
+#### `chimera providers edit <id> <имя> [серверы…] [--ipv6 <ipv6>] [--doh <doh>] [--dot <dot>] [--unblock] [--filtering]`
+
+Изменить своего провайдера: имя и адреса задаются заново целиком. Уровень: изменение приложения.
+
+- `id` — id провайдера
+- `имя` — str
+- `серверы` — IPv4-адреса
+- `--ipv6` — IPv6-адреса через запятую
+- `--doh` — адрес DoH
+- `--dot` — имя DoT
+- `--unblock` — умеет обходить блокировки (для hosts)
+- `--filtering` — фильтрует рекламу или угрозы
+
+```
+chimera providers edit my Quad9 9.9.9.9 149.112.112.112
+```
+
+#### `chimera providers delete <id>`
+
+Удалить своего провайдера и его привязки hosts. Уровень: изменение приложения.
+
+- `id` — id провайдера
+
+```
+chimera providers delete my
+```
+
+#### `chimera providers hide <id> [on|off]`
+
+Скрыть встроенного провайдера со всех вкладок или вернуть его. Уровень: изменение приложения.
+
+- `id` — id встроенного провайдера
+- `hidden` — true — скрыть, false — вернуть
+
+```
+chimera providers hide google
+chimera providers hide google false
 ```
 
 ## Файлы

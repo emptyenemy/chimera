@@ -9,16 +9,12 @@
 import { useEffect, useRef, useState } from "react"
 import {
   CircleAlertIcon,
-  CopyIcon,
-  EyeOffIcon,
   ListChecksIcon,
   LockIcon,
   PackageIcon,
-  PencilIcon,
-  PlusIcon,
   RefreshCwIcon,
   ServerIcon,
-  Trash2Icon,
+  SlidersHorizontalIcon,
 } from "lucide-react"
 import { cn } from "cn"
 
@@ -30,7 +26,6 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardAction, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Checkbox } from "@/components/ui/checkbox"
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty"
 import { Field, FieldContent, FieldGroup, FieldLabel, FieldSet, FieldLegend } from "@/components/ui/field"
 import { Item, ItemActions, ItemContent, ItemDescription, ItemGroup, ItemMedia, ItemTitle } from "@/components/ui/item"
@@ -38,13 +33,11 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { Spinner } from "@/components/ui/spinner"
 import { Switch } from "@/components/ui/switch"
 import { api } from "@/lib/bridge"
-import { confirmDialog } from "@/lib/dialogs"
 import { fmtNum } from "@/lib/format"
+import { router } from "@/lib/router"
 import { t } from "@/lib/i18n"
-import { notify } from "@/lib/notify"
 import { optimistic, useStore } from "@/lib/store"
 import type { AppInfo } from "@/lib/types"
-import { AddProviderDialog } from "@/pages/hosts-add-dialog"
 import { AdvancedCard } from "@/pages/hosts-advanced"
 import {
   OVERVIEW_KEY,
@@ -60,7 +53,6 @@ import {
   type Provider,
 } from "@/pages/hosts-data"
 
-const msg = (e: unknown) => (e instanceof Error ? e.message : String(e))
 
 // метки времени бэкенда — unix-секунды (time.time())
 function fmtDuration(sec: number): string {
@@ -112,35 +104,6 @@ function toggleStaticAssignment(id: string, checked: boolean) {
     else delete mapping[id]
     return mapping
   }, t("hosts.static.failed"))
-}
-
-async function setHidden(id: string, hidden: boolean) {
-  try {
-    await api("hosts_hide_provider", id, hidden)
-    notify.success(t(hidden ? "hosts.hide.done" : "hosts.unhide.done"))
-    await loadOverview()
-  } catch (e) {
-    notify.error(t("hosts.hide.failed"), msg(e))
-  }
-}
-
-async function deleteProvider(p: Provider): Promise<boolean> {
-  const ok = await confirmDialog({
-    title: t("hosts.delete.title"),
-    description: t("hosts.delete.desc", { name: p.name }),
-    confirmText: t("hosts.delete.confirm"),
-    destructive: true,
-  })
-  if (!ok) return false
-  try {
-    await api("hosts_delete_provider", p.id)
-    notify.success(t("hosts.delete.done"))
-    await loadOverview()
-    return true
-  } catch (e) {
-    notify.error(t("hosts.delete.failed"), msg(e))
-    return false
-  }
 }
 
 // --- статус --------------------------------------------------------------------------
@@ -265,20 +228,17 @@ function ProviderRow({
   selected,
   ping,
   onSelect,
-  onEdit,
 }: {
   p: Provider
   st: HostsView
   selected: boolean
   ping: Ping | undefined
   onSelect: () => void
-  onEdit: (p: Provider) => void
 }) {
   const stat = !isDns(p)
   const unavailable = isUnavailable(p)
   const assigned = st.assignments?.[p.id]
   const boundCount = stat ? (assigned ? 1 : 0) : Array.isArray(assigned) ? assigned.length : 0
-  const canDelete = isDns(p) && !p.builtin
   const health = st.health?.providers?.[p.id]
   const pct = health?.total ? Math.round((health.ratio || 0) * 100) : null
 
@@ -328,50 +288,6 @@ function ProviderRow({
         <div className="flex items-center gap-1.5 whitespace-nowrap">
           {unavailable ? <span className="text-muted-foreground">—</span> : <PingView ping={ping} />}
         </div>
-        {isDns(p) && (
-          <Button
-            variant="ghost"
-            size="icon-xs"
-            data-testid={`hosts-provider-edit-${p.id}`}
-            aria-label={t(p.builtin ? "hosts.provider.copy" : "hosts.provider.edit")}
-            title={t(p.builtin ? "hosts.provider.copy" : "hosts.provider.edit")}
-            onClick={(e) => {
-              e.stopPropagation()
-              onEdit(p)
-            }}
-          >
-            {p.builtin ? <CopyIcon /> : <PencilIcon />}
-          </Button>
-        )}
-        {canDelete ? (
-          <Button
-            variant="ghost"
-            size="icon-xs"
-            data-testid={`hosts-provider-delete-${p.id}`}
-            aria-label={t("hosts.provider.delete", { name: p.name })}
-            title={t("hosts.provider.deleteTip")}
-            onClick={(e) => {
-              e.stopPropagation()
-              void deleteProvider(p)
-            }}
-          >
-            <Trash2Icon />
-          </Button>
-        ) : (
-          <Button
-            variant="ghost"
-            size="icon-xs"
-            data-testid={`hosts-provider-hide-${p.id}`}
-            aria-label={t("hosts.provider.hide")}
-            title={t("hosts.provider.hide")}
-            onClick={(e) => {
-              e.stopPropagation()
-              void setHidden(p.id, true)
-            }}
-          >
-            <EyeOffIcon />
-          </Button>
-        )}
       </ItemActions>
     </Item>
   )
@@ -379,21 +295,17 @@ function ProviderRow({
 
 function ProvidersCard({
   providers,
-  hidden,
   st,
   selected,
   pings,
   onSelect,
 }: {
   providers: Provider[] | undefined
-  hidden: { id: string; name: string }[]
   st: HostsView
   selected: string | null
   pings: Record<string, Ping>
   onSelect: (id: string) => void
 }) {
-  // null — диалог закрыт; provider: null — новый, иначе правка своего или копия встроенного
-  const [dialog, setDialog] = useState<{ provider: Provider | null; copy: boolean } | null>(null)
   let body
   if (!providers) {
     body = (
@@ -426,7 +338,6 @@ function ProvidersCard({
             selected={p.id === selected}
             ping={pings[p.id]}
             onSelect={() => onSelect(p.id)}
-            onEdit={(item) => setDialog({ provider: item, copy: !!item.builtin })}
           />
         ))}
       </ItemGroup>
@@ -437,31 +348,13 @@ function ProvidersCard({
       <CardHeader>
         <CardTitle>{t("hosts.provider.title")}</CardTitle>
         <CardAction>
-          <Button variant="ghost" size="sm" data-testid="hosts-add" onClick={() => setDialog({ provider: null, copy: false })}>
-            <PlusIcon data-icon="inline-start" />
-            {t("hosts.provider.add")}
+          <Button variant="ghost" size="sm" data-testid="hosts-manage" onClick={() => router.go("providers")}>
+            <SlidersHorizontalIcon data-icon="inline-start" />
+            {t("providers.manage")}
           </Button>
         </CardAction>
       </CardHeader>
-      <CardContent>
-        {body}
-        {hidden.length > 0 && (
-          <DropdownMenu>
-            <DropdownMenuTrigger render={<Button variant="ghost" size="sm" className="mt-2 text-muted-foreground" data-testid="hosts-hidden" />}>
-              <EyeOffIcon data-icon="inline-start" />
-              {t("hosts.hidden", { count: hidden.length })}
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="start">
-              {hidden.map((h) => (
-                <DropdownMenuItem key={h.id} data-testid={`hosts-unhide-${h.id}`} onClick={() => void setHidden(h.id, false)}>
-                  {h.name} — {t("hosts.unhide")}
-                </DropdownMenuItem>
-              ))}
-            </DropdownMenuContent>
-          </DropdownMenu>
-        )}
-      </CardContent>
-      {dialog && <AddProviderDialog provider={dialog.provider} copy={dialog.copy} onClose={() => setDialog(null)} />}
+      <CardContent>{body}</CardContent>
     </Card>
   )
 }
@@ -628,7 +521,7 @@ export function HostsPage() {
       {st ? <StatusCard st={st} /> : <Skeleton className="h-14 w-full" data-testid="hosts-loading" />}
       <div className="@container">
         <div className="grid grid-cols-1 items-start gap-4 @2xl:grid-cols-2">
-          <ProvidersCard providers={providers} hidden={overview?.hidden ?? []} st={state} selected={selected} pings={pings} onSelect={setChosen} />
+          <ProvidersCard providers={providers} st={state} selected={selected} pings={pings} onSelect={setChosen} />
           <SitesCard overview={overview} st={state} provider={provider} />
         </div>
       </div>

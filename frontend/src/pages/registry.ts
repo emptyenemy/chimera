@@ -13,6 +13,7 @@ import {
   ServerIcon,
   SettingsIcon,
   ShieldIcon,
+  SlidersHorizontalIcon,
   type LucideIcon,
 } from "lucide-react"
 
@@ -25,6 +26,7 @@ const ProxyPage = lazy(() => import("@/pages/proxy").then((module) => ({ default
 const TelegramPage = lazy(() => import("@/pages/telegram").then((module) => ({ default: module.TelegramPage })))
 const ChecksPage = lazy(() => import("@/pages/checks").then((module) => ({ default: module.ChecksPage })))
 const DnsPage = lazy(() => import("@/pages/dns").then((module) => ({ default: module.DnsPage })))
+const ProvidersPage = lazy(() => import("@/pages/providers").then((module) => ({ default: module.ProvidersPage })))
 const StrategiesPage = lazy(() => import("@/pages/strategies").then((module) => ({ default: module.StrategiesPage })))
 
 export interface PageDef {
@@ -46,6 +48,7 @@ export const PAGES: PageDef[] = [
   { id: "telegram", titleKey: "nav.telegram", icon: SendIcon, groupKey: "nav.group.bypass", dot: "tg", component: TelegramPage },
   { id: "hosts", titleKey: "nav.hosts", icon: ServerIcon, groupKey: "nav.group.network", dot: "hosts", component: HostsPage },
   { id: "dns", titleKey: "nav.dns", icon: NetworkIcon, groupKey: "nav.group.network", component: DnsPage },
+  { id: "providers", titleKey: "nav.providers", icon: SlidersHorizontalIcon, groupKey: "nav.group.network", component: ProvidersPage },
   { id: "lists", titleKey: "nav.lists", icon: ListIcon, groupKey: "nav.group.data", component: ListsPage },
   { id: "checks", titleKey: "nav.checks", icon: ScanSearchIcon, groupKey: "nav.group.data", component: ChecksPage },
   { id: "settings", titleKey: "nav.settings", icon: SettingsIcon, groupKey: "nav.group.system", component: SettingsPage },

@@ -18,7 +18,7 @@ _WRITE_LOCK = threading.RLock()
 THEMES = ("system", "light", "dark")
 DEFAULTS = {"interface": "ui", "auto_elevate": False, "ui_backend": default_backend(), "close_to_tray": True,
             "update_channel": "stable", "update_check": True, "theme": "system", "lang": "auto",
-            "appearance": dict(appearance.DEFAULTS), "appearance_custom": None, "dns_hidden": [], "hosts_hidden": []}
+            "appearance": dict(appearance.DEFAULTS), "appearance_custom": None, "providers_hidden": []}
 
 
 def load() -> dict:
@@ -76,7 +76,7 @@ def _normalize_value(key: str, value):
         value = appearance.normalize_custom(value)
     if key == "appearance":
         value = appearance.normalize_settings(value)
-    if key in ("dns_hidden", "hosts_hidden") and (not isinstance(value, list) or len(value) > 200
+    if key == "providers_hidden" and (not isinstance(value, list) or len(value) > 200
                                 or not all(isinstance(i, str) and i for i in value)):
         raise ChimeraValueError("err.appearance.settings")
     allowed = set(DEFAULTS) | {"ui_port", "tray_hint_shown", "dns_probe", "game_filter", "game_filter_tcp", "game_filter_udp"}

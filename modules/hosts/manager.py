@@ -21,7 +21,7 @@ import re
 import subprocess
 from pathlib import Path
 
-from .. import appconfig, dns_providers, paths
+from .. import dns_providers, paths
 from ..domains import split_lists
 from . import static_providers
 from .background import DEFAULT_OPTIONS as BACKGROUND_DEFAULTS
@@ -93,34 +93,20 @@ class HostsManager:
 
     def visible_providers(self) -> list[dict]:
         """Для вкладки: без встроенных, которые пользователь скрыл. Остальным частям нужны все."""
-        hidden = set(appconfig.load().get("hosts_hidden") or [])
+        from modules import provider_registry
+        hidden = provider_registry.hidden_ids()
         return [p for p in self.providers() if not (p.get("builtin") and p["id"] in hidden)]
 
-    def hidden_providers(self) -> list[dict]:
-        hidden = set(appconfig.load().get("hosts_hidden") or [])
-        return [{"id": p["id"], "name": p["name"]} for p in self.providers()
-                if p.get("builtin") and p["id"] in hidden]
-
-    def set_hidden(self, provider_id: str, hidden: bool) -> list[str]:
-        builtin = {p["id"] for p in self.providers() if p.get("builtin")}
-        if provider_id not in builtin:
-            raise ChimeraValueError('err.dns_providers.only_built_in_providers_can_be_hidden')
-        if hidden and self._load_state().get("assignments", {}).get(provider_id):
-            # записи в hosts остались бы, а провайдер пропал бы из виду
-            raise ChimeraValueError('err.hosts.manager.unassign_before_hiding')
-        current = [i for i in (appconfig.load().get("hosts_hidden") or []) if i in builtin and i != provider_id]
-        value = sorted(current + [provider_id]) if hidden else current
-        appconfig.set_value("hosts_hidden", value)
-        return value
-
-    def update_provider(self, provider_id: str, name: str, doh: str, servers) -> dict:
-        # поля, которых нет в диалоге hosts (IPv6, DoT, фильтрация), оставляем как были
-        current = dns_providers.get(provider_id)
-        dns_providers.update(provider_id, name, servers=servers, ipv6=current.get("ipv6") or [], doh=doh,
-                             dot=current.get("dot", ""), unblock=True, filtering=current.get("filter", False))
-        if self._load_state().get("assignments", {}).get(provider_id):
-            self._sync()  # адреса провайдера могли поменяться — пересобрать записи
-        return self.state()
+    def provider_changed(self, provider_id: str) -> None:
+        """Провайдера изменили на вкладке «Провайдеры»: адреса могли поменяться, а без
+        флага «обход» он hosts больше не годится — привязку снимаем."""
+        st = self._load_state()
+        if provider_id not in st.get("assignments", {}):
+            return
+        if not any(p["id"] == provider_id for p in self.providers()):
+            del st["assignments"][provider_id]
+            self._save_state(st)
+        self._sync()
 
     def get_provider(self, provider_id: str) -> dict:
         try:

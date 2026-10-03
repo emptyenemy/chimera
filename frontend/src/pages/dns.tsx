@@ -7,49 +7,34 @@
 import { useEffect, useMemo, useRef, useState } from "react"
 import {
   CheckIcon,
-  CircleCheckIcon,
-  CircleXIcon,
   ClockIcon,
-  CopyIcon,
-  EyeOffIcon,
   NetworkIcon,
-  PencilIcon,
-  PlusIcon,
   RotateCcwIcon,
-  ScanSearchIcon,
   SlidersHorizontalIcon,
-  Trash2Icon,
   WifiIcon,
   WifiOffIcon,
 } from "lucide-react"
 
-import { Fold } from "@/components/app/fold"
 import { Page } from "@/components/app/page"
 import { StatusDot } from "@/components/app/status-dot"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardAction, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Checkbox } from "@/components/ui/checkbox"
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty"
-import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field"
-import { Input } from "@/components/ui/input"
+import { Field } from "@/components/ui/field"
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Spinner } from "@/components/ui/spinner"
 import { Table, TableBody, TableCell, TableRow } from "@/components/ui/table"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { api } from "@/lib/bridge"
-import { confirmDialog } from "@/lib/dialogs"
 import { fmtNum } from "@/lib/format"
 import { useHubWatch } from "@/lib/hub-watch"
 import { t } from "@/lib/i18n"
 import { notify } from "@/lib/notify"
+import { router } from "@/lib/router"
 import { store, useStore } from "@/lib/store"
-import { useDebounced } from "@/lib/use-autosave"
-import { PROBE_KEY, editProbeConfig, loadProbeConfig, saveProbeConfig, type ProbeFields, type ProbeState } from "@/pages/dns-probe"
 import type { AppInfo } from "@/lib/types"
 
 // --- данные --------------------------------------------------------------------
@@ -87,21 +72,11 @@ interface Trial {
 interface DnsState {
   adapters?: Adapter[]
   providers?: Provider[]
-  hidden?: { id: string; name: string }[]
   trial?: Trial | null
 }
 
 interface PingResult {
   servers?: { server: string; ok: boolean; ms: number | null }[]
-}
-
-interface ProbeResult {
-  error?: string
-  reachable?: boolean
-  dnssec?: boolean | null
-  unblock?: boolean | null
-  filter?: boolean | null
-  unblock_detail?: Record<string, unknown>
 }
 
 const TRIAL_SECONDS = 15 // сколько даём на «Оставить» после смены DNS
@@ -300,69 +275,20 @@ function PingCell({ result }: { result: PingResult | undefined }) {
   )
 }
 
-function ProbeMark({ v }: { v: boolean | null | undefined }) {
-  if (v === true) return <CircleCheckIcon className="size-3.5 text-success" aria-label={t("dns.probe.yes")} />
-  if (v === false) return <CircleXIcon className="size-3.5 text-destructive" aria-label={t("dns.probe.no")} />
-  return <span>—</span>
-}
-
-function ProbeView({ id, busy, result }: { id: string; busy: boolean; result: ProbeResult | undefined }) {
-  if (busy)
-    return (
-      <div data-testid={`dns-probe-result-${id}`} className="mt-1.5 text-xs text-muted-foreground">
-        {t("dns.probe.running")}
-      </div>
-    )
-  if (!result) return null
-  const fail = (text: string) => (
-    <div data-testid={`dns-probe-result-${id}`} className="mt-1.5 flex items-center gap-1 text-xs text-destructive">
-      <CircleXIcon className="size-3.5" />
-      {text}
-    </div>
-  )
-  if (result.error) return fail(result.error)
-  if (!result.reachable) return fail(t("dns.probe.silent"))
-  const doms = Object.keys(result.unblock_detail ?? {}).join(", ")
-  return (
-    <div data-testid={`dns-probe-result-${id}`} className="mt-1.5 flex flex-wrap gap-x-3.5 gap-y-1 text-xs text-muted-foreground">
-      <span className="inline-flex items-center gap-1">
-        DNSSEC <ProbeMark v={result.dnssec} />
-      </span>
-      <span className="inline-flex items-center gap-1">
-        {t("dns.probe.bypass")}
-        {doms ? ` (${doms})` : ""} <ProbeMark v={result.unblock} />
-      </span>
-      <span className="inline-flex items-center gap-1">
-        {t("dns.probe.ads")} <ProbeMark v={result.filter} />
-      </span>
-    </div>
-  )
-}
-
 function ProviderRow({
   p,
   adapter,
   ping,
   applying,
-  probing,
-  probe,
   noAdmin,
   onApply,
-  onProbe,
-  onEdit,
-  onDelete,
 }: {
   p: Provider
   adapter: Adapter | null
   ping: PingResult | undefined
   applying: boolean
-  probing: boolean
-  probe: ProbeResult | undefined
   noAdmin: boolean
   onApply: (id: string) => void
-  onProbe: (id: string) => void
-  onEdit: (p: Provider) => void
-  onDelete: (p: Provider) => void
 }) {
   const active = isActiveProvider(p, adapter)
   // все адреса (IPv6, DoH, DoT) — в подсказке: в строке хватает основного
@@ -380,30 +306,12 @@ function ProviderRow({
           <TooltipTrigger render={<div className="w-fit text-[13px] text-muted-foreground" />}>{main}</TooltipTrigger>
           <TooltipContent className="whitespace-pre-line">{all.join("\n")}</TooltipContent>
         </Tooltip>
-        <ProbeView id={p.id} busy={probing} result={probe} />
       </TableCell>
       <TableCell className="w-24 text-[13px]" data-testid={`dns-ping-${p.id}`}>
         <PingCell result={ping} />
       </TableCell>
       <TableCell className="w-px">
         <div className="flex items-center justify-end gap-1">
-          <Tooltip>
-            <TooltipTrigger
-              render={
-                <Button
-                  variant="ghost"
-                  size="icon-sm"
-                  data-testid={`dns-probe-${p.id}`}
-                  aria-label={t("dns.probe.hint")}
-                  disabled={probing}
-                  onClick={() => onProbe(p.id)}
-                />
-              }
-            >
-              {probing ? <Spinner /> : <ScanSearchIcon />}
-            </TooltipTrigger>
-            <TooltipContent>{t("dns.probe.hint")}</TooltipContent>
-          </Tooltip>
           {active ? (
             <Button variant="secondary" size="sm" disabled data-testid={`dns-active-${p.id}`}>
               <CheckIcon data-icon="inline-start" />
@@ -428,228 +336,7 @@ function ProviderRow({
           )}
         </div>
       </TableCell>
-      <TableCell className="w-px pl-0">
-        <div className="flex items-center gap-0.5">
-          <Tooltip>
-            <TooltipTrigger
-              render={
-                <Button
-                  variant="ghost"
-                  size="icon-sm"
-                  data-testid={`dns-edit-${p.id}`}
-                  aria-label={t(p.builtin ? "dns.copy" : "dns.edit")}
-                  onClick={() => onEdit(p)}
-                />
-              }
-            >
-              {p.builtin ? <CopyIcon /> : <PencilIcon />}
-            </TooltipTrigger>
-            <TooltipContent>{t(p.builtin ? "dns.copy" : "dns.edit")}</TooltipContent>
-          </Tooltip>
-          <Tooltip>
-            <TooltipTrigger
-              render={
-                <Button
-                  variant="ghost"
-                  size="icon-sm"
-                  data-testid={`dns-del-${p.id}`}
-                  aria-label={t(p.builtin ? "dns.hide" : "dns.delete")}
-                  onClick={() => onDelete(p)}
-                />
-              }
-            >
-              {p.builtin ? <EyeOffIcon /> : <Trash2Icon />}
-            </TooltipTrigger>
-            <TooltipContent>{t(p.builtin ? "dns.hide" : "dns.delete")}</TooltipContent>
-          </Tooltip>
-        </div>
-      </TableCell>
     </TableRow>
-  )
-}
-
-// --- диалог «Свой DNS-провайдер» -------------------------------------------------------------
-
-const EMPTY_FORM = { name: "", ip1: "", ip2: "", ip6: "", doh: "", dot: "", unblock: false, filter: false }
-
-function formOf(p: Provider | null, copy: boolean): typeof EMPTY_FORM {
-  if (!p) return EMPTY_FORM
-  return {
-    name: copy ? `${p.name} (${t("dns.copy.suffix")})` : p.name,
-    ip1: p.servers?.[0] ?? "",
-    ip2: p.servers?.slice(1).join(", ") ?? "",
-    ip6: (p.ipv6 ?? []).join(", "),
-    doh: p.doh ?? "",
-    dot: p.dot ?? "",
-    unblock: !!p.unblock,
-    filter: !!p.filter,
-  }
-}
-
-function AddProviderDialog({
-  open,
-  onOpenChange,
-  provider = null,
-  copy = false,
-}: {
-  open: boolean
-  onOpenChange: (open: boolean) => void
-  provider?: Provider | null
-  copy?: boolean
-}) {
-  // правка своего провайдера; копия встроенного сохраняется как новый
-  const editing = !!provider && !copy
-  const [form, setForm] = useState(() => formOf(provider, copy))
-  const [busy, setBusy] = useState(false)
-  const set = <K extends keyof typeof EMPTY_FORM>(k: K, v: (typeof EMPTY_FORM)[K]) => setForm((f) => ({ ...f, [k]: v }))
-  const submit = async () => {
-    setBusy(true)
-    try {
-      const v = (x: string) => x.trim()
-      const fields = [v(form.name), [v(form.ip1), v(form.ip2)], v(form.ip6), v(form.doh), v(form.dot), form.unblock, form.filter] as const
-      if (editing && provider) await api("dns_update_provider", provider.id, ...fields)
-      else await api("dns_add_provider", ...fields)
-      notify.success(t(editing ? "dns.edit.done" : "dns.add.done"))
-      onOpenChange(false)
-      refreshDns()
-    } catch (e) {
-      notify.error(t(editing ? "dns.edit.failed" : "dns.add.failed"), errText(e))
-    } finally {
-      setBusy(false)
-    }
-  }
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent data-testid="dns-add-dialog" className="sm:max-w-lg">
-        <DialogHeader>
-          <DialogTitle>{t(editing ? "dns.edit.title" : "dns.add.title")}</DialogTitle>
-          <DialogDescription>{t("dns.add.desc")}</DialogDescription>
-        </DialogHeader>
-        <FieldGroup className="gap-4">
-          <Field>
-            <FieldLabel htmlFor="dns-f-name">{t("dns.add.name")}</FieldLabel>
-            <Input id="dns-f-name" data-testid="dns-f-name" placeholder={t("dns.add.namePh")} value={form.name} onChange={(e) => set("name", e.target.value)} />
-          </Field>
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <Field>
-              <FieldLabel htmlFor="dns-f-ip1">{t("dns.add.ip1")}</FieldLabel>
-              <Input id="dns-f-ip1" data-testid="dns-f-ip1" className="font-mono" placeholder="1.1.1.1" value={form.ip1} onChange={(e) => set("ip1", e.target.value)} />
-            </Field>
-            <Field>
-              <FieldLabel htmlFor="dns-f-ip2">{t("dns.add.ip2")}</FieldLabel>
-              <Input id="dns-f-ip2" data-testid="dns-f-ip2" className="font-mono" placeholder={t("dns.add.optional")} value={form.ip2} onChange={(e) => set("ip2", e.target.value)} />
-            </Field>
-          </div>
-          <Field>
-            <FieldLabel htmlFor="dns-f-ip6">IPv6</FieldLabel>
-            <Input id="dns-f-ip6" data-testid="dns-f-ip6" className="font-mono" placeholder={t("dns.add.ip6Ph")} value={form.ip6} onChange={(e) => set("ip6", e.target.value)} />
-          </Field>
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <Field>
-              <FieldLabel htmlFor="dns-f-doh">DoH</FieldLabel>
-              <Input id="dns-f-doh" data-testid="dns-f-doh" className="font-mono" placeholder="https://…/dns-query" value={form.doh} onChange={(e) => set("doh", e.target.value)} />
-            </Field>
-            <Field>
-              <FieldLabel htmlFor="dns-f-dot">DoT</FieldLabel>
-              <Input id="dns-f-dot" data-testid="dns-f-dot" className="font-mono" placeholder="dns.example.com" value={form.dot} onChange={(e) => set("dot", e.target.value)} />
-            </Field>
-          </div>
-          <Field orientation="horizontal">
-            <Checkbox id="dns-f-unblock" data-testid="dns-f-unblock" checked={form.unblock} onCheckedChange={(v) => set("unblock", v === true)} />
-            <FieldLabel htmlFor="dns-f-unblock" className="font-normal">
-              {t("dns.add.unblock")}
-            </FieldLabel>
-          </Field>
-          <Field orientation="horizontal">
-            <Checkbox id="dns-f-filter" data-testid="dns-f-filter" checked={form.filter} onCheckedChange={(v) => set("filter", v === true)} />
-            <FieldLabel htmlFor="dns-f-filter" className="font-normal">
-              {t("dns.add.filter")}
-            </FieldLabel>
-          </Field>
-        </FieldGroup>
-        <DialogFooter>
-          <Button variant="outline" data-testid="dns-add-cancel" onClick={() => onOpenChange(false)}>
-            {t("common.cancel")}
-          </Button>
-          <Button data-testid="dns-add-ok" disabled={busy} onClick={() => void submit()}>
-            {busy && <Spinner data-icon="inline-start" />}
-            {t(editing ? "dns.edit.save" : "dns.add.ok")}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  )
-}
-
-// --- настройки пробы -----------------------------------------------------------------------------
-
-function ProbeSettings() {
-  const state = useStore<ProbeState>(PROBE_KEY)
-  const cfg = state?.draft ?? state?.value
-  const debounce = useDebounced(() => void saveProbeConfig())
-  useEffect(() => { void loadProbeConfig() }, [])
-
-  const edit = (part: Partial<ProbeFields>) => {
-    editProbeConfig(part)
-    debounce.schedule()
-  }
-  const flush = () => {
-    debounce.flush()
-    void saveProbeConfig()
-  }
-  const commitOnEnter = (event: { key: string; preventDefault: () => void }) => {
-    if (event.key !== "Enter") return
-    event.preventDefault()
-    flush()
-  }
-  const error = state?.draft?.error ?? state?.error
-  return (
-    <FieldGroup className="gap-4" aria-busy={state?.busy}>
-      {error && (
-        <Alert variant="destructive" data-testid="dns-probe-error">
-          <AlertTitle>{t(state?.draft ? "dns.probeCfg.failed" : "dns.probeCfg.readFailed")}</AlertTitle>
-          <AlertDescription>
-            <p>{error}</p>
-            <Button variant="outline" size="sm" disabled={state?.busy} data-testid="dns-probe-retry"
-              onClick={() => state?.draft ? flush() : void loadProbeConfig()}>
-              {t("common.retry")}
-            </Button>
-          </AlertDescription>
-        </Alert>
-      )}
-      {!cfg ? !error && <>
-        <Skeleton className="h-9 w-full" />
-        <Skeleton className="h-9 w-full" />
-      </> : <>
-        <Field>
-          <FieldLabel htmlFor="dns-probe-bypass">{t("dns.probeCfg.bypass")}</FieldLabel>
-          <Input
-            id="dns-probe-bypass"
-            data-testid="dns-probe-bypass"
-            className="font-mono"
-            placeholder="rutracker.org"
-            value={cfg.bypass}
-            onChange={(e) => edit({ bypass: e.target.value })}
-            onBlur={flush}
-            onKeyDown={commitOnEnter}
-          />
-          <FieldDescription>{t("dns.probeCfg.bypassHint")}</FieldDescription>
-        </Field>
-        <Field>
-          <FieldLabel htmlFor="dns-probe-ad">{t("dns.probeCfg.ad")}</FieldLabel>
-          <Input
-            id="dns-probe-ad"
-            data-testid="dns-probe-ad"
-            className="font-mono"
-            placeholder="doubleclick.net"
-            value={cfg.ad}
-            onChange={(e) => edit({ ad: e.target.value })}
-            onBlur={flush}
-            onKeyDown={commitOnEnter}
-          />
-        </Field>
-      </>}
-    </FieldGroup>
   )
 }
 
@@ -665,16 +352,6 @@ export function DnsPage() {
   const [pings, setPings] = useState<Record<string, PingResult>>({})
   const [order, setOrder] = useState<string[] | null>(null)
   const [applying, setApplying] = useState<Record<string, boolean>>({})
-  const [probing, setProbing] = useState<Record<string, boolean>>({})
-  const [probes, setProbes] = useState<Record<string, ProbeResult>>({})
-  const [addOpen, setAddOpen] = useState(false)
-  const [addKey, setAddKey] = useState(0)
-  const [editing, setEditing] = useState<{ provider: Provider; copy: boolean } | null>(null)
-  const openDialog = (target: { provider: Provider; copy: boolean } | null) => {
-    setEditing(target)
-    setAddKey((k) => k + 1)
-    setAddOpen(true)
-  }
 
   const adapters = st?.adapters
   const adapter = useMemo<Adapter | null>(() => {
@@ -752,56 +429,6 @@ export function DnsPage() {
     }
   }
 
-  const onProbe = async (id: string) => {
-    setProbing((m) => ({ ...m, [id]: true }))
-    try {
-      const r = await api<ProbeResult>("dns_probe", id)
-      setProbes((m) => ({ ...m, [id]: r }))
-    } catch (e) {
-      setProbes((m) => ({ ...m, [id]: { error: errText(e) } }))
-    } finally {
-      setProbing((m) => without(m, id))
-    }
-  }
-
-  const onDelete = async (p: Provider) => {
-    if (p.builtin) {
-      // встроенный удалить нельзя — он вернётся с обновлением программы; скрываем из списка
-      try {
-        await api("dns_hide_provider", p.id, true)
-        notify.success(t("dns.hide.done"))
-        refreshDns()
-      } catch (e) {
-        notify.error(t("dns.hide.failed"), errText(e))
-      }
-      return
-    }
-    const ok = await confirmDialog({
-      title: t("dns.delete.title"),
-      description: t("dns.delete.desc", { name: p.name || p.id }),
-      confirmText: t("dns.delete.confirm"),
-      destructive: true,
-    })
-    if (!ok) return
-    try {
-      await api("dns_delete_provider", p.id)
-      notify.success(t("dns.delete.done"))
-      refreshDns()
-    } catch (e) {
-      notify.error(t("dns.delete.failed"), errText(e))
-    }
-  }
-
-  const onUnhide = async (id: string) => {
-    try {
-      await api("dns_hide_provider", id, false)
-      notify.success(t("dns.unhide.done"))
-      refreshDns()
-    } catch (e) {
-      notify.error(t("dns.hide.failed"), errText(e))
-    }
-  }
-
   return (
     <Page id="dns" title={t("nav.dns")}>
       {st?.trial && <TrialAlert st={st} />}
@@ -813,9 +440,9 @@ export function DnsPage() {
             {t("dns.providers.title")}
           </CardTitle>
           <CardAction>
-            <Button variant="ghost" size="sm" data-testid="dns-add" onClick={() => openDialog(null)}>
-              <PlusIcon data-icon="inline-start" />
-              {t("dns.add")}
+            <Button variant="ghost" size="sm" data-testid="dns-manage" onClick={() => router.go("providers")}>
+              <SlidersHorizontalIcon data-icon="inline-start" />
+              {t("providers.manage")}
             </Button>
           </CardAction>
         </CardHeader>
@@ -847,40 +474,15 @@ export function DnsPage() {
                     adapter={adapter}
                     ping={pings[p.id]}
                     applying={!!applying[p.id]}
-                    probing={!!probing[p.id]}
-                    probe={probes[p.id]}
                     noAdmin={noAdmin}
                     onApply={(id) => void onApply(id)}
-                    onProbe={(id) => void onProbe(id)}
-                    onEdit={(p) => openDialog({ provider: p, copy: !!p.builtin })}
-                    onDelete={(p) => void onDelete(p)}
                   />
                 ))}
               </TableBody>
             </Table>
           )}
-          {!!st?.hidden?.length && (
-            <DropdownMenu>
-              <DropdownMenuTrigger render={<Button variant="ghost" size="sm" className="mt-2 text-muted-foreground" data-testid="dns-hidden" />}>
-                <EyeOffIcon data-icon="inline-start" />
-                {t("dns.hidden", { count: st.hidden.length })}
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="start">
-                {st.hidden.map((h) => (
-                  <DropdownMenuItem key={h.id} data-testid={`dns-unhide-${h.id}`} onClick={() => void onUnhide(h.id)}>
-                    {h.name} — {t("dns.unhide")}
-                  </DropdownMenuItem>
-                ))}
-              </DropdownMenuContent>
-            </DropdownMenu>
-          )}
         </CardContent>
       </Card>
-      <Fold icon={SlidersHorizontalIcon} title={t("dns.advanced")} testId="dns-advanced">
-        <ProbeSettings />
-      </Fold>
-      {/* новый key при каждом открытии — форма всегда чистая */}
-      <AddProviderDialog key={addKey} open={addOpen} onOpenChange={setAddOpen} provider={editing?.provider ?? null} copy={editing?.copy ?? false} />
     </Page>
   )
 }

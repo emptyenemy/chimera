@@ -106,10 +106,6 @@ Levels exist so that remote channels can be restricted. The proxy link is hidden
 | Hosts → list bindings | `chimera hosts assign [bindings…] [--replace]` | system |
 | Hosts → “Add provider” | `chimera hosts provider-add <name> <doh> <servers…>` | app |
 | Hosts → provider → “Delete” | `chimera hosts provider-delete <id>` | app |
-| Hosts → provider → “Edit” | `chimera hosts provider-edit <id> <name> <doh> [servers…]` | app |
-| Hosts → built-in provider → “Hide”, “Hidden” | `chimera hosts provider-hide <id> [on|off]` | app |
-| Hosts → provider → “Ping” | `chimera hosts ping <id>` | read |
-| Hosts → background options | `chimera hosts background [settings…]` | app |
 | DNS: the whole tab | `chimera dns state` | read |
 | DNS → “Test speed” | `chimera dns ping [id]` | read |
 | DNS → provider “Probe” | `chimera dns probe <id>` | read |
@@ -118,8 +114,11 @@ Levels exist so that remote channels can be restricted. The proxy link is hidden
 | DNS → “Reset” | `chimera dns reset <adapter>` | system |
 | DNS → “Add provider” | `chimera dns provider-add <name> <servers…> [--ipv6 <ipv6>] [--doh <doh>] [--dot <dot>] [--unblock] [--filtering]` | app |
 | DNS → provider → “Delete” | `chimera dns provider-delete <id>` | app |
-| DNS → provider → “Edit” | `chimera dns provider-edit <id> <name> <servers…> [--ipv6 <ipv6>] [--doh <doh>] [--dot <dot>] [--unblock] [--filtering]` | app |
-| DNS → built-in provider → “Hide”, “Hidden” | `chimera dns provider-hide <id> [on|off]` | app |
+| Providers | `chimera providers list` | read |
+| Providers → “Add” | `chimera providers add <name> [servers…] [--ipv6 <ipv6>] [--doh <doh>] [--dot <dot>] [--unblock] [--filtering]` | app |
+| Providers → provider → “Edit” | `chimera providers edit <id> <name> [servers…] [--ipv6 <ipv6>] [--doh <doh>] [--dot <dot>] [--unblock] [--filtering]` | app |
+| Providers → provider → “Delete” | `chimera providers delete <id>` | app |
+| Providers → built-in provider → “Hide”, “Hidden” | `chimera providers hide <id> [on|off]` | app |
 | DNS → provider → “Apply” (the “Keep / Revert” bar) | `chimera dns trial <adapter> <provider> [--seconds <seconds>]` | system |
 | DNS → bar → “Keep” | `chimera dns trial-confirm [adapter]` | app |
 | DNS → bar → “Revert now” | `chimera dns trial-revert [adapter]` | system |
@@ -909,53 +908,6 @@ Delete a hosts provider. Level: changes the app.
 chimera hosts provider-delete my
 ```
 
-#### `chimera hosts provider-edit <id> <name> <doh> [servers…]`
-
-Edit your hosts provider: the name, DoH and IPs are set again. Level: changes the app.
-
-- `id` — provider id
-- `name` — str
-- `doh` — DoH address
-- `servers` — server IPs
-
-```
-chimera hosts provider-edit my Comss https://dns.comss.one/dns-query 83.220.169.155
-```
-
-#### `chimera hosts provider-hide <id> [on|off]`
-
-Hide a built-in hosts provider from the list or bring it back. Level: changes the app.
-
-- `id` — built-in provider id
-- `hidden` — true to hide, false to bring back
-
-```
-chimera hosts provider-hide flowseal
-chimera hosts provider-hide flowseal false
-```
-
-#### `chimera hosts ping <id>`
-
-Check that a hosts provider is reachable. Level: read-only.
-
-- `id` — provider id
-
-```
-chimera hosts ping comss
-```
-
-#### `chimera hosts background [settings…]`
-
-Hosts background settings: key=value (JSON values). refresh_interval and check_interval are positive integer seconds; refresh_enabled/check_enabled/autoswitch_enabled are true/false; provider_order is an array of IDs. Level: changes the app.
-
-- `settings` — key=value …
-
-```
-chimera hosts background
-chimera hosts background refresh_enabled=true refresh_interval=21600
-chimera hosts background check_enabled=true check_interval=900
-```
-
 ### dns
 
 System DNS and DNS providers.
@@ -1045,35 +997,6 @@ Delete a DNS provider. Level: changes the app.
 
 ```
 chimera dns provider-delete my
-```
-
-#### `chimera dns provider-edit <id> <name> <servers…> [--ipv6 <ipv6>] [--doh <doh>] [--dot <dot>] [--unblock] [--filtering]`
-
-Edit your DNS provider: the name and addresses are set again in full. Level: changes the app.
-
-- `id` — provider id
-- `name` — str
-- `servers` — IPv4 addresses
-- `--ipv6` — IPv6 addresses, comma-separated
-- `--doh` — DoH address
-- `--dot` — DoT name
-- `--unblock` — unblocking
-- `--filtering` — with filtering
-
-```
-chimera dns provider-edit my Quad9 9.9.9.9 149.112.112.112
-```
-
-#### `chimera dns provider-hide <id> [on|off]`
-
-Hide a built-in DNS provider from the list or bring it back. Level: changes the app.
-
-- `id` — built-in provider id
-- `hidden` — true to hide, false to bring back
-
-```
-chimera dns provider-hide google
-chimera dns provider-hide google false
 ```
 
 #### `chimera dns trial <adapter> <provider> [--seconds <seconds>]`
@@ -1440,6 +1363,75 @@ Explain rules for a domain or IP: lists, DPI, PAC/TUN, application and hosts ent
 chimera explain youtube.com
 chimera explain 192.168.1.1 --app chrome.exe
 chimera explain discord.com --app Discord.exe --json
+```
+
+### providers
+
+DNS and hosts providers: one place to configure them; the DNS and Hosts tabs pick from it..
+
+#### `chimera providers list`
+
+All providers, including hidden built-in ones, and how many hosts lists use each. Level: read-only.
+
+```
+chimera providers list
+chimera providers list --json
+```
+
+#### `chimera providers add <name> [servers…] [--ipv6 <ipv6>] [--doh <doh>] [--dot <dot>] [--unblock] [--filtering]`
+
+Add a provider. Level: changes the app.
+
+- `name` — str
+- `servers` — IPv4 addresses
+- `--ipv6` — IPv6 addresses, comma-separated
+- `--doh` — DoH address
+- `--dot` — DoT name
+- `--unblock` — can bypass blocking (for hosts)
+- `--filtering` — filters ads or threats
+
+```
+chimera providers add Quad9 9.9.9.9 149.112.112.112 --doh https://dns.quad9.net/dns-query
+chimera providers add Мой --doh https://dns.example/dns-query --unblock
+```
+
+#### `chimera providers edit <id> <name> [servers…] [--ipv6 <ipv6>] [--doh <doh>] [--dot <dot>] [--unblock] [--filtering]`
+
+Edit your provider: the name and addresses are set again in full. Level: changes the app.
+
+- `id` — provider id
+- `name` — str
+- `servers` — IPv4 addresses
+- `--ipv6` — IPv6 addresses, comma-separated
+- `--doh` — DoH address
+- `--dot` — DoT name
+- `--unblock` — can bypass blocking (for hosts)
+- `--filtering` — filters ads or threats
+
+```
+chimera providers edit my Quad9 9.9.9.9 149.112.112.112
+```
+
+#### `chimera providers delete <id>`
+
+Delete your provider and its hosts assignments. Level: changes the app.
+
+- `id` — provider id
+
+```
+chimera providers delete my
+```
+
+#### `chimera providers hide <id> [on|off]`
+
+Hide a built-in provider from every tab or bring it back. Level: changes the app.
+
+- `id` — built-in provider id
+- `hidden` — true to hide, false to bring back
+
+```
+chimera providers hide google
+chimera providers hide google false
 ```
 
 ## Files

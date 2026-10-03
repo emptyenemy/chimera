@@ -29,7 +29,6 @@ export interface HostList {
 
 export interface Overview {
   providers: Provider[]
-  hidden?: { id: string; name: string }[]
   lists: HostList[]
 }
 

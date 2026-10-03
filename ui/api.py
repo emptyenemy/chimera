@@ -26,6 +26,8 @@ from modules import (
     doctor,
     domainrec,
     domains,
+    dns_providers,
+    provider_registry,
     routeexplain,
     errors,
     i18n,
@@ -651,6 +653,7 @@ class Api:
         (("tg_",), ("tg", "tgStats")),
         (("hosts_",), ("hosts",)),
         (("dns_",), ("dns",)),
+        (("providers_",), ("dns", "hosts")),
         (("lists_",), ("proxy", "hosts", "winws")),  # счётчики доменов в выбранных списках
         (("selfupdate_",), ("selfupdate",)),
         (("trial_",), ("trial", "winws", "proxy", "hosts")),
@@ -667,7 +670,7 @@ class Api:
                               "enabled", "install", "uninstall", "apply", "reset", "panic", "restore"})
 
     # сверка с апстримом — только сеть, хотя в имени и есть «update»
-    _READ_NAMES = frozenset({"tg_check_update", "upstream_check_updates", "doctor_run", "doctor_report",
+    _READ_NAMES = frozenset({"tg_check_update", "upstream_check_updates", "doctor_run", "doctor_report", "providers_list",
                              "config_export", "config_import_preview", "config_backups", "config_backup_preview", "config_backup_compare", "config_verified",
                               "appearance_preview", "route_explain", "lists_validate"})
 
@@ -755,7 +758,6 @@ class Api:
         try:
             return _ok({
                 "providers": self.hosts.visible_providers(),
-                "hidden": self.hosts.hidden_providers(),
                 "lists": domains.list_info(),
                 "state": self.hosts.state(),
             })
@@ -807,20 +809,6 @@ class Api:
         except Exception as e:
             return _err(e)
 
-    @_auto_snapshot(('dns', 'hosts'))
-    def hosts_update_provider(self, provider_id, name, doh, servers):
-        try:
-            return _ok(self.hosts.update_provider(provider_id, name, doh, servers))
-        except Exception as e:
-            return _err(e)
-
-    @_auto_snapshot(('config',))
-    def hosts_hide_provider(self, provider_id, hidden=True):
-        try:
-            return _ok(self.hosts.set_hidden(provider_id, bool(hidden)))
-        except Exception as e:
-            return _err(e)
-
     @_auto_snapshot(('hosts',))
     def hosts_set_background(self, options):
         """Настройки фонового потока hosts: автообновление IP, TCP+TLS-чекер,
@@ -846,7 +834,6 @@ class Api:
             return _ok({
                 "adapters": self.dns.adapters(),
                 "providers": self.dns.list_providers(),
-                "hidden": self.dns.hidden_providers(),
                 # пробное применение в ожидании «Оставить / Вернуть»: одно (последнее) и все
                 "trial": trials[-1] if trials else None,
                 "trials": trials,
@@ -900,19 +887,46 @@ class Api:
         except Exception as e:
             return _err(e)
 
-    @_auto_snapshot(('dns', 'hosts'))
-    def dns_update_provider(self, provider_id, name, servers, ipv6="", doh="", dot="", unblock=False, filtering=False):
+    # --- провайдеры DNS и hosts: одно место настройки ------------------------------------
+
+    def providers_list(self):
+        """Все провайдеры, включая скрытые встроенные, и где они используются в hosts."""
         try:
-            return _ok(self.dns.update_provider(provider_id, name, servers, ipv6, doh, dot, unblock, filtering))
+            return _ok(provider_registry.listing(self.hosts.assignments()))
+        except Exception as e:
+            return _err(e)
+
+    @_auto_snapshot(('dns', 'hosts'))
+    def providers_add(self, name, servers, ipv6="", doh="", dot="", unblock=False, filtering=False):
+        try:
+            return _ok(dns_providers.add(name, servers=servers, ipv6=ipv6, doh=doh, dot=dot,
+                                         unblock=unblock, filtering=filtering))
+        except Exception as e:
+            return _err(e)
+
+    @_auto_snapshot(('dns', 'hosts'))
+    def providers_update(self, provider_id, name, servers, ipv6="", doh="", dot="", unblock=False, filtering=False):
+        """Правка своего провайдера; id не меняется, привязки hosts сохраняются."""
+        try:
+            provider = dns_providers.update(provider_id, name, servers=servers, ipv6=ipv6, doh=doh, dot=dot,
+                                            unblock=unblock, filtering=filtering)
+            self.hosts.provider_changed(provider_id)
+            return _ok(provider)
+        except Exception as e:
+            return _err(e)
+
+    @_auto_snapshot(('dns', 'hosts'))
+    def providers_delete(self, provider_id):
+        try:
+            return _ok(self.hosts.delete_provider(provider_id))  # снимает и привязки hosts
         except Exception as e:
             return _err(e)
 
     @_auto_snapshot(('config',))
-    def dns_hide_provider(self, provider_id, hidden=True):
-        """Убрать встроенного провайдера из списка DNS (или вернуть): удалить его нельзя —
-        он часть программы и вернётся с обновлением."""
+    def providers_hide(self, provider_id, hidden=True):
+        """Встроенного удалить нельзя — вернётся с обновлением; скрываем со всех вкладок."""
         try:
-            return _ok(self.dns.set_hidden(provider_id, bool(hidden)))
+            return _ok(provider_registry.set_hidden(provider_id, bool(hidden), self.hosts.assignments()))
         except Exception as e:
             return _err(e)
 

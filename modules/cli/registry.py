@@ -100,7 +100,7 @@ class Action:
 GROUPS = LazyMap((
     "status", "start", "tui", "stop", "restart", "version", "update", "autostart", "discord", "sources", "config",
     "lang", "winws", "proxy", "tg", "hosts", "dns", "panic", "doctor", "lists", "check", "logs", "service",
-    "path", "docs", "agent-info", "trial", "explain"), "cli.group")
+    "path", "docs", "agent-info", "trial", "explain", "providers"), "cli.group")
 
 # Что не превращается в команду и почему. Тест паритета падает на любом публичном методе
 # Api, которого нет ни в таблице действий, ни здесь.
@@ -267,18 +267,6 @@ ACTIONS: tuple[Action, ...] = (
        ("chimera hosts provider-add my https://dns.example/dns-query 1.2.3.4",)),
     _a("hosts", "provider-delete",
        "hosts_delete_provider", (Arg("id", "str"),), APP, ("chimera hosts provider-delete my",)),
-    _a("hosts", "provider-edit", "hosts_update_provider",
-       (Arg("id", "str"), Arg("имя", "str"), Arg("doh", "str"), Arg("серверы", "names")), APP,
-       ("chimera hosts provider-edit my Comss https://dns.comss.one/dns-query 83.220.169.155",)),
-    _a("hosts", "provider-hide", "hosts_hide_provider",
-       (Arg("id", "str"), Arg("hidden", "bool", optional=True, default=True)), APP,
-       ("chimera hosts provider-hide flowseal", "chimera hosts provider-hide flowseal false")),
-    _a("hosts", "ping",
-       "hosts_ping_one", (Arg("id", "str"),), examples=("chimera hosts ping comss",)),
-    _a("hosts", "background", handler="hosts_background", methods=("hosts_set_background", "hosts_overview"),
-       level=APP, args=(Arg("настройки", "names", optional=True),),
-       examples=("chimera hosts background", "chimera hosts background refresh_enabled=true refresh_interval=21600",
-                 "chimera hosts background check_enabled=true check_interval=900")),
 
     # --- DNS --------------------------------------------------------------------------
     _a("dns", "state", "dns_state",
@@ -307,18 +295,31 @@ ACTIONS: tuple[Action, ...] = (
        ("chimera dns provider-add my 9.9.9.9 149.112.112.112 --doh https://dns.quad9.net/dns-query",)),
     _a("dns", "provider-delete", "dns_delete_provider",
        (Arg("id", "str"),), APP, ("chimera dns provider-delete my",)),
-    _a("dns", "provider-edit", "dns_update_provider",
-       (Arg("id", "str"), Arg("имя", "str"), Arg("серверы", "names1"),
+
+
+    # --- провайдеры DNS и hosts ---------------------------------------------------------
+    _a("providers", "list", "providers_list", examples=("chimera providers list", "chimera providers list --json")),
+    _a("providers", "add", "providers_add",
+       (Arg("имя", "str"), Arg("серверы", "names"),
         Arg("ipv6", "str", optional=True, flag=True, default=""),
         Arg("doh", "str", optional=True, flag=True, default=""),
         Arg("dot", "str", optional=True, flag=True, default=""),
         Arg("unblock", "switch", flag=True, default=False),
         Arg("filtering", "switch", flag=True, default=False)), APP,
-       ("chimera dns provider-edit my Quad9 9.9.9.9 149.112.112.112",)),
-    _a("dns", "provider-hide", "dns_hide_provider",
+       ("chimera providers add Quad9 9.9.9.9 149.112.112.112 --doh https://dns.quad9.net/dns-query",
+        "chimera providers add Мой --doh https://dns.example/dns-query --unblock")),
+    _a("providers", "edit", "providers_update",
+       (Arg("id", "str"), Arg("имя", "str"), Arg("серверы", "names"),
+        Arg("ipv6", "str", optional=True, flag=True, default=""),
+        Arg("doh", "str", optional=True, flag=True, default=""),
+        Arg("dot", "str", optional=True, flag=True, default=""),
+        Arg("unblock", "switch", flag=True, default=False),
+        Arg("filtering", "switch", flag=True, default=False)), APP,
+       ("chimera providers edit my Quad9 9.9.9.9 149.112.112.112",)),
+    _a("providers", "delete", "providers_delete", (Arg("id", "str"),), APP, ("chimera providers delete my",)),
+    _a("providers", "hide", "providers_hide",
        (Arg("id", "str"), Arg("hidden", "bool", optional=True, default=True)), APP,
-       ("chimera dns provider-hide google", "chimera dns provider-hide google false")),
-
+       ("chimera providers hide google", "chimera providers hide google false")),
     _a("dns", "trial", "dns_set_trial",
        (Arg("адаптер", "int"), Arg("провайдер", "str"),
         Arg("seconds", "int", optional=True, flag=True, default=15)), SYSTEM,
