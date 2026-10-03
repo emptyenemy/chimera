@@ -15,6 +15,8 @@ npm run lint        # eslint (код shadcn в src/components/ui и src/hooks н
 npm run build       # tsc -b + vite build -> ../ui/web-next
 ```
 
+Из корня то же одной командой: `build.bat ui` — только интерфейс в `ui/web-next`, без проверки Python/Nuitka и без exe (`npm ci` — лишь если нет `node_modules`).
+
 `ui/web-next/` и `node_modules/` в git не входят. `build.bat` сам выполняет `npm ci` и `npm run build` перед Nuitka (Node 22+ обязателен для всех вариантов) и кладёт в exe готовую `ui/web-next`, но не исходники и не `node_modules`. CI (`ci.yml`) гоняет `typecheck`, `lint`, `test` и `build` до pytest; `release.yml` ставит Node до `build.bat`.
 
 Бандл собирается с `base: "./"`: пути относительные, поэтому страница одинаково открывается с `file://` (PySide6), из pywebview и с локального HTTP-сервера браузерного движка, без правок серверного кода. `qwebchannel.js` лежит в `frontend/public/` и подключается до бандла.

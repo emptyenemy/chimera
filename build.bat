@@ -1,5 +1,6 @@
 @echo off
 REM Portable builds: build.bat [qt|webview|lite] [--post-only]. Node 22+ required.
+REM build.bat ui - only the interface (frontend -> ui/web-next), no Python checks and no exe.
 setlocal
 cd /d "%~dp0"
 set FLAVOR=%~1
@@ -9,10 +10,14 @@ if /I "%FLAVOR%"=="--post-only" (
     goto post
 )
 if /I "%~2"=="--post-only" goto post
+if /I "%FLAVOR%"=="ui" (
+    set UI_ONLY=1
+    goto frontend
+)
 if /I "%FLAVOR%"=="qt" goto variant_qt
 if /I "%FLAVOR%"=="webview" goto variant_webview
 if /I "%FLAVOR%"=="lite" goto variant_lite
-echo [!] Unknown flavor: %FLAVOR%. Use qt, webview or lite.
+echo [!] Unknown flavor: %FLAVOR%. Use qt, webview, lite or ui.
 exit /b 2
 
 :variant_qt
@@ -25,12 +30,14 @@ goto frontend
 set VARIANT=--include-module=ui.backend_webview --include-module=ui.tray_win32 --include-package=clr_loader --include-package=pythonnet --include-package=proxy_tools --include-package=bottle --include-package-data=clr_loader --include-package-data=pythonnet --nofollow-import-to=PySide6,shiboken6,ui.backend_qt
 
 :frontend
+if defined UI_ONLY goto node_check
 python tools\build_env.py
 if errorlevel 1 exit /b 1
 if /I not "%FLAVOR%"=="qt" (
     python tools\fetch_webview.py
     if errorlevel 1 exit /b 1
 )
+:node_check
 where node >nul 2>&1
 if errorlevel 1 (
     echo [!] Node 22+ is required to build the interface.
@@ -39,11 +46,17 @@ if errorlevel 1 (
 node -e "if (Number(process.versions.node.split('.')[0]) < 22) process.exit(1)"
 if errorlevel 1 exit /b 1
 pushd frontend
+if defined UI_ONLY if exist node_modules goto ui_build
 call npm ci
 if errorlevel 1 goto frontend_failed
+:ui_build
 call npm run build
 if errorlevel 1 goto frontend_failed
 popd
+if defined UI_ONLY (
+    echo [ok] Interface built: ui\web-next. Reload the window or browser tab; Python changes need a Chimera restart.
+    exit /b 0
+)
 for /f "delims=" %%v in ('python -c "from modules.version import VERSION, file_version; print(file_version(VERSION))"') do set FILEVER=%%v
 if not defined FILEVER exit /b 1
 python tools\set_flavor.py %FLAVOR%
