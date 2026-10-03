@@ -44,6 +44,7 @@
 
 | В интерфейсе | Команда | Уровень |
 |---|---|---|
+| Терминал: Ctrl+E / Обзор → Разобрать маршрут | `chimera explain <домен> [--app <app>]` | read |
 | Обзор: карточки модулей | `chimera status` | read |
 | Настройки: версия программы | `chimera version` | read |
 | Запуск программы / автозапуск | `chimera start` | app |
@@ -1364,6 +1365,23 @@ chimera trial confirm 0123456789abcdef
 
 ```
 chimera trial revert 0123456789abcdef
+```
+
+### explain
+
+Почему адрес попал в этот маршрут.
+
+#### `chimera explain <домен> [--app <app>]`
+
+Объяснить правила для домена или IP: списки, DPI, PAC/TUN, приложение и записи hosts. Читает настройки локально, не делает DNS-запросов и ничего не меняет. Уровень: чтение.
+
+- `домен` — домен, IP или HTTP(S)-адрес без учётных данных
+- `--app` — имя процесса, например Discord.exe; для выборочного TUN
+
+```
+chimera explain youtube.com
+chimera explain 192.168.1.1 --app chrome.exe
+chimera explain discord.com --app Discord.exe --json
 ```
 
 ## Файлы

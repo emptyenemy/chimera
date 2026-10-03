@@ -26,6 +26,7 @@ from modules import (
     doctor,
     domainrec,
     domains,
+    routeexplain,
     errors,
     i18n,
     filewatch,
@@ -668,7 +669,7 @@ class Api:
     # сверка с апстримом — только сеть, хотя в имени и есть «update»
     _READ_NAMES = frozenset({"tg_check_update", "upstream_check_updates", "doctor_run", "doctor_report",
                              "config_export", "config_import_preview", "config_backups", "config_backup_preview", "config_backup_compare", "config_verified",
-                              "appearance_preview"})
+                              "appearance_preview", "route_explain", "lists_validate"})
 
     @classmethod
     def is_read(cls, method: str) -> bool:
@@ -948,6 +949,27 @@ class Api:
                 it["hosts"] = it["name"] in hosts_lists
                 it["winws"] = it["name"] in winws_lists
             return _ok(info)
+        except Exception as e:
+            return _err(e)
+
+    def route_explain(self, target, app=None):
+        try:
+            target, _addr = routeexplain.normalize_target(target)
+            app = routeexplain.normalize_app(app)
+            remote = self._backup_owner('route_explain', target, app)
+            if remote is not None:
+                return remote
+            return _ok(routeexplain.explain(target, app=app,
+                proxy_config=self.proxy.config, proxy_state=self.proxy.state(),
+                winws_config=self.winws.config, winws_state=self.winws.state(),
+                hosts_state=self.hosts.state(), hosts_path=self.hosts.hosts_path))
+        except Exception as e:
+            return _err(e)
+
+    def lists_validate(self, name=None):
+        try:
+            remote = self._backup_owner('lists_validate', name)
+            return remote if remote is not None else _ok(domains.validate_lists(name))
         except Exception as e:
             return _err(e)
 

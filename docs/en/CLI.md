@@ -44,6 +44,7 @@ Levels exist so that remote channels can be restricted. Secrets (the proxy link,
 
 | In the interface | Command | Level |
 |---|---|---|
+| Terminal: Ctrl+E / Overview → Explain route | `chimera explain <domain> [--app <app>]` | read |
 | Overview: module cards | `chimera status` | read |
 | Settings: program version | `chimera version` | read |
 | Launching the program / autostart | `chimera start` | app |
@@ -1364,6 +1365,23 @@ Restore original settings and module runtime state. On error, keeps the data for
 
 ```
 chimera trial revert 0123456789abcdef
+```
+
+### explain
+
+Why an address matches a route.
+
+#### `chimera explain <domain> [--app <app>]`
+
+Explain rules for a domain or IP: lists, DPI, PAC/TUN, application and hosts entries. Reads local settings without DNS requests or changes. Level: read-only.
+
+- `domain` — domain, IP or HTTP(S) URL without credentials
+- `--app` — process name, for example Discord.exe; for selective TUN
+
+```
+chimera explain youtube.com
+chimera explain 192.168.1.1 --app chrome.exe
+chimera explain discord.com --app Discord.exe --json
 ```
 
 ## Files

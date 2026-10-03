@@ -157,6 +157,17 @@ def _state(ctx, method):
         return {"error": e.message}
 
 
+def h_explain(ctx, act, ns):
+    from modules import routeexplain
+    try:
+        target, _addr = routeexplain.normalize_target(ns['a0'])
+        app = routeexplain.normalize_app(ns.get('a1'))
+    except ChimeraError as e:
+        raise Usage.of(e.code, **e.params) from None
+    report = ctx.call('route_explain', target, app)
+    return Result(report, routeexplain.render(report))
+
+
 def h_status(ctx, act, ns):
     data = {"app": _state(ctx, "app_info"), "winws": _state(ctx, "winws_state"),
             "proxy": _state(ctx, "proxy_state"), "tg": _state(ctx, "tg_state"),
@@ -772,7 +783,7 @@ def h_trial_start(ctx, act, ns):
 
 
 HANDLERS = {
-    "trial_start": h_trial_start,
+    "trial_start": h_trial_start, "explain": h_explain,
     "status": h_status, "version": h_version, "start": h_start, "tui": h_tui, "stop": h_stop, "restart": h_restart,
     "sources_check": h_sources_check, "config_get": h_config_get, "config_set": h_config_set,
     "lang_show": h_lang_show, "lang_set": h_lang_set, "lang_catalog": h_lang_catalog,

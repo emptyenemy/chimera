@@ -100,7 +100,7 @@ class Action:
 GROUPS = LazyMap((
     "status", "start", "tui", "stop", "restart", "version", "update", "autostart", "discord", "sources", "config",
     "lang", "winws", "proxy", "tg", "hosts", "dns", "panic", "doctor", "lists", "check", "logs", "service",
-    "path", "docs", "agent-info", "trial"), "cli.group")
+    "path", "docs", "agent-info", "trial", "explain"), "cli.group")
 
 # Что не превращается в команду и почему. Тест паритета падает на любом публичном методе
 # Api, которого нет ни в таблице действий, ни здесь.
@@ -120,6 +120,10 @@ def _a(group, name, method=None, args=(), level=READ, examples=(), handler=None,
 
 ACTIONS: tuple[Action, ...] = (
     # --- приложение ---------------------------------------------------------------------
+    _a("explain", "", handler="explain", methods=('route_explain',), level=READ,
+       args=(Arg('домен', 'str'), Arg('app', 'str', optional=True, flag=True)),
+       examples=('chimera explain youtube.com', 'chimera explain 192.168.1.1 --app chrome.exe',
+                 'chimera explain discord.com --app Discord.exe --json')),
     _a("status", "", handler="status", level=READ,
        methods=("app_info", "winws_state", "proxy_state", "tg_state", "hosts_state"),
        examples=("chimera status", "chimera status --json")),
@@ -381,7 +385,7 @@ ACTIONS: tuple[Action, ...] = (
        methods=("lists_read", "lists_save"), level=APP, offline=True,
        args=(Arg("имя", "str"), Arg("домены", "names1")),
        examples=("chimera lists remove youtube ytimg.com",)),
-    _a("lists", "validate", handler="lists_validate", offline=True,
+    _a("lists", "validate", handler="lists_validate", methods=("lists_validate",), offline=True,
        args=(Arg("имя", "str", optional=True),),
        examples=("chimera lists validate", "chimera lists validate youtube --json")),
     _a("lists", "apply", handler="lists_apply", methods=("lists_apply",), level=APP,
