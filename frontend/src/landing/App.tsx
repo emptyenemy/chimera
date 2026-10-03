@@ -29,7 +29,7 @@ const features = [
   { icon: Network, title: t('Прокси', 'Proxy'), text: t('VLESS, Trojan, Shadowsocks и VMess через sing-box. PAC или TUN, маршрутизация по спискам сайтов.', 'VLESS, Trojan, Shadowsocks and VMess through sing-box. PAC or TUN, with website list routing.') },
   { icon: Radio, title: 'Telegram', text: t('Локальный MTProto-прокси на базе tg-ws-proxy. Подключение к Telegram по ссылке.', 'A local MTProto proxy powered by tg-ws-proxy. Connect Telegram with a link.') },
   { icon: Globe, title: 'Hosts + DNS', text: t('Провайдеры hosts, выбор DNS и проверка серверов. Настройки собраны в одном месте.', 'Hosts providers, DNS selection and server checks. All settings in one place.') },
-  { icon: ListChecks, title: t('Диагностика', 'Diagnostics'), text: t('Проверка сайтов, DNS и состояния модулей. Логи помогают понять, где проблема.', 'Check websites, DNS and module status. Logs help you find the problem.') },
+  { icon: ListChecks, title: t('Диагностика', 'Diagnostics'), text: t('Проверка сайтов, DNS и состояния модулей. Пробы настроек с автооткатом и разбор, почему сайт идёт этим маршрутом.', 'Check websites, DNS and module status. Try settings with automatic rollback and see why a site takes its route.') },
   { icon: SlidersHorizontal, title: t('Под себя', 'Make it yours'), text: t('Готовые палитры и свой вариант, акцент Windows, скругления и плотность. Снимки настроек для сравнения и возврата.', 'Curated palettes and your own variant, Windows accent, corner radius and density. Settings snapshots for comparison and restore.') },
 ]
 
