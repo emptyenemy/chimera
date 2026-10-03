@@ -1,4 +1,5 @@
-"""modules/proxy/parser.py — разбор share-ссылок vless/trojan/ss/vmess.
+"""modules/proxy/parser.py — разбор share-ссылок vless/trojan/ss/vmess, hysteria2, hysteria, tuic,
+anytls, socks и http.
 
 Только чистый разбор строки в outbound-словарь, без сети и без запуска sing-box.
 """
@@ -197,8 +198,8 @@ def test_no_scheme_raises():
 
 
 def test_unsupported_scheme_raises():
-    with pytest.raises(ValueError, match="ssh"):
-        parser.parse_link("ssh://foo@bar:22")
+    with pytest.raises(ValueError, match="mieru"):
+        parser.parse_link("mieru://foo@bar:22")
 
 
 def test_empty_string_raises():
@@ -276,3 +277,206 @@ def test_vmess_wrapped_base64_still_parses():
     link = _vmess_link({"add": "example.com", "port": "443", "id": "uuid"})
     result = parser.parse_link(link[:20] + "\n" + link[20:])
     assert result["outbound"]["server_port"] == 443
+
+
+# --- hysteria2 / hysteria / tuic / anytls ------------------------------------
+
+
+def test_hysteria2_salamander_and_insecure():
+    r = parser.parse_link("hysteria2://pass@example.com:443/?sni=real.example&obfs=salamander"
+                          "&obfs-password=ob&insecure=1#hy2")
+    assert r["protocol"] == "hysteria2" and r["label"] == "hy2" and r["security"] == "tls"
+    assert r["outbound"] == {"type": "hysteria2", "server": "example.com", "server_port": 443, "password": "pass",
+                             "tls": {"enabled": True, "server_name": "real.example", "insecure": True},
+                             "obfs": {"type": "salamander", "password": "ob"}}
+
+
+def test_hy2_alias_default_port_and_user_password_auth():
+    ob = parser.parse_link("hy2://user:pw@example.com")["outbound"]
+    assert ob["type"] == "hysteria2" and ob["server_port"] == 443 and ob["password"] == "user:pw"
+
+
+@pytest.mark.parametrize("link", ["hysteria2://p@example.com:443,20000-30000/",
+                                  "hysteria2://p@example.com:443/?mport=20000-30000"])
+def test_hysteria2_port_hopping(link):
+    ob = parser.parse_link(link)["outbound"]
+    assert ob["server_port"] == 443 and ob["server_ports"] == ["20000:30000"]
+
+
+def test_hysteria2_ipv6_and_unknown_obfs():
+    assert parser.parse_link("hy2://p@[2001:db8::1]:8443")["server"] == "[2001:db8::1]:8443"
+    with pytest.raises(ValueError):
+        parser.parse_link("hy2://p@example.com:443?obfs=xplus")
+
+
+@pytest.mark.parametrize("link", ["hysteria2://p@example.com:30000-20000/", "hysteria2://p@example.com:0/"])
+def test_hysteria2_rejects_bad_ports(link):
+    with pytest.raises(ValueError):
+        parser.parse_link(link)
+
+
+def test_hysteria_v1_defaults_bandwidth_and_alpn():
+    ob = parser.parse_link("hysteria://example.com:36712?auth=secret&peer=sni.example&obfsParam=xyz")["outbound"]
+    assert ob == {"type": "hysteria", "server": "example.com", "server_port": 36712, "up_mbps": 10, "down_mbps": 50,
+                  "tls": {"enabled": True, "server_name": "sni.example", "alpn": ["hysteria"]},
+                  "auth_str": "secret", "obfs": "xyz"}
+
+
+def test_hysteria_v1_rejects_faketcp_and_bad_speed():
+    with pytest.raises(ValueError):
+        parser.parse_link("hysteria://example.com:36712?protocol=faketcp")
+    with pytest.raises(ValueError):
+        parser.parse_link("hysteria://example.com:36712?upmbps=fast")
+
+
+def test_tuic_full_link():
+    ob = parser.parse_link("tuic://uuid-1:pass@example.com:443?congestion_control=bbr&udp_relay_mode=quic"
+                           "&alpn=h3&allow_insecure=1#t")["outbound"]
+    assert ob == {"type": "tuic", "server": "example.com", "server_port": 443, "uuid": "uuid-1", "password": "pass",
+                  "tls": {"enabled": True, "server_name": "example.com", "insecure": True, "alpn": ["h3"]},
+                  "congestion_control": "bbr", "udp_relay_mode": "quic"}
+
+
+def test_tuic_requires_uuid_port_and_known_relay_mode():
+    for link in ("tuic://example.com:443", "tuic://u:p@example.com", "tuic://u:p@example.com:443?udp_relay_mode=x"):
+        with pytest.raises(ValueError):
+            parser.parse_link(link)
+
+
+def test_anytls():
+    ob = parser.parse_link("anytls://secret@example.com?sni=s.example")["outbound"]
+    assert ob == {"type": "anytls", "server": "example.com", "server_port": 443, "password": "secret",
+                  "tls": {"enabled": True, "server_name": "s.example"}}
+
+
+# --- socks / http ------------------------------------------------------------
+
+
+@pytest.mark.parametrize("scheme, version", [("socks", "5"), ("socks5", "5"), ("socks5h", "5"),
+                                             ("socks4", "4"), ("socks4a", "4a")])
+def test_socks_versions(scheme, version):
+    r = parser.parse_link(f"{scheme}://1.2.3.4")
+    assert r["outbound"] == {"type": "socks", "server": "1.2.3.4", "server_port": 1080, "version": version}
+    assert r["security"] == "none"
+
+
+def test_socks5_credentials_are_percent_decoded():
+    ob = parser.parse_link("socks5://us%40er:p%3Ass@1.2.3.4:9050")["outbound"]
+    assert (ob["username"], ob["password"], ob["server_port"]) == ("us@er", "p:ss", 9050)
+
+
+def test_socks4_rejects_password():
+    with pytest.raises(ValueError):
+        parser.parse_link("socks4://user:pass@1.2.3.4:1080")
+
+
+def test_http_and_https_proxies():
+    plain = parser.parse_link("http://user:pass@proxy.example:3128")["outbound"]
+    assert plain == {"type": "http", "server": "proxy.example", "server_port": 3128,
+                     "username": "user", "password": "pass"}
+    secure = parser.parse_link("https://proxy.example")
+    assert secure["outbound"]["server_port"] == 443 and secure["security"] == "tls"
+    assert parser.parse_link("http://proxy.example")["outbound"]["server_port"] == 80
+
+
+# --- распознавание вставленного -----------------------------------------------
+
+
+def test_link_is_found_inside_a_message():
+    text = "Держи сервер 🇩🇪:\nvless://uuid@example.com:443?security=none#DE\nпотом скажешь, как работает"
+    r = parser.parse_link(text)
+    assert r["protocol"] == "vless" and r["label"] == "DE"
+
+
+def test_base64_subscription_content_uses_first_link():
+    payload = "trojan://p@one.example:443#one\nvless://uuid@two.example:443#two\n"
+    r = parser.parse_link(base64.b64encode(payload.encode()).decode())
+    assert r["protocol"] == "trojan" and r["label"] == "one"
+
+
+def test_unknown_scheme_is_named_in_the_error():
+    with pytest.raises(ValueError, match="juicity"):
+        parser.parse_link("juicity://uuid:pass@example.com:443")
+
+
+@pytest.mark.parametrize("link", ["tg://socks?server=1.2.3.4&port=1080&user=u&pass=p",
+                                  "https://t.me/socks?server=1.2.3.4&port=1080&user=u&pass=p"])
+def test_telegram_socks_links(link):
+    ob = parser.parse_link(link)["outbound"]
+    assert ob == {"type": "socks", "server": "1.2.3.4", "server_port": 1080, "version": "5",
+                  "username": "u", "password": "p"}
+
+
+@pytest.mark.parametrize("link", ["tg://proxy?server=1.2.3.4&port=443&secret=dd00",
+                                  "https://t.me/proxy?server=1.2.3.4&port=443&secret=dd00"])
+def test_mtproto_points_to_the_telegram_module(link):
+    with pytest.raises(ValueError, match="MTProto"):
+        parser.parse_link(link)
+
+
+@pytest.mark.parametrize("link", ["https://sub.example.com/api/v1/client/subscribe?token=abc",
+                                  "https://example.com/?token=abc"])
+def test_subscription_url_is_not_mistaken_for_https_proxy(link):
+    with pytest.raises(ValueError, match="подписк"):
+        parser.parse_link(link)
+
+
+@pytest.mark.parametrize("net", ["xhttp", "splithttp", "kcp"])
+def test_xray_only_transports_are_rejected_not_replaced_with_tcp(net):
+    with pytest.raises(ValueError, match=net):
+        parser.parse_link(f"vless://uuid@example.com:443?security=tls&type={net}")
+
+
+def test_quic_transport():
+    ob = parser.parse_link("vless://uuid@example.com:443?security=tls&type=quic")["outbound"]
+    assert ob["transport"] == {"type": "quic"}
+
+
+def test_ss_plugins():
+    link = "ss://YWVzLTI1Ni1nY206cGFzcw@example.com:8388?plugin=simple-obfs%3Bobfs%3Dhttp%3Bobfs-host%3Dcdn.example"
+    ob = parser.parse_link(link)["outbound"]
+    assert ob["plugin"] == "obfs-local" and ob["plugin_opts"] == "obfs=http;obfs-host=cdn.example"
+    with pytest.raises(ValueError, match="kcptun"):
+        parser.parse_link("ss://YWVzLTI1Ni1nY206cGFzcw@example.com:8388?plugin=kcptun")
+
+
+def test_wireguard_link_variants():
+    ob = parser.parse_link("wireguard://cHJpdg%3D%3D@example.com:51820?publickey=cHVi&address=10.0.0.2,fd00::2"
+                           "&presharedkey=cHNr&reserved=1,2,3&mtu=1280#wg")["outbound"]
+    assert ob == {"type": "wireguard", "address": ["10.0.0.2/32", "fd00::2/128"], "private_key": "cHJpdg==",
+                  "mtu": 1280, "peers": [{"address": "example.com", "port": 51820, "public_key": "cHVi",
+                                          "allowed_ips": ["0.0.0.0/0", "::/0"], "pre_shared_key": "cHNr",
+                                          "reserved": [1, 2, 3]}]}
+    hiddify = parser.parse_link("wg://example.com:2408?pk=cHJpdg&peer_pk=cHVi&local_address=10.0.0.2/32")
+    assert hiddify["server"] == "example.com:2408" and hiddify["outbound"]["private_key"] == "cHJpdg"
+    for bad in ("wg://example.com?pk=a", "wg://example.com?pk=a&peer_pk=b",
+                "wg://example.com?pk=a&peer_pk=b&ip=10.0.0.2&reserved=1,2"):
+        with pytest.raises(ValueError):
+            parser.parse_link(bad)
+
+
+def test_naive_ssh_and_snell():
+    naive = parser.parse_link("naive+quic://u:p@example.com")["outbound"]
+    assert naive == {"type": "naive", "server": "example.com", "server_port": 443,
+                     "tls": {"enabled": True, "server_name": "example.com"}, "username": "u", "password": "p",
+                     "quic": True}
+    assert parser.parse_link("ssh://example.com")["outbound"] == {"type": "ssh", "server": "example.com",
+                                                                   "server_port": 22, "user": "root"}
+    snell = parser.parse_link("snell://key@example.com:443?version=3&obfs=tls&obfs-host=cdn.example")["outbound"]
+    assert (snell["version"], snell["obfs_mode"], snell["obfs_host"]) == (3, "tls", "cdn.example")
+
+
+def test_json_outbound_object_list_and_full_config():
+    single = parser.parse_link('{"type": "tor", "tag": "my-tor"}')
+    assert single["protocol"] == "tor" and single["label"] == "my-tor" and "tag" not in single["outbound"]
+    config = {"outbounds": [{"type": "direct", "tag": "direct"},
+                            {"type": "vless", "tag": "de", "server": "example.com", "server_port": 443,
+                             "uuid": "uuid"}]}
+    r = parser.parse_link(json.dumps(config))
+    assert r["protocol"] == "vless" and r["server"] == "example.com:443" and r["chain"] == []
+    with pytest.raises(ValueError, match="direct"):
+        parser.parse_link('[{"type": "direct"}]')
+    with pytest.raises(ValueError):
+        parser.parse_link('{"type": "vless", "detour": "missing"}')
+    with pytest.raises(ValueError):
+        parser.parse_link("{not json")

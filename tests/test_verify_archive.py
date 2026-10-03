@@ -11,7 +11,7 @@ def archive(tmp_path, *, omit=None, flavor="lite", extra=None, manifest_omit=Fal
         name: b"file" for name in (
             "Chimera.exe", "AGENTS.md", "skills/chimera/SKILL.md", "ui/web-next/index.html",
             "modules/locales/ru.json", "modules/locales/en.json", "versions.json",
-            "bin/sing-box/sing-box.exe", "bin/zapret-win-bundle/zapret-winws/winws2.exe",
+            "bin/sing-box/sing-box.exe", "bin/sing-box/libcronet.dll", "bin/zapret-win-bundle/zapret-winws/winws2.exe",
             "bin/zapret-win-bundle/zapret-winws/WinDivert.dll", "bin/zapret-win-bundle/zapret-winws/WinDivert64.sys",
             "ui/web-next/assets/index.js", "lists/example.txt", "strategies/assets/example.bin",
             "bin/webview2/msedgewebview2.exe", "bin/webview2/msedge.dll", "bin/webview2/icudtl.dat",

@@ -39,8 +39,9 @@ from . import parser
 ROOT = Path(__file__).parent.parent.parent
 SINGBOX_DIR = ROOT / "bin" / "sing-box"
 SINGBOX_EXE = SINGBOX_DIR / "sing-box.exe"
-SINGBOX_EXE_NEW = SINGBOX_DIR / "sing-box.exe.new"  # сюда качаем, пока не проверили хеш
-SINGBOX_EXE_OLD = SINGBOX_DIR / "sing-box.exe.old"  # сюда уезжает старый exe, если он занят
+# libcronet.dll из того же архива нужна ядру только для naive; без неё naive не стартует
+SINGBOX_CRONET = SINGBOX_DIR / "libcronet.dll"
+SINGBOX_FILES = ("sing-box.exe", "libcronet.dll")
 CONFIG_PATH = paths.data_path("singbox-config.json")
 paths.migrate(Path(__file__).parent / "singbox-config.json", CONFIG_PATH)
 STATE_PATH = paths.data_path("proxy.json")
@@ -95,12 +96,29 @@ def _cleanup_old_exe() -> None:
     """Подчищает sing-box.exe.old, оставшийся от предыдущего обновления, — если он
     ещё занят процессом, который на нём доработал, тихо оставляем как есть и
     пробуем при следующем старте/скачивании."""
+    for name in SINGBOX_FILES:
+        try:
+            (SINGBOX_DIR / f"{name}.old").unlink()
+        except OSError:
+            pass  # нет файла или ещё занят — приберём в другой раз
+
+
+def _install_core_file(target: Path, data: bytes) -> bool:
+    """Кладёт файл ядра через .new; занятый работающим sing-box отодвигает в .old.
+    -> True, если старый файл был занят и новая версия заработает после перезапуска."""
+    fresh, stale = target.with_name(target.name + ".new"), target.with_name(target.name + ".old")
+    fresh.write_bytes(data)
     try:
-        SINGBOX_EXE_OLD.unlink()
-    except FileNotFoundError:
-        pass
-    except OSError:
-        pass  # занят — приберём в другой раз
+        os.replace(fresh, target)
+        return False
+    except PermissionError:
+        # перезаписать занятый exe/dll Windows не даёт, а переименовать — даёт
+        try:
+            os.replace(target, stale)
+            os.replace(fresh, target)
+        except OSError as e:
+            raise ChimeraRuntimeError('err.proxy.manager.could_not_replace_sing_box_exe', p0=e) from e
+        return True
 
 
 class ProxyManager:
@@ -272,24 +290,14 @@ class ProxyManager:
         if digest != SINGBOX_SHA256:
             raise ChimeraRuntimeError('err.proxy.manager.the_downloaded_sing_box_archive_failed_sha256_ve', p0=SINGBOX_VERSION)
         with zipfile.ZipFile(io.BytesIO(blob)) as z:
-            name = next((n for n in z.namelist() if n.endswith("sing-box.exe")), None)
-            if not name:
+            members = {n.rsplit("/", 1)[-1]: n for n in z.namelist()}
+            if "sing-box.exe" not in members:
                 raise ChimeraRuntimeError('err.proxy.manager.the_archive_does_not_contain_sing_box_exe')
-            with z.open(name) as src, open(SINGBOX_EXE_NEW, "wb") as dst:
-                dst.write(src.read())
+            files = {name: z.read(members[name]) for name in SINGBOX_FILES if name in members}
 
         restart_required = False
-        try:
-            os.replace(SINGBOX_EXE_NEW, SINGBOX_EXE)
-        except PermissionError:
-            # целевой exe занят запущенным прокси — перезаписать нельзя, но
-            # переименовать можно: старый уходит в сторону, новый встаёт на его место
-            try:
-                os.replace(SINGBOX_EXE, SINGBOX_EXE_OLD)
-                os.replace(SINGBOX_EXE_NEW, SINGBOX_EXE)
-            except OSError as e:
-                raise ChimeraRuntimeError('err.proxy.manager.could_not_replace_sing_box_exe', p0=e) from e
-            restart_required = True
+        for name, data in files.items():
+            restart_required |= _install_core_file(SINGBOX_DIR / name, data)
 
         self._core_version_cached = False  # скачали новый бинарь — пересчитать версию
         result = {"present": True, "version": self.core_version()}
@@ -328,8 +336,14 @@ class ProxyManager:
     def build_config(self) -> dict:
         if not self.config["link"]:
             raise ChimeraValueError('err.proxy.manager.enter_a_proxy_link_vless_etc')
-        proxy_ob = dict(parser.parse_link(self.config["link"])["outbound"])
+        parsed = parser.parse_link(self.config["link"])
+        proxy_ob = dict(parsed["outbound"])
         proxy_ob["tag"] = "proxy"
+        # маршруты и DNS ссылаются на тег "proxy" одинаково, будь то outbound или endpoint
+        chain = [dict(item) for item in parsed["chain"]]
+        own = [proxy_ob, *chain]
+        endpoints = [item for item in own if item["type"] in parser.ENDPOINT_TYPES]
+        outbounds = [item for item in own if item["type"] not in parser.ENDPOINT_TYPES]
 
         dns_servers = [
             {"tag": "dns-proxy", "type": "https", "server": "1.1.1.1", "detour": "proxy"},
@@ -386,13 +400,16 @@ class ProxyManager:
                 "default_domain_resolver": {"server": "dns-proxy"},
             }
 
-        return {
+        config = {
             "log": {"level": "info", "timestamp": True},
             "dns": dns,
             "inbounds": [inbound],
-            "outbounds": [proxy_ob, {"type": "direct", "tag": "direct"}],
+            "outbounds": [*outbounds, {"type": "direct", "tag": "direct"}],
             "route": route,
         }
+        if endpoints:
+            config["endpoints"] = endpoints
+        return config
 
     def _split_tun_config(self, dns_servers: list[dict]) -> tuple[dict, dict, dict]:
         """Выборочный TUN: адаптер ловит весь трафик системы, но в прокси уходят
@@ -666,7 +683,9 @@ class ProxyManager:
         if self.config["link"]:
             try:
                 p = parser.parse_link(self.config["link"])
-                transport = p["outbound"].get("transport", {}).get("type", "tcp")
+                # «tcp» — только у протоколов с выбором транспорта; у hysteria, tuic, wireguard его нет
+                transport = p["outbound"].get("transport", {}).get("type") or (
+                    "tcp" if p["protocol"] in ("vless", "vmess", "trojan") else None)
                 parsed = {"label": p["label"], "protocol": p["protocol"],
                           "server": p["server"], "security": p["security"],
                           "transport": transport}

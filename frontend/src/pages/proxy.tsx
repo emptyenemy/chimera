@@ -1,4 +1,4 @@
-/* Прокси — sing-box по VLESS/Trojan/SS/VMess-ссылке в трёх режимах: системный прокси
+/* Прокси — sing-box по ссылке любого поддержанного протокола (modules/proxy/parser.py) в трёх режимах: системный прокси
    (PAC) по спискам доменов, выборочный TUN (выбранные приложения + списки) и полный TUN.
    Состояние — стор "proxy" (хаб опрашивает его всегда), своих опросов у страницы нет. */
 
@@ -237,7 +237,7 @@ function ParsedInfo({ st }: { st: ProxyView }) {
   return (
     <div className="flex flex-wrap items-center gap-2" data-testid="proxy-parsed">
       <Badge variant="secondary">{(p.protocol ?? "").toUpperCase()}</Badge>
-      <Badge variant="outline">{(p.transport ?? "tcp").toUpperCase()}</Badge>
+      {p.transport && <Badge variant="outline">{p.transport.toUpperCase()}</Badge>}
       <Badge variant="outline">{p.server}</Badge>
       <Badge variant="outline">{p.security === "none" ? t("proxy.link.noTls") : p.security}</Badge>
       <span className="text-muted-foreground">«{p.label}»</span>
@@ -336,6 +336,7 @@ function ServerCard({ st }: { st: ProxyView }) {
           ) : (
             <ParsedInfo st={st} />
           )}
+          <FieldDescription data-testid="proxy-link-formats">{t("proxy.link.formats")}</FieldDescription>
         </FieldGroup>
       </CardContent>
     </Card>

@@ -33,7 +33,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 from modules import selfupdate, upstream  # noqa: E402
-from modules.proxy.manager import SINGBOX_SHA256, SINGBOX_URL  # noqa: E402
+from modules.proxy.manager import SINGBOX_FILES, SINGBOX_SHA256, SINGBOX_URL  # noqa: E402
 
 BIN = ROOT / "bin"
 SINGBOX_EXE = BIN / "sing-box" / "sing-box.exe"
@@ -52,7 +52,7 @@ def check_sha(blob: bytes, sha: str) -> None:
 
 
 def fetch_singbox(force: bool = False) -> None:
-    if SINGBOX_EXE.exists() and not force:
+    if all((SINGBOX_EXE.parent / name).exists() for name in SINGBOX_FILES) and not force:
         print("sing-box: уже есть, пропускаю")
         return
     print("sing-box: качаю", SINGBOX_URL)
@@ -61,11 +61,16 @@ def fetch_singbox(force: bool = False) -> None:
         blob = resp.read()
     check_sha(blob, SINGBOX_SHA256)
     with zipfile.ZipFile(io.BytesIO(blob)) as z:
-        name = next((n for n in z.namelist() if n.endswith("sing-box.exe")), None)
-        if not name:
-            raise RuntimeError("в архиве sing-box нет sing-box.exe")
+        members = {n.rsplit("/", 1)[-1]: n for n in z.namelist()}
+        missing = [name for name in SINGBOX_FILES if name not in members]
+        if missing:
+            raise RuntimeError(f"в архиве sing-box нет {', '.join(missing)}")
         SINGBOX_EXE.parent.mkdir(parents=True, exist_ok=True)
-        SINGBOX_EXE.write_bytes(z.read(name))
+        for name in SINGBOX_FILES:
+            target = SINGBOX_EXE.parent / name
+            # без --force дописываем только недостающее: sing-box.exe может быть занят работающим прокси
+            if force or not target.exists():
+                target.write_bytes(z.read(members[name]))
     print("sing-box: готово")
 
 

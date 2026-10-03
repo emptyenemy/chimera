@@ -20,7 +20,7 @@ def finish(flavor: str):
         raise ValueError("Build paths must stay inside build/")
     if not (source / "Chimera.exe").is_file():
         raise FileNotFoundError(source / "Chimera.exe")
-    required = ("bin/sing-box/sing-box.exe", "bin/zapret-win-bundle/zapret-winws/winws2.exe",
+    required = ("bin/sing-box/sing-box.exe", "bin/sing-box/libcronet.dll", "bin/zapret-win-bundle/zapret-winws/winws2.exe",
                 "bin/zapret-win-bundle/zapret-winws/WinDivert.dll", "bin/zapret-win-bundle/zapret-winws/WinDivert64.sys",
                 "AGENTS.md", "skills/chimera/SKILL.md")
     missing = [relative for relative in required if not (ROOT / relative).is_file()]

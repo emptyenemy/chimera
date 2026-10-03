@@ -47,7 +47,7 @@
 - **Пробы настроек** — стратегии, включение/выключение hosts и TUN с проверками, подтверждением и автооткатом ([подробности](docs/TRIALS.md));
 
 - **Стратегии (zapret2 / winws2)** — обход DPI через [bol-van/zapret2](https://github.com/bol-van/zapret2), стратегии портированы из [Flowseal/zapret-discord-youtube](https://github.com/Flowseal/zapret-discord-youtube);
-- **Прокси (sing-box)** — выборочный VLESS/Trojan/SS/VMess только для доменов из списков (режим PAC без админа или TUN);
+- **Прокси (sing-box)** — любой протокол ядра: VLESS, VMess, Trojan, Shadowsocks, Hysteria2, TUIC, AnyTLS, NaiveProxy, WireGuard, SSH, SOCKS, HTTP(S) и JSON outbound; формат ссылки определяется сам. Выборочно только для доменов из списков (режим PAC без админа или TUN);
 - **Telegram-прокси** — MTProto-прокси на базе [Flowseal/tg-ws-proxy](https://github.com/Flowseal/tg-ws-proxy);
 - **Hosts** — подмена IP в системном hosts через «разблокирующие» DNS (xbox / comss / malw);
 - **DNS** — переключение системного DNS (DNS Jumper внутри программы);

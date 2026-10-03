@@ -26,7 +26,7 @@ type Release = {
 
 const features = [
   { icon: Shield, title: 'zapret2', text: t('Стратегии обхода DPI. Подберите рабочую для своей сети и проверьте доступность сайтов.', 'DPI bypass strategies. Choose one that works on your network and check website access.') },
-  { icon: Network, title: t('Прокси', 'Proxy'), text: t('VLESS, Trojan, Shadowsocks и VMess через sing-box. PAC или TUN, маршрутизация по спискам сайтов.', 'VLESS, Trojan, Shadowsocks and VMess through sing-box. PAC or TUN, with website list routing.') },
+  { icon: Network, title: t('Прокси', 'Proxy'), text: t('Всё, что умеет sing-box: VLESS, Hysteria2, TUIC, WireGuard, Shadowsocks, SOCKS и другие. Формат ссылки определяется сам. PAC или TUN, маршрутизация по спискам сайтов.', 'Everything sing-box supports: VLESS, Hysteria2, TUIC, WireGuard, Shadowsocks, SOCKS and more. The link format is detected automatically. PAC or TUN, with website list routing.') },
   { icon: Radio, title: 'Telegram', text: t('Локальный MTProto-прокси на базе tg-ws-proxy. Подключение к Telegram по ссылке.', 'A local MTProto proxy powered by tg-ws-proxy. Connect Telegram with a link.') },
   { icon: Globe, title: 'Hosts + DNS', text: t('Провайдеры hosts, выбор DNS и проверка серверов. Настройки собраны в одном месте.', 'Hosts providers, DNS selection and server checks. All settings in one place.') },
   { icon: ListChecks, title: t('Диагностика', 'Diagnostics'), text: t('Проверка сайтов, DNS и состояния модулей. Команда explain показывает, почему сайт идёт этим маршрутом.', 'Check websites, DNS and module status. The explain command shows why a site takes its route.') },
