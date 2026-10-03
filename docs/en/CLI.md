@@ -106,6 +106,8 @@ Levels exist so that remote channels can be restricted. The proxy link is hidden
 | Hosts → list bindings | `chimera hosts assign [bindings…] [--replace]` | system |
 | Hosts → “Add provider” | `chimera hosts provider-add <name> <doh> <servers…>` | app |
 | Hosts → provider → “Delete” | `chimera hosts provider-delete <id>` | app |
+| Hosts → provider → “Edit” | `chimera hosts provider-edit <id> <name> <doh> [servers…]` | app |
+| Hosts → built-in provider → “Hide”, “Hidden” | `chimera hosts provider-hide <id> [on|off]` | app |
 | Hosts → provider → “Ping” | `chimera hosts ping <id>` | read |
 | Hosts → background options | `chimera hosts background [settings…]` | app |
 | DNS: the whole tab | `chimera dns state` | read |
@@ -905,6 +907,31 @@ Delete a hosts provider. Level: changes the app.
 
 ```
 chimera hosts provider-delete my
+```
+
+#### `chimera hosts provider-edit <id> <name> <doh> [servers…]`
+
+Edit your hosts provider: the name, DoH and IPs are set again. Level: changes the app.
+
+- `id` — provider id
+- `name` — str
+- `doh` — DoH address
+- `servers` — server IPs
+
+```
+chimera hosts provider-edit my Comss https://dns.comss.one/dns-query 83.220.169.155
+```
+
+#### `chimera hosts provider-hide <id> [on|off]`
+
+Hide a built-in hosts provider from the list or bring it back. Level: changes the app.
+
+- `id` — built-in provider id
+- `hidden` — true to hide, false to bring back
+
+```
+chimera hosts provider-hide flowseal
+chimera hosts provider-hide flowseal false
 ```
 
 #### `chimera hosts ping <id>`

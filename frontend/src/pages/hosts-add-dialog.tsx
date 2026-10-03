@@ -1,4 +1,5 @@
-/* Диалог «Свой DNS-провайдер»: название, DoH-адрес и до двух IP сервера. */
+/* Диалог «Свой DNS-провайдер»: название, DoH-адрес и до двух IP сервера.
+   С provider — правка своего, с copy — копия встроенного (сохраняется как новый). */
 
 import { useState } from "react"
 
@@ -17,24 +18,35 @@ import { Spinner } from "@/components/ui/spinner"
 import { api } from "@/lib/bridge"
 import { t } from "@/lib/i18n"
 import { notify } from "@/lib/notify"
-import { loadOverview } from "@/pages/hosts-data"
+import { loadOverview, type Provider } from "@/pages/hosts-data"
 
-export function AddProviderDialog({ onClose }: { onClose: () => void }) {
-  const [name, setName] = useState("")
-  const [doh, setDoh] = useState("")
-  const [ip1, setIp1] = useState("")
-  const [ip2, setIp2] = useState("")
+export function AddProviderDialog({
+  onClose,
+  provider = null,
+  copy = false,
+}: {
+  onClose: () => void
+  provider?: Provider | null
+  copy?: boolean
+}) {
+  const editing = !!provider && !copy
+  const [name, setName] = useState(provider ? (copy ? `${provider.name} (${t("dns.copy.suffix")})` : provider.name) : "")
+  const [doh, setDoh] = useState(provider?.doh ?? "")
+  const [ip1, setIp1] = useState(provider?.servers?.[0] ?? "")
+  const [ip2, setIp2] = useState(provider?.servers?.slice(1).join(", ") ?? "")
   const [busy, setBusy] = useState(false)
 
   const submit = async () => {
     setBusy(true)
     try {
-      await api("hosts_add_provider", name.trim(), doh.trim(), [ip1.trim(), ip2.trim()])
-      notify.success(t("hosts.add.done"))
+      const servers = [ip1.trim(), ip2.trim()]
+      if (editing && provider) await api("hosts_update_provider", provider.id, name.trim(), doh.trim(), servers)
+      else await api("hosts_add_provider", name.trim(), doh.trim(), servers)
+      notify.success(t(editing ? "hosts.edit.done" : "hosts.add.done"))
       onClose()
       await loadOverview()
     } catch (e) {
-      notify.error(t("hosts.add.failed"), e instanceof Error ? e.message : String(e))
+      notify.error(t(editing ? "hosts.edit.failed" : "hosts.add.failed"), e instanceof Error ? e.message : String(e))
       setBusy(false)
     }
   }
@@ -50,7 +62,7 @@ export function AddProviderDialog({ onClose }: { onClose: () => void }) {
           }}
         >
           <DialogHeader>
-            <DialogTitle>{t("hosts.add.title")}</DialogTitle>
+            <DialogTitle>{t(editing ? "hosts.edit.title" : "hosts.add.title")}</DialogTitle>
             <DialogDescription>{t("hosts.add.desc")}</DialogDescription>
           </DialogHeader>
           <FieldGroup>
@@ -107,7 +119,7 @@ export function AddProviderDialog({ onClose }: { onClose: () => void }) {
             </Button>
             <Button type="submit" data-testid="hosts-add-ok" disabled={busy}>
               {busy && <Spinner data-icon="inline-start" />}
-              {t("hosts.add.confirm")}
+              {t(editing ? "hosts.edit.save" : "hosts.add.confirm")}
             </Button>
           </DialogFooter>
         </form>

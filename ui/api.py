@@ -754,7 +754,8 @@ class Api:
         """Всё для вкладки: провайдеры, списки доменов и текущее состояние."""
         try:
             return _ok({
-                "providers": self.hosts.providers(),
+                "providers": self.hosts.visible_providers(),
+                "hidden": self.hosts.hidden_providers(),
                 "lists": domains.list_info(),
                 "state": self.hosts.state(),
             })
@@ -803,6 +804,20 @@ class Api:
     def hosts_delete_provider(self, provider_id):
         try:
             return _ok(self.hosts.delete_provider(provider_id))
+        except Exception as e:
+            return _err(e)
+
+    @_auto_snapshot(('dns', 'hosts'))
+    def hosts_update_provider(self, provider_id, name, doh, servers):
+        try:
+            return _ok(self.hosts.update_provider(provider_id, name, doh, servers))
+        except Exception as e:
+            return _err(e)
+
+    @_auto_snapshot(('config',))
+    def hosts_hide_provider(self, provider_id, hidden=True):
+        try:
+            return _ok(self.hosts.set_hidden(provider_id, bool(hidden)))
         except Exception as e:
             return _err(e)
 

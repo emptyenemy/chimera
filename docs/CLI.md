@@ -106,6 +106,8 @@
 | Hosts → привязка списков | `chimera hosts assign [привязки…] [--replace]` | system |
 | Hosts → «Добавить провайдера» | `chimera hosts provider-add <имя> <doh> <серверы…>` | app |
 | Hosts → провайдер → «Удалить» | `chimera hosts provider-delete <id>` | app |
+| Hosts → провайдер → «Изменить» | `chimera hosts provider-edit <id> <имя> <doh> [серверы…]` | app |
+| Hosts → встроенный провайдер → «Скрыть», «Скрытые» | `chimera hosts provider-hide <id> [on|off]` | app |
 | Hosts → провайдер → «Пинг» | `chimera hosts ping <id>` | read |
 | Hosts → фоновые опции | `chimera hosts background [настройки…]` | app |
 | DNS: вся вкладка | `chimera dns state` | read |
@@ -905,6 +907,31 @@ chimera hosts provider-add my https://dns.example/dns-query 1.2.3.4
 
 ```
 chimera hosts provider-delete my
+```
+
+#### `chimera hosts provider-edit <id> <имя> <doh> [серверы…]`
+
+Изменить своего провайдера hosts: имя, DoH и IP задаются заново. Уровень: изменение приложения.
+
+- `id` — id провайдера
+- `имя` — str
+- `doh` — адрес DoH
+- `серверы` — IP серверов
+
+```
+chimera hosts provider-edit my Comss https://dns.comss.one/dns-query 83.220.169.155
+```
+
+#### `chimera hosts provider-hide <id> [on|off]`
+
+Скрыть встроенного провайдера hosts из списка или вернуть его. Уровень: изменение приложения.
+
+- `id` — id встроенного провайдера
+- `hidden` — true — скрыть, false — вернуть
+
+```
+chimera hosts provider-hide flowseal
+chimera hosts provider-hide flowseal false
 ```
 
 #### `chimera hosts ping <id>`

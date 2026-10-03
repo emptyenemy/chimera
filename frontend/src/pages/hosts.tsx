@@ -9,9 +9,12 @@
 import { useEffect, useRef, useState } from "react"
 import {
   CircleAlertIcon,
+  CopyIcon,
+  EyeOffIcon,
   ListChecksIcon,
   LockIcon,
   PackageIcon,
+  PencilIcon,
   PlusIcon,
   RefreshCwIcon,
   ServerIcon,
@@ -27,6 +30,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardAction, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Checkbox } from "@/components/ui/checkbox"
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty"
 import { Field, FieldContent, FieldGroup, FieldLabel, FieldSet, FieldLegend } from "@/components/ui/field"
 import { Item, ItemActions, ItemContent, ItemDescription, ItemGroup, ItemMedia, ItemTitle } from "@/components/ui/item"
@@ -108,6 +112,16 @@ function toggleStaticAssignment(id: string, checked: boolean) {
     else delete mapping[id]
     return mapping
   }, t("hosts.static.failed"))
+}
+
+async function setHidden(id: string, hidden: boolean) {
+  try {
+    await api("hosts_hide_provider", id, hidden)
+    notify.success(t(hidden ? "hosts.hide.done" : "hosts.unhide.done"))
+    await loadOverview()
+  } catch (e) {
+    notify.error(t("hosts.hide.failed"), msg(e))
+  }
 }
 
 async function deleteProvider(p: Provider): Promise<boolean> {
@@ -251,12 +265,14 @@ function ProviderRow({
   selected,
   ping,
   onSelect,
+  onEdit,
 }: {
   p: Provider
   st: HostsView
   selected: boolean
   ping: Ping | undefined
   onSelect: () => void
+  onEdit: (p: Provider) => void
 }) {
   const stat = !isDns(p)
   const unavailable = isUnavailable(p)
@@ -312,7 +328,22 @@ function ProviderRow({
         <div className="flex items-center gap-1.5 whitespace-nowrap">
           {unavailable ? <span className="text-muted-foreground">—</span> : <PingView ping={ping} />}
         </div>
-        {canDelete && (
+        {isDns(p) && (
+          <Button
+            variant="ghost"
+            size="icon-xs"
+            data-testid={`hosts-provider-edit-${p.id}`}
+            aria-label={t(p.builtin ? "hosts.provider.copy" : "hosts.provider.edit")}
+            title={t(p.builtin ? "hosts.provider.copy" : "hosts.provider.edit")}
+            onClick={(e) => {
+              e.stopPropagation()
+              onEdit(p)
+            }}
+          >
+            {p.builtin ? <CopyIcon /> : <PencilIcon />}
+          </Button>
+        )}
+        {canDelete ? (
           <Button
             variant="ghost"
             size="icon-xs"
@@ -326,6 +357,20 @@ function ProviderRow({
           >
             <Trash2Icon />
           </Button>
+        ) : (
+          <Button
+            variant="ghost"
+            size="icon-xs"
+            data-testid={`hosts-provider-hide-${p.id}`}
+            aria-label={t("hosts.provider.hide")}
+            title={t("hosts.provider.hide")}
+            onClick={(e) => {
+              e.stopPropagation()
+              void setHidden(p.id, true)
+            }}
+          >
+            <EyeOffIcon />
+          </Button>
         )}
       </ItemActions>
     </Item>
@@ -334,18 +379,21 @@ function ProviderRow({
 
 function ProvidersCard({
   providers,
+  hidden,
   st,
   selected,
   pings,
   onSelect,
 }: {
   providers: Provider[] | undefined
+  hidden: { id: string; name: string }[]
   st: HostsView
   selected: string | null
   pings: Record<string, Ping>
   onSelect: (id: string) => void
 }) {
-  const [adding, setAdding] = useState(false)
+  // null — диалог закрыт; provider: null — новый, иначе правка своего или копия встроенного
+  const [dialog, setDialog] = useState<{ provider: Provider | null; copy: boolean } | null>(null)
   let body
   if (!providers) {
     body = (
@@ -378,6 +426,7 @@ function ProvidersCard({
             selected={p.id === selected}
             ping={pings[p.id]}
             onSelect={() => onSelect(p.id)}
+            onEdit={(item) => setDialog({ provider: item, copy: !!item.builtin })}
           />
         ))}
       </ItemGroup>
@@ -388,14 +437,31 @@ function ProvidersCard({
       <CardHeader>
         <CardTitle>{t("hosts.provider.title")}</CardTitle>
         <CardAction>
-          <Button variant="ghost" size="sm" data-testid="hosts-add" onClick={() => setAdding(true)}>
+          <Button variant="ghost" size="sm" data-testid="hosts-add" onClick={() => setDialog({ provider: null, copy: false })}>
             <PlusIcon data-icon="inline-start" />
             {t("hosts.provider.add")}
           </Button>
         </CardAction>
       </CardHeader>
-      <CardContent>{body}</CardContent>
-      {adding && <AddProviderDialog onClose={() => setAdding(false)} />}
+      <CardContent>
+        {body}
+        {hidden.length > 0 && (
+          <DropdownMenu>
+            <DropdownMenuTrigger render={<Button variant="ghost" size="sm" className="mt-2 text-muted-foreground" data-testid="hosts-hidden" />}>
+              <EyeOffIcon data-icon="inline-start" />
+              {t("hosts.hidden", { count: hidden.length })}
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start">
+              {hidden.map((h) => (
+                <DropdownMenuItem key={h.id} data-testid={`hosts-unhide-${h.id}`} onClick={() => void setHidden(h.id, false)}>
+                  {h.name} — {t("hosts.unhide")}
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
+      </CardContent>
+      {dialog && <AddProviderDialog provider={dialog.provider} copy={dialog.copy} onClose={() => setDialog(null)} />}
     </Card>
   )
 }
@@ -562,7 +628,7 @@ export function HostsPage() {
       {st ? <StatusCard st={st} /> : <Skeleton className="h-14 w-full" data-testid="hosts-loading" />}
       <div className="@container">
         <div className="grid grid-cols-1 items-start gap-4 @2xl:grid-cols-2">
-          <ProvidersCard providers={providers} st={state} selected={selected} pings={pings} onSelect={setChosen} />
+          <ProvidersCard providers={providers} hidden={overview?.hidden ?? []} st={state} selected={selected} pings={pings} onSelect={setChosen} />
           <SitesCard overview={overview} st={state} provider={provider} />
         </div>
       </div>
