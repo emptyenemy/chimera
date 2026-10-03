@@ -831,6 +831,7 @@ class Api:
             return _ok({
                 "adapters": self.dns.adapters(),
                 "providers": self.dns.list_providers(),
+                "hidden": self.dns.hidden_providers(),
                 # пробное применение в ожидании «Оставить / Вернуть»: одно (последнее) и все
                 "trial": trials[-1] if trials else None,
                 "trials": trials,
@@ -881,6 +882,22 @@ class Api:
         try:
             self.dns.delete_provider(provider_id)
             return _ok()
+        except Exception as e:
+            return _err(e)
+
+    @_auto_snapshot(('dns', 'hosts'))
+    def dns_update_provider(self, provider_id, name, servers, ipv6="", doh="", dot="", unblock=False, filtering=False):
+        try:
+            return _ok(self.dns.update_provider(provider_id, name, servers, ipv6, doh, dot, unblock, filtering))
+        except Exception as e:
+            return _err(e)
+
+    @_auto_snapshot(('config',))
+    def dns_hide_provider(self, provider_id, hidden=True):
+        """Убрать встроенного провайдера из списка DNS (или вернуть): удалить его нельзя —
+        он часть программы и вернётся с обновлением."""
+        try:
+            return _ok(self.dns.set_hidden(provider_id, bool(hidden)))
         except Exception as e:
             return _err(e)
 

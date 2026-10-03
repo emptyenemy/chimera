@@ -91,6 +91,9 @@ def _config(raw):
     for key in ("auto_elevate", "close_to_tray", "update_check", "tray_hint_shown"):
         if key in out:
             _bool(out[key])
+    hidden = out["dns_hidden"]
+    if not isinstance(hidden, list) or len(hidden) > 200 or not all(isinstance(i, str) and i for i in hidden):
+        _bad()
     from modules import appearance
     out["appearance"] = appearance.normalize_settings(out["appearance"])
     out["appearance_custom"] = appearance.normalize_custom(out["appearance_custom"])

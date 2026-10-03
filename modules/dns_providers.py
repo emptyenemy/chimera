@@ -89,3 +89,23 @@ def delete(provider_id: str) -> None:
     if not any(p["id"] == provider_id for p in user):
         raise ChimeraValueError('err.dns_providers.built_in_providers_cannot_be_deleted')
     _save_user([p for p in user if p["id"] != provider_id])
+
+
+def update(provider_id: str, name: str, servers="", ipv6="", doh: str = "", dot: str = "",
+           unblock: bool = False, filtering: bool = False) -> dict:
+    """Правка своего провайдера; id не меняется, чтобы не потерять привязки hosts.
+    Встроенные лежат в файле программы и обновятся с ней — их не правим, а копируем."""
+    user = _load_user()
+    if not any(p["id"] == provider_id for p in user):
+        raise ChimeraValueError('err.dns_providers.built_in_providers_cannot_be_edited')
+    name = (name or "").strip()
+    if not name:
+        raise ChimeraValueError('err.dns_providers.enter_a_provider_name')
+    doh, dot = validate_doh(doh), validate_host(dot)
+    ips, ip6 = parse_servers(servers), parse_servers(ipv6)
+    if not (ips or ip6 or doh or dot):
+        raise ChimeraValueError('err.dns_providers.specify_an_ip_server_ipv4_ipv6_or_a_doh_dot_addr')
+    provider = {"id": provider_id, "name": name, "servers": ips, "ipv6": ip6, "doh": doh, "dot": dot,
+                "unblock": bool(unblock), "filter": bool(filtering)}
+    _save_user([provider if p["id"] == provider_id else p for p in user])
+    return provider

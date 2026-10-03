@@ -60,7 +60,29 @@ class DnsJumper:
         """Только провайдеры с IP-серверами (IPv4/IPv6) — их можно поставить
         системным DNS. Чисто DoH/DoT-провайдеры без IP тут не показываем:
         системному резолверу нужен IP (DoH-шаблон в Windows тоже привязан к IP)."""
-        return [p for p in dns_providers.load_all() if p.get("servers") or p.get("ipv6")]
+        hidden = set(appconfig.load().get("dns_hidden") or [])
+        return [p for p in dns_providers.load_all()
+                if (p.get("servers") or p.get("ipv6")) and not (p.get("builtin") and p["id"] in hidden)]
+
+    def hidden_providers(self) -> list[dict]:
+        """Встроенные, которые пользователь убрал из списка: их можно вернуть."""
+        hidden = set(appconfig.load().get("dns_hidden") or [])
+        return [{"id": p["id"], "name": p["name"]} for p in dns_providers.load_all()
+                if p.get("builtin") and p["id"] in hidden]
+
+    def set_hidden(self, provider_id: str, hidden: bool) -> list[str]:
+        builtin = {p["id"] for p in dns_providers.load_all() if p.get("builtin")}
+        if provider_id not in builtin:
+            raise ChimeraValueError('err.dns_providers.only_built_in_providers_can_be_hidden')
+        current = [i for i in (appconfig.load().get("dns_hidden") or []) if i in builtin and i != provider_id]
+        value = sorted(current + [provider_id]) if hidden else current
+        appconfig.set_value("dns_hidden", value)
+        return value
+
+    def update_provider(self, provider_id: str, name: str, servers, ipv6="", doh="", dot="",
+                        unblock: bool = False, filtering: bool = False) -> dict:
+        return dns_providers.update(provider_id, name, servers=servers, ipv6=ipv6, doh=doh,
+                                    dot=dot, unblock=unblock, filtering=filtering)
 
     def get_provider(self, provider_id: str) -> dict:
         return dns_providers.get(provider_id)

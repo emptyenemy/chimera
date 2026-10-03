@@ -10,7 +10,10 @@ import {
   CircleCheckIcon,
   CircleXIcon,
   ClockIcon,
+  CopyIcon,
+  EyeOffIcon,
   NetworkIcon,
+  PencilIcon,
   PlusIcon,
   RotateCcwIcon,
   ScanSearchIcon,
@@ -29,6 +32,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardAction, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty"
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
@@ -83,6 +87,7 @@ interface Trial {
 interface DnsState {
   adapters?: Adapter[]
   providers?: Provider[]
+  hidden?: { id: string; name: string }[]
   trial?: Trial | null
 }
 
@@ -344,6 +349,7 @@ function ProviderRow({
   noAdmin,
   onApply,
   onProbe,
+  onEdit,
   onDelete,
 }: {
   p: Provider
@@ -355,7 +361,8 @@ function ProviderRow({
   noAdmin: boolean
   onApply: (id: string) => void
   onProbe: (id: string) => void
-  onDelete: (id: string) => void
+  onEdit: (p: Provider) => void
+  onDelete: (p: Provider) => void
 }) {
   const active = isActiveProvider(p, adapter)
   // все адреса (IPv6, DoH, DoT) — в подсказке: в строке хватает основного
@@ -421,8 +428,24 @@ function ProviderRow({
           )}
         </div>
       </TableCell>
-      <TableCell className="w-10 pl-0">
-        {!p.builtin && (
+      <TableCell className="w-px pl-0">
+        <div className="flex items-center gap-0.5">
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  data-testid={`dns-edit-${p.id}`}
+                  aria-label={t(p.builtin ? "dns.copy" : "dns.edit")}
+                  onClick={() => onEdit(p)}
+                />
+              }
+            >
+              {p.builtin ? <CopyIcon /> : <PencilIcon />}
+            </TooltipTrigger>
+            <TooltipContent>{t(p.builtin ? "dns.copy" : "dns.edit")}</TooltipContent>
+          </Tooltip>
           <Tooltip>
             <TooltipTrigger
               render={
@@ -430,16 +453,16 @@ function ProviderRow({
                   variant="ghost"
                   size="icon-sm"
                   data-testid={`dns-del-${p.id}`}
-                  aria-label={t("dns.delete")}
-                  onClick={() => onDelete(p.id)}
+                  aria-label={t(p.builtin ? "dns.hide" : "dns.delete")}
+                  onClick={() => onDelete(p)}
                 />
               }
             >
-              <Trash2Icon />
+              {p.builtin ? <EyeOffIcon /> : <Trash2Icon />}
             </TooltipTrigger>
-            <TooltipContent>{t("dns.delete")}</TooltipContent>
+            <TooltipContent>{t(p.builtin ? "dns.hide" : "dns.delete")}</TooltipContent>
           </Tooltip>
-        )}
+        </div>
       </TableCell>
     </TableRow>
   )
@@ -449,20 +472,48 @@ function ProviderRow({
 
 const EMPTY_FORM = { name: "", ip1: "", ip2: "", ip6: "", doh: "", dot: "", unblock: false, filter: false }
 
-function AddProviderDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
-  const [form, setForm] = useState(EMPTY_FORM)
+function formOf(p: Provider | null, copy: boolean): typeof EMPTY_FORM {
+  if (!p) return EMPTY_FORM
+  return {
+    name: copy ? `${p.name} (${t("dns.copy.suffix")})` : p.name,
+    ip1: p.servers?.[0] ?? "",
+    ip2: p.servers?.slice(1).join(", ") ?? "",
+    ip6: (p.ipv6 ?? []).join(", "),
+    doh: p.doh ?? "",
+    dot: p.dot ?? "",
+    unblock: !!p.unblock,
+    filter: !!p.filter,
+  }
+}
+
+function AddProviderDialog({
+  open,
+  onOpenChange,
+  provider = null,
+  copy = false,
+}: {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  provider?: Provider | null
+  copy?: boolean
+}) {
+  // правка своего провайдера; копия встроенного сохраняется как новый
+  const editing = !!provider && !copy
+  const [form, setForm] = useState(() => formOf(provider, copy))
   const [busy, setBusy] = useState(false)
   const set = <K extends keyof typeof EMPTY_FORM>(k: K, v: (typeof EMPTY_FORM)[K]) => setForm((f) => ({ ...f, [k]: v }))
   const submit = async () => {
     setBusy(true)
     try {
       const v = (x: string) => x.trim()
-      await api("dns_add_provider", v(form.name), [v(form.ip1), v(form.ip2)], v(form.ip6), v(form.doh), v(form.dot), form.unblock, form.filter)
-      notify.success(t("dns.add.done"))
+      const fields = [v(form.name), [v(form.ip1), v(form.ip2)], v(form.ip6), v(form.doh), v(form.dot), form.unblock, form.filter] as const
+      if (editing && provider) await api("dns_update_provider", provider.id, ...fields)
+      else await api("dns_add_provider", ...fields)
+      notify.success(t(editing ? "dns.edit.done" : "dns.add.done"))
       onOpenChange(false)
       refreshDns()
     } catch (e) {
-      notify.error(t("dns.add.failed"), errText(e))
+      notify.error(t(editing ? "dns.edit.failed" : "dns.add.failed"), errText(e))
     } finally {
       setBusy(false)
     }
@@ -471,7 +522,7 @@ function AddProviderDialog({ open, onOpenChange }: { open: boolean; onOpenChange
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent data-testid="dns-add-dialog" className="sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle>{t("dns.add.title")}</DialogTitle>
+          <DialogTitle>{t(editing ? "dns.edit.title" : "dns.add.title")}</DialogTitle>
           <DialogDescription>{t("dns.add.desc")}</DialogDescription>
         </DialogHeader>
         <FieldGroup className="gap-4">
@@ -522,7 +573,7 @@ function AddProviderDialog({ open, onOpenChange }: { open: boolean; onOpenChange
           </Button>
           <Button data-testid="dns-add-ok" disabled={busy} onClick={() => void submit()}>
             {busy && <Spinner data-icon="inline-start" />}
-            {t("dns.add.ok")}
+            {t(editing ? "dns.edit.save" : "dns.add.ok")}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -618,6 +669,12 @@ export function DnsPage() {
   const [probes, setProbes] = useState<Record<string, ProbeResult>>({})
   const [addOpen, setAddOpen] = useState(false)
   const [addKey, setAddKey] = useState(0)
+  const [editing, setEditing] = useState<{ provider: Provider; copy: boolean } | null>(null)
+  const openDialog = (target: { provider: Provider; copy: boolean } | null) => {
+    setEditing(target)
+    setAddKey((k) => k + 1)
+    setAddOpen(true)
+  }
 
   const adapters = st?.adapters
   const adapter = useMemo<Adapter | null>(() => {
@@ -707,21 +764,41 @@ export function DnsPage() {
     }
   }
 
-  const onDelete = async (id: string) => {
-    const p = st?.providers?.find((x) => x.id === id)
+  const onDelete = async (p: Provider) => {
+    if (p.builtin) {
+      // встроенный удалить нельзя — он вернётся с обновлением программы; скрываем из списка
+      try {
+        await api("dns_hide_provider", p.id, true)
+        notify.success(t("dns.hide.done"))
+        refreshDns()
+      } catch (e) {
+        notify.error(t("dns.hide.failed"), errText(e))
+      }
+      return
+    }
     const ok = await confirmDialog({
       title: t("dns.delete.title"),
-      description: t("dns.delete.desc", { name: p?.name || id }),
+      description: t("dns.delete.desc", { name: p.name || p.id }),
       confirmText: t("dns.delete.confirm"),
       destructive: true,
     })
     if (!ok) return
     try {
-      await api("dns_delete_provider", id)
+      await api("dns_delete_provider", p.id)
       notify.success(t("dns.delete.done"))
       refreshDns()
     } catch (e) {
       notify.error(t("dns.delete.failed"), errText(e))
+    }
+  }
+
+  const onUnhide = async (id: string) => {
+    try {
+      await api("dns_hide_provider", id, false)
+      notify.success(t("dns.unhide.done"))
+      refreshDns()
+    } catch (e) {
+      notify.error(t("dns.hide.failed"), errText(e))
     }
   }
 
@@ -736,10 +813,7 @@ export function DnsPage() {
             {t("dns.providers.title")}
           </CardTitle>
           <CardAction>
-            <Button variant="ghost" size="sm" data-testid="dns-add" onClick={() => {
-                setAddKey((k) => k + 1)
-                setAddOpen(true)
-              }}>
+            <Button variant="ghost" size="sm" data-testid="dns-add" onClick={() => openDialog(null)}>
               <PlusIcon data-icon="inline-start" />
               {t("dns.add")}
             </Button>
@@ -778,11 +852,27 @@ export function DnsPage() {
                     noAdmin={noAdmin}
                     onApply={(id) => void onApply(id)}
                     onProbe={(id) => void onProbe(id)}
-                    onDelete={(id) => void onDelete(id)}
+                    onEdit={(p) => openDialog({ provider: p, copy: !!p.builtin })}
+                    onDelete={(p) => void onDelete(p)}
                   />
                 ))}
               </TableBody>
             </Table>
+          )}
+          {!!st?.hidden?.length && (
+            <DropdownMenu>
+              <DropdownMenuTrigger render={<Button variant="ghost" size="sm" className="mt-2 text-muted-foreground" data-testid="dns-hidden" />}>
+                <EyeOffIcon data-icon="inline-start" />
+                {t("dns.hidden", { count: st.hidden.length })}
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start">
+                {st.hidden.map((h) => (
+                  <DropdownMenuItem key={h.id} data-testid={`dns-unhide-${h.id}`} onClick={() => void onUnhide(h.id)}>
+                    {h.name} — {t("dns.unhide")}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
           )}
         </CardContent>
       </Card>
@@ -790,7 +880,7 @@ export function DnsPage() {
         <ProbeSettings />
       </Fold>
       {/* новый key при каждом открытии — форма всегда чистая */}
-      <AddProviderDialog key={addKey} open={addOpen} onOpenChange={setAddOpen} />
+      <AddProviderDialog key={addKey} open={addOpen} onOpenChange={setAddOpen} provider={editing?.provider ?? null} copy={editing?.copy ?? false} />
     </Page>
   )
 }
