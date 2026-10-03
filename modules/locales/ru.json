@@ -733,7 +733,7 @@
   "err.tgproxy.manager.invalid_domain": "Некорректный домен: {p0}",
   "err.tgproxy.manager.invalid_ip_for_dc": "Неверный IP для DC{p0}: {p1}",
   "err.tgproxy.manager.options_must_be_a_settings_object": "options — объект настроек",
-  "err.tgproxy.manager.the_port_must_be_a_number_from_1_to_65535": "Порт — число от 1 до 65535",
+  "err.tgproxy.manager.the_port_must_be_a_number_from_1_to_65535": "Порт должен быть целым числом от 1 до 65535",
   "err.tgproxy.manager.the_secret_must_contain_32_hex_characters_or_34": "Секрет — 32 hex-символа (или 34 с префиксом dd)",
   "err.tgproxy.manager.the_tg_ws_proxy_submodule_is_missing_run_git_sub": "Сабмодуль tg-ws-proxy не подтянут. Выполни: git submodule update --init upstream/tg-ws-proxy",
   "err.trial.admin": "Для пробного применения нужны права администратора.",

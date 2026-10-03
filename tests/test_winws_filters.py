@@ -13,7 +13,7 @@ from modules.winws.manager import WinwsManager
 
 @pytest.fixture
 def fake_config(monkeypatch):
-    """appconfig.load()/set_value() работают с словарём в памяти вместо
+    """appconfig.load()/set_values() работают с словарём в памяти вместо
     реального config.json — и filters.py, и manager.py читают его через
     `from modules import appconfig`, поэтому патчим сам модуль appconfig."""
     store = {}
@@ -21,12 +21,12 @@ def fake_config(monkeypatch):
     def _load():
         return dict(appconfig.DEFAULTS, **store)
 
-    def _set_value(key, value):
-        store[key] = value
+    def _set_values(values):
+        store.update(values)
         return _load()
 
     monkeypatch.setattr(appconfig, "load", _load)
-    monkeypatch.setattr(appconfig, "set_value", _set_value)
+    monkeypatch.setattr(appconfig, "set_values", _set_values)
     return store
 
 

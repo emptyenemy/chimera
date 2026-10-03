@@ -14,6 +14,7 @@ lists/*.txt; всё, что программа генерирует сама (ho
 PAC, логи), лежит в других папках и сюда не попадает.
 """
 
+import stat
 import threading
 from pathlib import Path
 from collections.abc import Callable
@@ -67,6 +68,8 @@ class ListsWatcher:
                 continue  # такой список программа всё равно не откроет
             try:
                 st = path.stat()
+                if not stat.S_ISREG(st.st_mode):
+                    continue
             except OSError:
                 continue  # исчез между glob и stat: увидим при следующем опросе
             found[path.stem.casefold()] = (path.stem, (st.st_mtime_ns, st.st_size))

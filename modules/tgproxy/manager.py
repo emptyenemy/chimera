@@ -12,8 +12,10 @@
 from modules.i18n import t as _tr
 
 from modules.errors import ChimeraRuntimeError, ChimeraValueError
+from modules.fileutil import atomic_write_text
 
 import json
+from copy import deepcopy
 import logging
 import os
 import re
@@ -152,10 +154,12 @@ class TgProxy:
     # --- конфиг --------------------------------------------------------------
 
     def _load(self) -> dict:
-        data = dict(DEFAULTS)
+        data = deepcopy(DEFAULTS)
         if STATE_PATH.exists():
             try:
-                data.update(json.loads(STATE_PATH.read_text(encoding="utf-8")))
+                saved = json.loads(STATE_PATH.read_text(encoding="utf-8"))
+                if isinstance(saved, dict):
+                    data.update(saved)
             except (json.JSONDecodeError, ValueError):
                 pass
         if not data["secret"]:
@@ -164,40 +168,40 @@ class TgProxy:
         return data
 
     def _save(self, data: dict | None = None) -> None:
-        STATE_PATH.write_text(
-            json.dumps(data or self.config, ensure_ascii=False, indent=4) + "\n",
-            encoding="utf-8",
-        )
+        target = self.config if data is None else data
+        atomic_write_text(STATE_PATH, json.dumps(target, ensure_ascii=False, indent=4) + "\n")
+        self.config = target
 
     def restore_config(self, config: dict) -> dict:
         from modules.configbackups import normalize
         target = normalize("telegram", config)
         running = self.running
-        self.config = target
-        self._save()
+        self._save(target)
         if running:
             self.restart()
         return self.state()
 
-    def set_config(self, host: str, port, secret: str, autostart: bool) -> dict:
+    def set_config(self, host: str, port, secret: str | None, autostart: bool) -> dict:
         host = str(host).strip() or "127.0.0.1"
-        port = int(port)
-        if not 1 <= port <= 65535:
+        if isinstance(port, str) and re.fullmatch(r"0*[0-9]{1,5}", port.strip()):
+            port = int(port.strip().lstrip("0") or "0")
+        if type(port) is float and port.is_integer():
+            port = int(port)
+        if type(port) is not int or not 1 <= port <= 65535:
             raise ChimeraValueError('err.tgproxy.manager.the_port_must_be_a_number_from_1_to_65535')
-        self.config.update({
+        self._save({
+            **self.config,
             "host": host,
             "port": port,
-            "secret": _normalize_secret(secret),
+            "secret": self.config["secret"] if secret is None else _normalize_secret(secret),
             "autostart": bool(autostart),
         })
-        self._save()
         if self.running:
             self.restart()
         return self.state()
 
     def regen_secret(self) -> dict:
-        self.config["secret"] = _new_secret()
-        self._save()
+        self._save({**self.config, "secret": _new_secret()})
         if self.running:
             self.restart()
         return self.state()
@@ -229,8 +233,7 @@ class TgProxy:
             updates["fake_tls_domain"] = _validate_domain(raw) if str(raw or "").strip() else ""
         if "dc_redirects" in options:
             updates["dc_redirects"] = _validate_dc_redirects(options["dc_redirects"])
-        self.config.update(updates)
-        self._save()
+        self._save({**self.config, **updates})
         result = self.state()
         result["restart_required"] = self.running
         return result

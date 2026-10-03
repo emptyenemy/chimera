@@ -87,3 +87,46 @@ def test_appconfig_write_is_atomic(tmp_path, monkeypatch):
 
     assert [p.name for p in tmp_path.iterdir()] == ["config.json"]
     assert appconfig.load()["update_channel"] == "beta"
+
+
+def test_atomic_binary_write_preserves_exact_bytes_and_previous_file_on_failure(tmp_path, monkeypatch):
+    target = tmp_path / "blob.bin"
+    before = bytes(range(256)) + b"\r\n\n\x00"
+    fileutil.atomic_write_bytes(target, before)
+    assert target.read_bytes() == before
+    real_replace = fileutil.os.replace
+
+    def fail(source, destination):
+        assert target.read_bytes() == before
+        raise PermissionError("Simulated permanent lock")
+
+    monkeypatch.setattr(fileutil.os, "replace", fail)
+    monkeypatch.setattr(fileutil.time, "sleep", lambda seconds: None)
+    with pytest.raises(PermissionError):
+        fileutil.atomic_write_bytes(target, b"new")
+    assert target.read_bytes() == before
+    assert list(tmp_path.iterdir()) == [target]
+    monkeypatch.setattr(fileutil.os, "replace", real_replace)
+    fileutil.atomic_write_bytes(target, b"new")
+    assert target.read_bytes() == b"new"
+
+
+def test_unknown_encoding_closes_descriptor_and_removes_staging_file(tmp_path, monkeypatch):
+    target = tmp_path / "text.txt"
+    target.write_bytes(b"previous")
+    real_mkstemp = fileutil.tempfile.mkstemp
+    descriptors = []
+
+    def mkstemp(*args, **kwargs):
+        descriptor, path = real_mkstemp(*args, **kwargs)
+        descriptors.append(descriptor)
+        return descriptor, path
+
+    monkeypatch.setattr(fileutil.tempfile, "mkstemp", mkstemp)
+    with pytest.raises(LookupError):
+        fileutil.atomic_write_text(target, "new", encoding="not-an-encoding")
+    assert target.read_bytes() == b"previous"
+    assert list(tmp_path.iterdir()) == [target]
+    assert len(descriptors) == 1
+    with pytest.raises(OSError):
+        os.fstat(descriptors[0])

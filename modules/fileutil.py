@@ -28,11 +28,27 @@ def atomic_write_text(path: Path, text: str, encoding: str = "utf-8") -> None:
     затрут друг другу заготовку. На Windows os.replace даёт PermissionError, пока кто-то держит
     целевой файл открытым (антивирус, редактор, чтение соседнего потока): это длится доли
     секунды, поэтому пробуем ещё."""
+    _atomic_write(path, text, binary=False, encoding=encoding)
+
+
+def atomic_write_bytes(path: Path, data: bytes) -> None:
+    _atomic_write(path, data, binary=True)
+
+
+def _atomic_write(path: Path, data: str | bytes, *, binary: bool, encoding: str = "utf-8") -> None:
     path = Path(path)
     fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=path.name + ".", suffix=".tmp")
     try:
-        with os.fdopen(fd, "w", encoding=encoding) as f:
-            f.write(text)
+        try:
+            stream = os.fdopen(fd, "wb" if binary else "w", encoding=None if binary else encoding)
+        except BaseException:
+            try:
+                os.close(fd)
+            except OSError:
+                pass
+            raise
+        with stream:
+            stream.write(data)
         for attempt in range(REPLACE_RETRIES):
             try:
                 os.replace(tmp, path)

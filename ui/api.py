@@ -1206,9 +1206,7 @@ class Api:
         одним аргументом)."""
         try:
             from modules.winws import filters
-            filters.set_game_mode(mode)
-            if tcp is not None or udp is not None:
-                filters.set_game_ranges(tcp, udp)
+            filters.set_game_config(mode, tcp, udp)
             data = filters.state()
             # порты игрового фильтра winws2 берёт при старте — запущенный перезапускаем сам
             self._apply_and_report(data, self._restart_winws_if_running)

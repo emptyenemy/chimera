@@ -17,11 +17,13 @@ sing-box.exe тянется одним пиннутым релизом в bin/si
 from modules.i18n import t as _tr
 
 from modules.errors import ChimeraFileNotFoundError, ChimeraRuntimeError, ChimeraValueError
+from modules.fileutil import atomic_write_text
 
 import ctypes
 import hashlib
 import io
 import json
+from copy import deepcopy
 import os
 import subprocess
 import threading
@@ -116,19 +118,20 @@ class ProxyManager:
     # --- конфиг (state.json) -------------------------------------------------
 
     def _load(self) -> dict:
-        data = dict(DEFAULTS)
+        data = deepcopy(DEFAULTS)
         if STATE_PATH.exists():
             try:
-                data.update(json.loads(STATE_PATH.read_text(encoding="utf-8")))
+                saved = json.loads(STATE_PATH.read_text(encoding="utf-8"))
+                if isinstance(saved, dict):
+                    data.update(saved)
             except (json.JSONDecodeError, ValueError, OSError):
                 pass
         return data
 
-    def _save(self) -> None:
-        STATE_PATH.write_text(
-            json.dumps(self.config, ensure_ascii=False, indent=4) + "\n",
-            encoding="utf-8",
-        )
+    def _save(self, data: dict | None = None) -> None:
+        target = self.config if data is None else data
+        atomic_write_text(STATE_PATH, json.dumps(target, ensure_ascii=False, indent=4) + "\n")
+        self.config = target
 
     def restore_config(self, config: dict) -> dict:
         from modules.configbackups import normalize
@@ -136,8 +139,7 @@ class ProxyManager:
         running = self.running
         if running and not self._ours_alive:
             raise ChimeraValueError("err.backup.foreign_proxy")
-        self.config = target
-        self._save()
+        self._save(target)
         if running:
             if target["link"]:
                 self.restart()
@@ -149,16 +151,14 @@ class ProxyManager:
         raw = (raw or "").strip()
         if raw:
             parser.parse_link(raw)  # валидация: бросит ValueError, если кривая
-        self.config["link"] = raw
-        self._save()
+        self._save({**self.config, "link": raw})
         if self.running:
             self.restart()
         return self.state()
 
     def set_lists(self, names) -> dict:
         valid = {i["name"] for i in domains.list_info()}
-        self.config["lists"] = [n for n in (names or []) if n in valid]
-        self._save()
+        self._save({**self.config, "lists": [n for n in (names or []) if n in valid]})
         self.reload_lists()  # без перезапуска: ядро перечитает файлы правил само
         return self.state()
 
@@ -183,9 +183,7 @@ class ProxyManager:
             (IPS_RULESET_PATH, "ip_cidr", nets, IP_PLACEHOLDER),
         ):
             body = {"version": 3, "rules": [{key: list(items) or [placeholder]}]}
-            tmp = path.with_name(path.name + ".tmp")
-            tmp.write_text(json.dumps(body, ensure_ascii=False, indent=2), encoding="utf-8")
-            os.replace(tmp, path)
+            atomic_write_text(path, json.dumps(body, ensure_ascii=False, indent=2))
 
     @staticmethod
     def _ruleset_refs() -> list[dict]:
@@ -195,8 +193,7 @@ class ProxyManager:
         ]
 
     def set_autostart(self, value: bool) -> dict:
-        self.config["autostart"] = bool(value)
-        self._save()
+        self._save({**self.config, "autostart": bool(value)})
         return self.state()
 
     def set_apps(self, names) -> dict:
@@ -212,8 +209,7 @@ class ProxyManager:
             if name.lower() not in seen:
                 seen.add(name.lower())
                 apps.append(name)
-        self.config["apps"] = apps
-        self._save()
+        self._save({**self.config, "apps": apps})
         if self.running and self.config.get("mode") == "split":
             self.restart()
         return self.state()
@@ -221,8 +217,7 @@ class ProxyManager:
     def set_mode(self, mode: str) -> dict:
         if mode not in MODES:
             raise ChimeraValueError('err.proxy.manager.mode_must_be_pac_split_or_tun')
-        self.config["mode"] = mode
-        self._save()
+        self._save({**self.config, "mode": mode})
         if self.running:
             self.restart()
         return self.state()
@@ -495,7 +490,7 @@ class ProxyManager:
             '  return "DIRECT";\n'
             "}\n"
         ) % (proxy, arr, exact, nets_js)
-        PAC_PATH.write_text(pac, encoding="utf-8")
+        atomic_write_text(PAC_PATH, pac)
 
     def _pac_url(self) -> str:
         return "file:///" + str(PAC_PATH).replace("\\", "/")
@@ -580,7 +575,7 @@ class ProxyManager:
                 raise ChimeraFileNotFoundError('err.proxy.manager.sing_box_is_not_installed_click_download_sing_bo')
             cfg = self.build_config()
             self._write_rulesets()  # конфиг ссылается на эти файлы — они должны быть до старта ядра
-            CONFIG_PATH.write_text(json.dumps(cfg, ensure_ascii=False, indent=2), encoding="utf-8")
+            atomic_write_text(CONFIG_PATH, json.dumps(cfg, ensure_ascii=False, indent=2))
             if self._pac_mode:
                 self._write_pac()
             self._error = None

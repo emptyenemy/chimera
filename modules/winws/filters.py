@@ -26,12 +26,11 @@ from modules.errors import ChimeraFileNotFoundError, ChimeraRuntimeError, Chimer
 
 import hashlib
 import re
-import shutil
 import urllib.request
 from pathlib import Path
 
 from modules import appconfig
-from modules.fileutil import atomic_write_text
+from modules.fileutil import atomic_write_bytes, atomic_write_text
 
 STRATEGIES_DIR = Path(__file__).parent.parent.parent / "strategies"
 HOSTLISTS_DIR = STRATEGIES_DIR / "hostlists"
@@ -54,16 +53,23 @@ GAME_RANGE_DEFAULT = "1024-65535"
 _GAME_RANGE_ITEM_RE = re.compile(r"^[1-9][0-9]{0,4}(-[1-9][0-9]{0,4})?$")
 
 
-def game_mode() -> str:
-    m = appconfig.load().get("game_filter", "off")
+def game_mode(config: dict | None = None) -> str:
+    config = appconfig.load() if config is None else config
+    m = config.get("game_filter", "off")
     return m if m in GAME_MODES else "off"
 
 
 def set_game_mode(mode: str) -> str:
+    set_game_config(mode)
+    return mode
+
+
+def set_game_config(mode: str, tcp: str | None = None, udp: str | None = None) -> None:
+    """Сохраняет режим и переданные диапазоны целиком, после общей проверки."""
     if mode not in GAME_MODES:
         raise ChimeraValueError('err.winws.filters.game_filter_mode_off_all_tcp_udp')
-    appconfig.set_value("game_filter", mode)
-    return mode
+    values = _game_range_values(tcp, udp)
+    appconfig.set_values({"game_filter": mode, **values})
 
 
 def validate_game_range(value: str) -> str:
@@ -87,37 +93,42 @@ def validate_game_range(value: str) -> str:
     return s
 
 
-def _stored_range(key: str) -> str:
+def _stored_range(key: str, config: dict) -> str:
     """Диапазон из config.json с фолбэком на дефолт — как game_mode() для битого
     значения (например, руками подпорченный config.json)."""
-    value = appconfig.load().get(key, GAME_RANGE_DEFAULT)
+    value = config.get(key, GAME_RANGE_DEFAULT)
     try:
         return validate_game_range(str(value))
     except ValueError:
         return GAME_RANGE_DEFAULT
 
 
-def game_ranges() -> dict:
+def game_ranges(config: dict | None = None) -> dict:
     """{'tcp': диапазон, 'udp': диапазон} — независимо от текущего режима."""
-    return {"tcp": _stored_range("game_filter_tcp"), "udp": _stored_range("game_filter_udp")}
+    config = appconfig.load() if config is None else config
+    return {"tcp": _stored_range("game_filter_tcp", config), "udp": _stored_range("game_filter_udp", config)}
 
 
 def set_game_ranges(tcp: str | None = None, udp: str | None = None) -> dict:
     """Сохраняет диапазон(ы). None — соответствующий диапазон не трогаем (задан
     только tcp или только udp)."""
-    if tcp is not None:
-        appconfig.set_value("game_filter_tcp", validate_game_range(tcp))
-    if udp is not None:
-        appconfig.set_value("game_filter_udp", validate_game_range(udp))
+    appconfig.set_values(_game_range_values(tcp, udp))
     return game_ranges()
+
+
+def _game_range_values(tcp: str | None, udp: str | None) -> dict:
+    return {key: validate_game_range(value)
+            for key, value in (("game_filter_tcp", tcp), ("game_filter_udp", udp))
+            if value is not None}
 
 
 def game_ports(mode: str | None = None) -> dict | None:
     """{'tcp': ports|None, 'udp': ports|None} для game-профиля, или None если выключен."""
-    mode = mode or game_mode()
+    config = appconfig.load()
+    mode = mode or game_mode(config)
     if mode == "off":
         return None
-    ranges = game_ranges()
+    ranges = game_ranges(config)
     return {
         "tcp": ranges["tcp"] if mode in ("all", "tcp") else None,
         "udp": ranges["udp"] if mode in ("all", "udp") else None,
@@ -187,15 +198,13 @@ def set_ipset_mode(mode: str) -> dict:
         if cur == "loaded":
             pass  # уже загружен
         elif IPSET_BACKUP.exists():
-            shutil.copyfile(IPSET_BACKUP, IPSET_FILE)
+            atomic_write_bytes(IPSET_FILE, IPSET_BACKUP.read_bytes())
         else:
             raise ChimeraFileNotFoundError('err.winws.filters.no_saved_list_click_update_list_first')
     else:
         if cur == "loaded":  # уходим с реального списка — сохраним его
-            shutil.copyfile(IPSET_FILE, IPSET_BACKUP)
-        IPSET_FILE.write_text(
-            (IPSET_PLACEHOLDER + "\n") if mode == "none" else "", encoding="utf-8"
-        )
+            atomic_write_bytes(IPSET_BACKUP, IPSET_FILE.read_bytes())
+        atomic_write_text(IPSET_FILE, (IPSET_PLACEHOLDER + "\n") if mode == "none" else "")
     return ipset_status()
 
 
@@ -213,9 +222,9 @@ def update_ipset() -> dict:
     if not lines:
         raise ChimeraRuntimeError('err.winws.filters.the_downloaded_list_is_empty')
     text = "\n".join(lines) + "\n"
-    IPSET_BACKUP.write_text(text, encoding="utf-8")          # всегда — в запас
+    atomic_write_text(IPSET_BACKUP, text)          # всегда — в запас
     if ipset_state() == "loaded":                            # активен «Список» — освежим
-        IPSET_FILE.write_text(text, encoding="utf-8")
+        atomic_write_text(IPSET_FILE, text)
     return {**ipset_status(), "downloaded": len(lines)}
 
 
@@ -234,7 +243,7 @@ FAKE_SLOTS = {
 
 
 def _sha256(path: Path) -> str | None:
-    if not path.exists():
+    if not path.is_file():
         return None
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
@@ -242,7 +251,7 @@ def _sha256(path: Path) -> str | None:
 def fake_candidates() -> list[str]:
     """Блобы-кандидаты (имена без .bin) — всё в assets, кроме самих слотов."""
     return sorted(p.stem for p in ASSETS_DIR.glob("*.bin")
-                  if not p.name.startswith(ACTIVE_PREFIX))
+                  if p.is_file() and not p.name.startswith(ACTIVE_PREFIX))
 
 
 def fakes_state() -> dict:
@@ -252,7 +261,7 @@ def fakes_state() -> dict:
     файл подложили руками. Ровно как «(not found)» у Flowseal.
     """
     hashes = {p.stem: _sha256(p) for p in ASSETS_DIR.glob("*.bin")
-              if not p.name.startswith(ACTIVE_PREFIX)}
+              if p.is_file() and not p.name.startswith(ACTIVE_PREFIX)}
     slots = {}
     for slot, (fname, label) in FAKE_SLOTS.items():
         active = _sha256(ASSETS_DIR / fname)
@@ -267,18 +276,19 @@ def set_fake(slot: str, name: str) -> dict:
     (winws2 читает блоб один раз при старте — запущенную стратегию перезапускает Api.fake_set)."""
     if slot not in FAKE_SLOTS:
         raise ValueError(_tr('msg.modules.winws.filters.fake_slot_s') % " / ".join(FAKE_SLOTS))
-    src = ASSETS_DIR / ("%s.bin" % name)
-    if name.startswith(ACTIVE_PREFIX) or not src.exists():
+    if name not in fake_candidates():
         raise FileNotFoundError(_tr('msg.modules.winws.filters.no_such_blob_s') % name)
-    shutil.copyfile(src, ASSETS_DIR / FAKE_SLOTS[slot][0])
+    src = ASSETS_DIR / ("%s.bin" % name)
+    atomic_write_bytes(ASSETS_DIR / FAKE_SLOTS[slot][0], src.read_bytes())
     return fakes_state()
 
 
 def state() -> dict:
     """Сводка для UI."""
+    config = appconfig.load()
     return {
-        "game": game_mode(),
-        "game_ranges": game_ranges(),
+        "game": game_mode(config),
+        "game_ranges": game_ranges(config),
         "ipset": ipset_state(),
         "ipset_count": ipset_count(),
         "ipset_stored": ipset_stored(),

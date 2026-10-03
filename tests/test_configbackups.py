@@ -691,11 +691,18 @@ def test_noop_and_invalid_operations_preserve_existing_backup_history(live, monk
     assert {b["id"] for b in cb.list_backups()} == {first, second}
 
 
-def test_failed_setter_with_partial_change_keeps_its_inverse(live):
+def test_failed_setter_with_partial_change_keeps_its_inverse(live, monkeypatch):
     before = appconfig.load()
-    reply = live.api.game_filter_set("tcp", "invalid", None)
+    original = appconfig.set_value
+
+    def fail_after_commit(key, value):
+        original(key, value)
+        raise OSError("Simulated failure after commit")
+
+    monkeypatch.setattr(appconfig, "set_value", fail_after_commit)
+    reply = live.api.config_set("theme", "light")
     assert not reply["ok"]
-    assert appconfig.load()["game_filter"] == "tcp"
+    assert appconfig.load()["theme"] == "light"
     backup = cb.list_backups()[0]
     assert cb.load(backup["id"])["states"]["config"] == before
     assert not cb.restore(backup["id"], True, live.ops)["errors"]
@@ -824,3 +831,12 @@ def test_auto_read_commands_do_not_capture(live, monkeypatch):
     assert live.api.config_backups()["data"] == []
     assert live.api.lists_read("discord")["ok"]
     assert not live.api.config_backup_compare("missing", "missing")["data"]["ok"]
+
+
+def test_rejected_game_filter_preserves_settings_and_backup_history(live):
+    cb.create_manual(live.ops)
+    before = full_snapshot(live)
+    history = {path: path.read_bytes() for path in live.root.rglob("*") if path.is_file()}
+    assert not live.api.game_filter_set("tcp", "9000", "invalid")["ok"]
+    assert full_snapshot(live) == before
+    assert {path: path.read_bytes() for path in live.root.rglob("*") if path.is_file()} == history

@@ -725,7 +725,7 @@
   "err.tgproxy.manager.invalid_domain": "Invalid domain: {p0}",
   "err.tgproxy.manager.invalid_ip_for_dc": "Invalid IP for DC{p0}: {p1}",
   "err.tgproxy.manager.options_must_be_a_settings_object": "options must be a settings object",
-  "err.tgproxy.manager.the_port_must_be_a_number_from_1_to_65535": "The port must be a number from 1 to 65535",
+  "err.tgproxy.manager.the_port_must_be_a_number_from_1_to_65535": "The port must be an integer from 1 to 65535",
   "err.tgproxy.manager.the_secret_must_contain_32_hex_characters_or_34": "The secret must contain 32 hex characters (or 34 with the dd prefix)",
   "err.tgproxy.manager.the_tg_ws_proxy_submodule_is_missing_run_git_sub": "The tg-ws-proxy submodule is missing. Run: git submodule update --init upstream/tg-ws-proxy",
   "err.trial.admin": "Trying settings requires administrator privileges.",

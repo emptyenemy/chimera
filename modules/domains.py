@@ -14,6 +14,7 @@ import hashlib
 import ipaddress
 import re
 import time
+from contextlib import contextmanager
 from pathlib import Path
 
 from modules.fileutil import atomic_write_text
@@ -38,8 +39,25 @@ def content_hash(data: bytes) -> str:
     return hashlib.sha256(data.replace(b"\r\n", b"\n")).hexdigest()
 
 
-def _own_mark(name: str, digest: str | None) -> None:
-    _own[name.strip().casefold()] = (digest, _clock())
+@contextmanager
+def _own_change(changes):
+    previous, marked = {}, {}
+    for name, digest in changes:
+        key = name.strip().casefold()
+        if key not in previous:
+            previous[key] = _own.get(key)
+        marked[key] = (digest, _clock())
+        _own[key] = marked[key]
+    try:
+        yield
+    except Exception:
+        for key, marker in marked.items():
+            if _own.get(key) is marker:
+                if previous[key] is None:
+                    _own.pop(key, None)
+                else:
+                    _own[key] = previous[key]
+        raise
 
 
 def own_written(name: str) -> tuple[bool, str | None]:
@@ -70,12 +88,12 @@ def _safe_path(name: str) -> Path:
 
 
 def available_lists() -> list[str]:
-    return sorted(p.stem for p in LISTS_DIR.glob("*.txt"))
+    return sorted(p.stem for p in LISTS_DIR.glob("*.txt") if p.is_file())
 
 
 def list_info() -> list[dict]:
     """Имена списков и число доменов в каждом — для вывода в UI."""
-    return [{"name": name, "count": len(load_list(name))} for name in available_lists()]
+    return [{"name": name, "count": len(load_list(name))} for name in available_lists() if NAME_RE.fullmatch(name)]
 
 
 def read_raw(name: str) -> str:
@@ -88,8 +106,8 @@ def read_raw(name: str) -> str:
 def save_raw(name: str, content: str) -> dict:
     path = _safe_path(name)
     text = content.replace("\r\n", "\n").rstrip("\n") + "\n"
-    _own_mark(name, content_hash(text.encode("utf-8")))
-    atomic_write_text(path, text)
+    with _own_change([(name, content_hash(text.encode("utf-8")))]):
+        atomic_write_text(path, text)
     return {"name": name, "count": len(load_list(name))}
 
 
@@ -98,16 +116,16 @@ def create_list(name: str) -> dict:
     if path.exists():
         raise ChimeraValueError('err.domains.list_already_exists', p0=f'{name!r}')
     text = f"# {name}\n"
-    _own_mark(name, content_hash(text.encode("utf-8")))
-    atomic_write_text(path, text)
+    with _own_change([(name, content_hash(text.encode("utf-8")))]):
+        atomic_write_text(path, text)
     return {"name": name, "count": 0}
 
 
 def delete_list(name: str) -> None:
     path = _safe_path(name)
     if path.exists():
-        _own_mark(name, None)
-        path.unlink()
+        with _own_change([(name, None)]):
+            path.unlink()
 
 
 def rename_list(old: str, new: str) -> dict:
@@ -117,9 +135,9 @@ def rename_list(old: str, new: str) -> dict:
         raise ChimeraFileNotFoundError('err.domains.list_was_not_found', p0=f'{old!r}')
     if old != new and new_path.exists():
         raise ChimeraValueError('err.domains.list_already_exists', p0=f'{new!r}')
-    _own_mark(old, None)
-    _own_mark(new, content_hash(old_path.read_bytes()))
-    old_path.rename(new_path)
+    digest = content_hash(old_path.read_bytes())
+    with _own_change([(old, None), (new, digest)]):
+        old_path.rename(new_path)
     return {"name": new, "count": len(load_list(new))}
 
 
@@ -171,6 +189,21 @@ def _entry_problem(entry: str) -> str | None:
     if len(name) > 253 or not all(_LABEL_RE.fullmatch(label) for label in labels):
         return _tr('msg.modules.domains.not_a_domain_empty_parts_or_invalid_characters')
     return None
+
+
+def validate_lists(name: str | None = None) -> dict:
+    """Проверяет один или все списки, сохраняя ошибки отдельных файлов в общем отчёте."""
+    results = []
+    for item in [name] if name is not None else available_lists():
+        try:
+            results.append(validate_list(item))
+        except (FileNotFoundError, ValueError) as error:
+            if name is not None:
+                raise
+            results.append({"name": item, "entries": 0, "domains": 0, "networks": 0,
+                            "warnings": [], "ok": False,
+                            "errors": [{"line": None, "entry": "", "problem": str(error)}]})
+    return {"lists": results}
 
 
 def validate_list(name: str) -> dict:

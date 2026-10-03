@@ -10,6 +10,7 @@ Hosts-вкладка — только тех, у кого unblock=true (оста
 """
 
 from modules.errors import ChimeraKeyError, ChimeraValueError
+from modules.fileutil import atomic_write_text
 
 import json
 from pathlib import Path
@@ -25,14 +26,17 @@ paths.migrate(Path(__file__).parent / "dns_providers.user.json", USER_PATH)  # �
 def _load_user() -> list[dict]:
     if USER_PATH.exists():
         try:
-            return json.loads(USER_PATH.read_text(encoding="utf-8"))
+            saved = json.loads(USER_PATH.read_text(encoding="utf-8"))
+            if isinstance(saved, list):
+                return [item for item in saved
+                        if isinstance(item, dict) and isinstance(item.get("id"), str) and item["id"]]
         except (json.JSONDecodeError, ValueError):
             pass
     return []
 
 
 def _save_user(items: list[dict]) -> None:
-    USER_PATH.write_text(json.dumps(items, ensure_ascii=False, indent=2), encoding="utf-8")
+    atomic_write_text(USER_PATH, json.dumps(items, ensure_ascii=False, indent=2))
 
 
 def load_all() -> list[dict]:

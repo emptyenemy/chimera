@@ -1,6 +1,7 @@
 """Чтение/запись config.json приложения — единый источник для main и UI."""
 
 import json
+import threading
 from pathlib import Path
 
 from modules import appearance, i18n
@@ -9,6 +10,7 @@ from modules.fileutil import atomic_write_text
 from modules.version import default_backend
 
 CONFIG_PATH = Path(__file__).parent.parent / "config.json"
+_WRITE_LOCK = threading.RLock()
 # close_to_tray — крестик окна прячет его в трей (движок pyside6), а не закрывает программу;
 # update_channel — stable | beta (пре-релизы), update_check — проверять обновления в фоне;
 # theme — оформление окна: system (как в Windows) | light | dark (см. ui/theme.py);
@@ -41,13 +43,31 @@ def _write(data: dict) -> None:
 def restore_values(values: dict) -> dict:
     from modules.configbackups import normalize
     target = normalize("config", values)
-    _write(target)
-    i18n.refresh()
+    with _WRITE_LOCK:
+        _write(target)
+        i18n.refresh()
     return target
 
 
 def set_value(key: str, value) -> dict:
     """Меняет одну настройку и сразу пишет файл. Возвращает полный конфиг."""
+    return set_values({key: value})
+
+
+def set_values(values: dict) -> dict:
+    """Проверяет все значения и сохраняет связанные настройки одной записью."""
+    normalized = {key: _normalize_value(key, value) for key, value in values.items()}
+    with _WRITE_LOCK:
+        data = load()
+        if normalized:
+            data.update(normalized)
+            _write(data)
+            if "lang" in normalized:
+                i18n.refresh()
+        return data
+
+
+def _normalize_value(key: str, value):
     if key == "theme" and (not isinstance(value, str) or value not in THEMES):
         raise ChimeraValueError("err.config.theme_unknown", value=repr(value), options=", ".join(THEMES))
     if key == "lang" and (not isinstance(value, str) or value not in i18n.SETTINGS):
@@ -59,9 +79,4 @@ def set_value(key: str, value) -> dict:
     allowed = set(DEFAULTS) | {"ui_port", "tray_hint_shown", "dns_probe", "game_filter", "game_filter_tcp", "game_filter_udp"}
     if key not in allowed:
         raise ChimeraValueError("err.appearance.settings")
-    data = load()
-    data[key] = value
-    _write(data)
-    if key == "lang":
-        i18n.refresh()
-    return data
+    return value

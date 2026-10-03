@@ -11,9 +11,11 @@ winws2.exe требует прав администратора (манифес�
 from modules.i18n import t as _tr
 
 from modules.errors import ChimeraFileNotFoundError, ChimeraRuntimeError, ChimeraValueError
+from modules.fileutil import atomic_write_text
 
 import atexit
 import json
+from copy import deepcopy
 import re
 import subprocess
 import threading
@@ -169,19 +171,20 @@ class WinwsManager:
     # --- конфиг (state.json) -------------------------------------------------
 
     def _load(self) -> dict:
-        data = dict(DEFAULTS)
+        data = deepcopy(DEFAULTS)
         if STATE_PATH.exists():
             try:
-                data.update(json.loads(STATE_PATH.read_text(encoding="utf-8")))
+                saved = json.loads(STATE_PATH.read_text(encoding="utf-8"))
+                if isinstance(saved, dict):
+                    data.update(saved)
             except (json.JSONDecodeError, ValueError, OSError):
                 pass
         return data
 
-    def _save(self) -> None:
-        STATE_PATH.write_text(
-            json.dumps(self.config, ensure_ascii=False, indent=4) + "\n",
-            encoding="utf-8",
-        )
+    def _save(self, data: dict | None = None) -> None:
+        target = self.config if data is None else data
+        atomic_write_text(STATE_PATH, json.dumps(target, ensure_ascii=False, indent=4) + "\n")
+        self.config = target
 
     def restore_config(self, config: dict) -> dict:
         from modules.configbackups import normalize
@@ -193,8 +196,7 @@ class WinwsManager:
         if running and not self._ours_alive:
             raise ChimeraRuntimeError('err.winws.foreign')
         changed = self.config.get("last_strategy") != strategy or (running and self._current != strategy)
-        self.config = target
-        self._save()
+        self._save(target)
         self.refresh_user_lists()
         if running and changed:
             if strategy:
@@ -204,8 +206,7 @@ class WinwsManager:
         return self.state()
 
     def set_autostart(self, value: bool) -> dict:
-        self.config["autostart"] = bool(value)
-        self._save()
+        self._save({**self.config, "autostart": bool(value)})
         return self.state()
 
     def set_lists(self, names) -> dict:
@@ -214,8 +215,7 @@ class WinwsManager:
         не нужен — winws2 сам перечитывает hostlist и ipset при изменении файла."""
         from modules import domains
         valid = {i["name"] for i in domains.list_info()}
-        self.config["lists"] = [n for n in (names or []) if n in valid]
-        self._save()
+        self._save({**self.config, "lists": [n for n in (names or []) if n in valid]})
         self.refresh_user_lists()
         return self.state()
 
@@ -224,8 +224,7 @@ class WinwsManager:
         (например, при импорте чужого конфига: запуск — решение пользователя)."""
         if not (STRATEGIES_DIR / f"{strategy_id}.txt").exists():
             raise ChimeraFileNotFoundError('err.winws.manager.no_strategy', p0=strategy_id)
-        self.config["last_strategy"] = strategy_id
-        self._save()
+        self._save({**self.config, "last_strategy": strategy_id})
         return self.state()
 
     def refresh_user_lists(self) -> None:
@@ -237,10 +236,8 @@ class WinwsManager:
         """Раскладывает выбранные списки по двум файлам: домены -> hostlist, IP -> ipset."""
         from modules import domains
         dom, nets = domains.split_lists(self.config.get("lists") or [])
-        USER_HOSTLIST_PATH.write_text(("\n".join(dom) + "\n") if dom else "", encoding="utf-8")
-        USER_IPSET_PATH.write_text(
-            "\n".join(nets or [IPSET_PLACEHOLDER]) + "\n", encoding="utf-8"
-        )
+        atomic_write_text(USER_HOSTLIST_PATH, ("\n".join(dom) + "\n") if dom else "")
+        atomic_write_text(USER_IPSET_PATH, "\n".join(nets or [IPSET_PLACEHOLDER]) + "\n")
 
     def autostart(self) -> dict | None:
         """Поднять последнюю стратегию при старте программы, если включён автозапуск.
@@ -403,8 +400,7 @@ class WinwsManager:
                 raise RuntimeError(self._error)
             # стратегия поднялась — запоминаем для восстановления выбора и автозапуска
             if self.config.get("last_strategy") != strategy_id:
-                self.config["last_strategy"] = strategy_id
-                self._save()
+                self._save({**self.config, "last_strategy": strategy_id})
             return self.state()
 
     def _read_error(self, code: int) -> str:

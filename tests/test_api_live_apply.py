@@ -121,7 +121,7 @@ def test_lists_delete_drops_the_list_from_consumers(api):
 # --- то, что без перезапуска не применить -------------------------------------------
 
 def test_game_filter_set_restarts_running_winws(api, monkeypatch):
-    monkeypatch.setattr(filters, "set_game_mode", lambda mode: mode)
+    monkeypatch.setattr(filters, "set_game_config", lambda mode, tcp=None, udp=None: None)
     monkeypatch.setattr(filters, "state", lambda: {"game": "all"})
     api.winws.running = True
 
@@ -132,7 +132,7 @@ def test_game_filter_set_restarts_running_winws(api, monkeypatch):
 
 
 def test_game_filter_set_does_not_touch_stopped_winws(api, monkeypatch):
-    monkeypatch.setattr(filters, "set_game_mode", lambda mode: mode)
+    monkeypatch.setattr(filters, "set_game_config", lambda mode, tcp=None, udp=None: None)
     monkeypatch.setattr(filters, "state", lambda: {"game": "all"})
 
     api.game_filter_set("all")
@@ -141,7 +141,7 @@ def test_game_filter_set_does_not_touch_stopped_winws(api, monkeypatch):
 
 
 def test_game_filter_set_reports_restart_failure_but_keeps_setting(api, monkeypatch):
-    monkeypatch.setattr(filters, "set_game_mode", lambda mode: mode)
+    monkeypatch.setattr(filters, "set_game_config", lambda mode, tcp=None, udp=None: None)
     monkeypatch.setattr(filters, "state", lambda: {"game": "all"})
     monkeypatch.setattr(api_mod, "is_admin", lambda: False)
     api.winws.running = True
@@ -154,7 +154,7 @@ def test_game_filter_set_reports_restart_failure_but_keeps_setting(api, monkeypa
 
 
 def test_game_filter_set_does_not_restart_foreign_winws(api, monkeypatch):
-    monkeypatch.setattr(filters, "set_game_mode", lambda mode: mode)
+    monkeypatch.setattr(filters, "set_game_config", lambda mode, tcp=None, udp=None: None)
     monkeypatch.setattr(filters, "state", lambda: {"game": "all"})
     api.winws.running = True
     api.winws._ours_alive = False  # остался от прошлой сессии
