@@ -14,22 +14,24 @@ tui/remote.py теми же методами, что у командной ст�
 from modules.i18n import t as _tr
 
 import json
-import os
-import shlex
-import subprocess
 from collections import Counter
 
-from textual.app import App, ComposeResult, SuspendNotSupported
+from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.screen import ModalScreen
 from textual.theme import Theme
-from textual.widgets import ContentSwitcher, DataTable, OptionList, Static
+from textual.widgets import ContentSwitcher, OptionList, Static
 
 from tui.navigation import HomeMenu, editing, move_focus
+from tui.mutations import Change, StateWrites
+from tui.editor import ListEditorScreen
+from tui.console import ConsoleScreen
+from tui.commandline import History
 
 from tui import panes
 from tui.remote import Offline, RemoteError
-from tui.screens import ConfirmScreen, HelpScreen
+from tui.screens import ConfirmScreen, HelpScreen, PromptScreen
+from tui.route_report import RouteReportScreen
 
 BASE_SOURCES = (("app", "app_info"), ("winws", "winws_state"), ("proxy", "proxy_state"),
                 ("tg", "tg_state"), ("hosts_state", "hosts_state"), ("trial", "trial_state"))
@@ -47,49 +49,55 @@ THEME = Theme(name="chimera", primary="#a78bfa", secondary="#78718c", accent="#a
 
 CSS = """
 Screen { background: $background; }
-#top { height: 1; padding: 0 1; background: $panel; color: $foreground; }
+#top { height: 1; padding: 0 1; color: $primary; text-style: bold; }
 #top.offline { color: $error; }
-#status { height: 1; padding: 0 1; color: $foreground 80%; }
+#status { height: auto; min-height: 1; padding: 0 1; color: $foreground 80%; }
 #status.error { color: $error; }
-#trial-status { height: auto; padding: 0 1; color: $primary; background: $surface; }
+#trial-status { height: auto; padding: 0 1; color: $warning; }
 ContentSwitcher { height: 1fr; }
-#home { width: 72; max-width: 100%; height: 1fr; margin: 0 2; padding: 1 2; }
+#home { width: 76; max-width: 100%; height: 1fr; margin: 0 2; padding: 1 2; scrollbar-size: 0 0; }
 #logo { height: auto; color: $primary; text-style: bold; margin-bottom: 1; }
 #tagline { height: auto; margin-bottom: 1; }
 #home-summary { height: auto; margin-bottom: 1; }
-#menu { height: 11; border: round $panel; background: $surface; padding: 0 1; }
-#menu:focus { border: round $primary; }
+#menu { height: 9; }
 #menu-description { height: auto; margin-top: 1; }
-#keys { height: auto; padding: 0 1; background: $panel; color: $foreground 70%; }
-Pane { padding: 1 2; overflow-y: auto; }
-Button:focus { text-style: bold; }
-DataTable:focus { border: round $primary; }
+#keys { height: auto; padding: 0 1; color: $foreground 65%; }
+Pane { height: 1fr; padding: 1 2; scrollbar-size: 0 0; }
+.pane-summary { height: auto; margin-bottom: 1; color: $foreground 70%; }
+.state-error { color: $error; }
+OptionList { height: 1fr; border: none; padding: 0; background: transparent; scrollbar-size: 0 0; }
+OptionList:focus { border: none; }
+OptionList > .option-list--option-highlighted { background: $primary; color: $background; text-style: bold; }
+RichLog { height: 1fr; scrollbar-size: 0 0; }
+VerticalScroll { scrollbar-size: 0 0; }
 .dim { color: $foreground 55%; }
-.hidden { display: none; }
-.row { height: auto; margin: 0 0 1 0; }
-.row .name { width: 24; padding: 1 1 0 0; }
-.row .state { width: 1fr; padding: 1 1 0 0; }
-Switch { border: none; padding: 0; margin: 1 2 0 0; }
-Button { min-width: 18; }
-DataTable { height: 1fr; min-height: 4; }
-Input { margin: 0 0 1 0; }
-RadioSet { border: none; padding: 0; margin: 0 0 1 0; }
-RichLog { height: 1fr; }
-Pane { height: 1fr; }
-ModalScreen { align: center middle; }
-.dialog { width: 70; height: auto; max-height: 90%; padding: 1 2; background: $panel; border: round $secondary; }
-.dialog.help { width: 84; }
-.dialog-text { margin: 0 0 1 0; }
-.dialog-buttons { height: auto; }
-.dialog-buttons Button { margin: 0 2 0 0; }
-#picker { height: 12; margin: 0 0 1 0; }
+ModalScreen { align: left top; padding: 2; }
+.terminal-dialog { width: 80; max-width: 100%; height: auto; max-height: 100%; background: $background; }
+.terminal-dialog Static { height: auto; }
+.terminal-dialog OptionList { height: auto; max-height: 18; min-height: 1; margin-top: 1; }
+.terminal-dialog Input { height: 1; border: none; padding: 0; margin-top: 1; background: transparent; }
+.terminal-dialog Input:focus { border: none; }
+.prompt-keys { height: auto; margin-top: 1; color: $foreground 60%; }
+ListEditorScreen { padding: 1 2; }
+ListEditorScreen Static { height: auto; }
+#editor-title { color: $primary; text-style: bold; }
+#list-text { height: 1fr; margin: 1 0; border: none; padding: 0; background: transparent; scrollbar-size: 0 0; }
+#list-text:focus { border: none; }
+#editor-keys { margin-top: 1; color: $foreground 60%; }
+#route-title { height: auto; color: $primary; text-style: bold; }
+#route-report { height: 1fr; margin-top: 1; }
+#route-text { height: auto; }
+ConsoleScreen { padding: 1 2; }
+ConsoleScreen Static { height: auto; }
+#console-title { color: $primary; text-style: bold; margin-bottom: 1; }
+#console-output { background: transparent; }
+#console-status { margin-top: 1; color: $foreground 65%; }
+#console-line { height: 1; margin-top: 1; }
+#console-prefix { width: 2; color: $primary; }
+#console-input { height: 1; border: none; padding: 0; background: transparent; }
+#console-input:focus { border: none; }
+#console-keys { margin-top: 1; color: $foreground 60%; }
 """
-
-
-def run_editor(path) -> int:
-    """Открывает файл во внешнем редакторе ($EDITOR, иначе notepad) и ждёт его закрытия."""
-    cmd = os.environ.get("EDITOR") or os.environ.get("VISUAL") or "notepad"
-    return subprocess.run([*shlex.split(cmd, posix=False), str(path)], check=False).returncode
 
 
 class ChimeraTui(App):
@@ -99,6 +107,8 @@ class ChimeraTui(App):
     BINDINGS = [
         Binding("q", "quit", _tr('tui.textual_app.quit')),
         Binding("ctrl+c", "quit", _tr('tui.textual_app.quit'), show=False, priority=True),
+        Binding("colon", "console", "", show=False),
+        Binding("ctrl+e", "explain", "", show=False),
         Binding("ctrl+t", "try_settings", _tr("tui.trial.try"), show=False),
         Binding("ctrl+k", "keep_trial", _tr("tui.trial.keep"), show=False),
         Binding("ctrl+r", "revert_trial", _tr("tui.trial.revert"), show=False),
@@ -106,19 +116,18 @@ class ChimeraTui(App):
         Binding("escape", "back", _tr('tui.menu.back'), show=False),
         *[Binding(keys, f"navigate('{direction}')", "", show=False, priority=True)
           for keys, direction in (("up,w", "up"), ("down,s", "down"), ("left,a", "left"), ("right,d", "right"))],
-        *[Binding(str(i), f"goto({i})", SECTIONS[i - 1][1], show=False) for i in range(1, len(SECTIONS) + 1)],
+        *[Binding(str(i), f"goto({i})", "", show=False) for i in range(1, len(SECTIONS) + 1)],
+        *[Binding(f"ctrl+{i}", f"section({i})", "", show=False) for i in range(1, len(SECTIONS) + 1)],
     ]
 
     def run(self, **kwargs):
         kwargs["mouse"] = False
         return super().run(**kwargs)
 
-    def __init__(self, remote, *, poll_interval: float = 1.0, editor=None, lists_dir=None):
+    def __init__(self, remote, *, poll_interval: float = 1.0):
         super().__init__()
         self.remote = remote
         self.poll_interval = poll_interval
-        self.editor = editor or run_editor
-        self._lists_dir = lists_dir
         self.link: bool | None = None      # None — ещё подключаемся
         self.link_note = ""
         self.status_text = ""
@@ -131,6 +140,14 @@ class ChimeraTui(App):
         self._content = self._top = self._status = self._keys = self._home = self._trial_status = None
         self._force = False
         self._full_render = False
+        self._writes = StateWrites()
+        self._quit_requested = False
+        self._quit_confirming = False
+        self.list_drafts = {}
+        self._console = None
+        self.command_history = History()
+        self.command_transcript = []
+        self.command_draft = ""
 
     # --- данные -------------------------------------------------------------------------
 
@@ -219,6 +236,12 @@ class ChimeraTui(App):
         return isinstance(self.screen, ModalScreen)
 
     def check_action(self, action: str, parameters: tuple) -> bool:
+        if action == "quit" and editing(self.screen.focused):
+            return False
+        if action == "console":
+            return not self._blocked() and not editing(self.screen.focused)
+        if action == "explain":
+            return not self._blocked() and not editing(self.screen.focused)
         if action == "navigate":
             return not editing(self.screen.focused)
         if action == "goto":
@@ -229,13 +252,23 @@ class ChimeraTui(App):
         if self._blocked() or sid not in {sid for sid, _, _ in SECTIONS}:
             return
         self._content.current = sid
-        self._keys.update(_tr("tui.menu.keys.section"))
+        self._keys.update(_tr("tui.menu.keys.log" if sid == "logs" else "tui.menu.keys.section"))
         self._update_top()
         self.call_after_refresh(self._focus_pane)
         self.refresh_now(force=True)
 
     def action_goto(self, n: int) -> None:
-        if 1 <= n <= len(SECTIONS):
+        if self._blocked() or editing(self.screen.focused):
+            return
+        if self.active_section == "home":
+            self.action_section(n)
+        else:
+            pane = self._active_pane()
+            if pane:
+                pane.choose_number(n)
+
+    def action_section(self, n: int) -> None:
+        if not self._blocked() and 1 <= n <= len(SECTIONS):
             self.open_section(SECTIONS[n - 1][0])
 
     def action_back(self) -> None:
@@ -257,12 +290,62 @@ class ChimeraTui(App):
                 menu.highlighted = ((menu.highlighted or 0) + (1 if direction == "down" else -1)) % len(SECTIONS)
             elif direction == "right":
                 menu.action_select()
-        elif not self._blocked() and direction == "left" and not (
-            isinstance(self.screen.focused, DataTable) and self.screen.focused.cursor_type == "cell"
-        ):
+        elif direction == "right" and not self._blocked() and self.active_section != "logs":
+            self._active_pane().query_one(OptionList).action_select()
+        elif direction == "left" and not self._blocked():
             self.action_back()
         else:
             move_focus(self.screen, direction)
+
+    def action_quit(self) -> None:
+        if self._console and (self._console.pending or self._writes.pending):
+            self._console.exit_when_closed = True
+            self._console.action_close()
+            return
+        if self._writes.pending:
+            self._quit_requested = True
+            self.status(_tr("tui.textual_app.finishing_writes"))
+        elif self.list_drafts:
+            if self._quit_confirming:
+                return
+            self._quit_confirming = True
+            names = ', '.join(sorted(self.list_drafts))
+            self.push_screen(ConfirmScreen(_tr('tui.editor.quit_confirm', names=names)), self._quit_answer)
+        else:
+            self.exit()
+
+    def _quit_answer(self, discard):
+        self._quit_confirming = self._quit_requested = False
+        if discard:
+            self.list_drafts.clear()
+            self.exit()
+
+    def action_console(self) -> None:
+        if self._blocked() or self._quit_requested:
+            return
+        self._console = ConsoleScreen()
+        self.push_screen(self._console, self._console_closed)
+
+    def _console_closed(self, exit_requested):
+        self._console = None
+        if exit_requested:
+            self.action_quit()
+
+    def invalidate_command_state(self):
+        keys = set(self._state) | set(self._writes.versions)
+        keys.update(key for key, _method in BASE_SOURCES)
+        keys.update(key for pane in self._panes() for key in pane.KEYS)
+        for key in keys:
+            self._writes.versions[key] += 1
+        self._seen.clear()
+
+    def action_explain(self) -> None:
+        if self._blocked():
+            return
+        def entered(value):
+            if value is not None and value.strip():
+                self.push_screen(RouteReportScreen(value))
+        self.push_screen(PromptScreen(_tr('tui.route.prompt')), entered)
 
     def action_help(self) -> None:
         if not self._blocked():
@@ -353,38 +436,42 @@ class ChimeraTui(App):
                 self._busy["slow"] = True
                 self.run_worker(lambda: self._poll_slow(due), thread=True, name="poll-slow")
 
-    def _fetch(self, sources) -> tuple[dict, bool | None, str]:
-        snap, online, note = {}, None, ""
+    def _fetch(self, sources) -> tuple[dict, bool | None, str, dict]:
+        snap, online, note, versions = {}, None, "", {}
         for key, method, *args in sources:
+            versions[key] = self._writes.versions[key]
             try:
                 snap[key] = self.remote.call(method, *(args[0] if args else ()))
                 online = True
             except Offline as e:
-                return snap, False, str(e)
+                return snap, False, str(e), versions
             except RemoteError as e:
                 snap[key] = {"_error": str(e)}
                 online = True
-        return snap, online, note
+        return snap, online, note, versions
 
     def _poll_fast(self) -> None:
         try:
-            snap, online, note = self._fetch(BASE_SOURCES)
-            self._post(self._apply, snap, online, note, True)
+            snap, online, note, versions = self._fetch(BASE_SOURCES)
+            self._post(self._apply, snap, online, note, True, versions)
         finally:
             self._busy["fast"] = False
 
     def _poll_slow(self, due) -> None:
         try:
-            snap, online, note = self._fetch([(k, m, a) for k, m, a, _e in due])
-            self._post(self._apply, snap, online if online is False else None, note, False)
+            snap, online, note, versions = self._fetch([(k, m, a) for k, m, a, _e in due])
+            self._post(self._apply, snap, online if online is False else None, note, False, versions)
         finally:
             self._busy["slow"] = False
 
-    def _apply(self, snap: dict, online, note: str, fast: bool) -> None:
+    def _apply(self, snap: dict, online, note: str, fast: bool, versions: dict | None = None) -> None:
         if online is not None:
             self._set_link(online, note)
         changed = []
         for key, value in snap.items():
+            version = (versions or {}).get(key, self._writes.versions[key])
+            if not self._writes.accepts(key, version):
+                continue
             dumped = json.dumps(value, sort_keys=True, ensure_ascii=False, default=str)
             if self._seen.get(key) != dumped:
                 self._seen[key] = dumped
@@ -422,12 +509,64 @@ class ChimeraTui(App):
 
     # --- действия ------------------------------------------------------------------------------------------
 
-    def act(self, title: str, method: str, *args, journal: str | None = None, after=None) -> None:
+    def write_state(self, title, key, method, patch, arguments, *, journal=None, after=None, failed=None) -> bool:
+        if self._quit_requested:
+            self.status(_tr("tui.textual_app.finishing_writes"))
+            return False
+        if self.link is not True or self.data(key) is None:
+            self.status(_tr("tui.textual_app.no_connection_to_chimera_was_not_performed", p0=title), error=True)
+            if failed:
+                failed()
+            self.resync()
+            return False
+        if patch(self.data(key)) == self.data(key):
+            return False
+        first = self._writes.enqueue(key, self.data(key), Change(title, method, patch, arguments, journal, after, failed))
+        self._show_write(key, self._writes.visible(key))
+        if first:
+            self._start_write(key)
+        return True
+
+    def _show_write(self, key, state) -> None:
+        self._state[key] = state
+        self._seen.pop(key, None)
+        self._home.render_state()
+        for pane in self._panes():
+            pane.state_changed([key])
+
+    def _start_write(self, key) -> None:
+        change = self._writes.pending[key][0]
+        self.act(change.title, change.method, *change.arguments(self._writes.target(key)), journal=change.journal,
+                 after=lambda result: self._write_done(key, True, result),
+                 failed=lambda: self._write_done(key, False, None), _queued=True)
+
+    def _write_done(self, key, success, result) -> None:
+        change = self._writes.pending[key][0]
+        self._show_write(key, self._writes.finish(key, success))
+        if not success:
+            self._quit_requested = False
+            if self._console:
+                self._console.cancel_close()
+        callback = change.after if success else change.failed
+        if callback:
+            callback(result) if success else callback()
+        if key in self._writes.pending:
+            self._start_write(key)
+        elif self._quit_requested and not self._writes.pending:
+            self._quit_requested = False
+            self.action_quit()
+
+    def act(self, title: str, method: str, *args, journal: str | None = None, after=None, failed=None, _queued=False, record=True) -> bool:
         """Действие в фоне: метод Api через канал, результат в строке состояния."""
+        if self._quit_requested and not _queued:
+            self.status(_tr("tui.textual_app.finishing_writes"))
+            return False
         if self.link is not True:
             self.status(_tr('tui.textual_app.no_connection_to_chimera_was_not_performed', p0=title), error=True)
+            if failed:
+                failed()
             self.resync()
-            return
+            return False
         self.status(f"{title}…")
 
         def work():
@@ -435,14 +574,16 @@ class ChimeraTui(App):
                 result, error, offline = self.remote.call(method, *args), None, False
             except Offline as e:
                 result, error, offline = None, str(e), True
-            except RemoteError as e:
+            except Exception as e:  # noqa: BLE001 — очередь должна получить отказ при любой ошибке транспорта
                 result, error, offline = None, str(e), False
-            self.remote.record(journal or method, error is None)
-            self._post(self._act_done, title, result, error, offline, after)
+            if record:
+                self.remote.record(journal or method, error is None)
+            self._post(self._act_done, title, result, error, offline, after, failed)
 
         self.run_worker(work, thread=True, group="act")
+        return True
 
-    def _act_done(self, title, result, error, offline, after) -> None:
+    def _act_done(self, title, result, error, offline, after, failed=None) -> None:
         if offline:
             self._set_link(False, error)
             self.status(_tr('tui.textual_app.no_connection_to_chimera_was_not_performed', p0=title), error=True)
@@ -454,24 +595,23 @@ class ChimeraTui(App):
                 after(result)
         self._full_render = True
         if error:
+            if failed:
+                failed()
             self.resync()
         self.refresh_now(force=True)
 
+    def remember_list_draft(self, name, draft):
+        was_dirty = name in self.list_drafts
+        if draft is None:
+            self.list_drafts.pop(name, None)
+        else:
+            self.list_drafts[name] = draft
+        if self._content and was_dirty != (name in self.list_drafts):
+            self._content.query_one('#lists', panes.ListsPane).render_state()
+
     def edit_list(self, name: str) -> None:
-        """Правка lists/<имя>.txt во внешнем редакторе. Применение делает наблюдатель за файлами."""
         from modules import domains
-        if not domains.NAME_RE.match(name):
+        if not isinstance(name, str) or not domains.NAME_RE.fullmatch(name):
             self.status(_tr('tui.textual_app.invalid_list_name', p0=name), error=True)
             return
-        path = (self._lists_dir or domains.LISTS_DIR) / f"{name}.txt"
-        try:
-            try:
-                with self.suspend():
-                    self.editor(path)
-            except SuspendNotSupported:   # драйвер не умеет отдавать терминал (тесты, некоторые оболочки)
-                self.editor(path)
-        except Exception as e:  # noqa: BLE001 — нет редактора, консоль не отдали: сообщаем, а не роняем интерфейс
-            self.status(_tr('tui.textual_app.could_not_open_the_editor', p0=e), error=True)
-            return
-        self.status(_tr('tui.textual_app.list_changes_are_applied_automatically', p0=name))
-        self.refresh_now(force=True)
+        self.push_screen(ListEditorScreen(name))

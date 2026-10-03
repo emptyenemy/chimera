@@ -203,7 +203,7 @@ Keyboard terminal menu (arrows/WASD, live state)..
 
 #### `chimera tui [--simple]`
 
-Keyboard menu: Overview, Strategies, Lists, Proxy, Hosts, DNS, Telegram, Logs, Settings. Arrows/WASD select an item, Enter/D opens a section, Esc/A returns to the menu. Tab and Shift+Tab move between form controls. Mouse is disabled. Connects to Chimera (starts it without a window if needed); quitting (q) keeps Chimera running. Falls back to a simple menu without a terminal or Textual. --simple uses a numbered menu with its own Api. Level: changes the app. Works without a running Chimera.
+Keyboard terminal interface: Overview, Strategies, Lists, Proxy, Hosts, DNS, Telegram, Logs, Settings. Arrows/WASD select a row, Enter/D performs an action, Esc/A returns to the menu. Numbers 1–9 select an item in the current menu; Ctrl+1–9 opens a section. E in Lists opens the terminal editor: Ctrl+S saves, Esc keeps a draft. Ctrl+E explains a site route. Mouse is disabled. Connects to Chimera (starts it without a window if needed); quitting (q) keeps Chimera running. Falls back to a simple menu without a terminal or Textual. --simple uses a numbered menu with its own Api. A colon opens a command prompt with history and results. Level: changes the app. Works without a running Chimera.
 
 - `--simple` — simple numbered menu instead of the full-screen interface
 

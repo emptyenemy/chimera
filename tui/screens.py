@@ -1,87 +1,136 @@
-"""Диалоги разделов: подтверждение, подсказка по клавишам, выбор списков."""
+"""Терминальные запросы: выбор строк, ввод и подтверждение клавишами."""
 
-from modules.i18n import t as _tr
-
-from rich.markup import escape
+from rich.text import Text
 from textual.app import ComposeResult
 from textual.binding import Binding
-from textual.containers import Horizontal, Vertical, VerticalScroll
+from textual.containers import VerticalScroll
 from textual.screen import ModalScreen
-from textual.widgets import Button, SelectionList, Static
+from textual.widgets import Input, OptionList, Static
+from textual.widgets.option_list import Option
+
+from modules.i18n import t as _tr
 
 HELP_TEXT = _tr('tui.menu.help')
 
 
 class ConfirmScreen(ModalScreen[bool]):
-    """Вопрос «да/нет». Фокус по умолчанию на «Нет»: случайный Enter ничего не ломает."""
+    BINDINGS = [Binding('y', 'answer(True)', '', show=False),
+                Binding('n,escape,enter', 'answer(False)', '', show=False)]
 
-    BINDINGS = [
-        Binding("y", "answer(True)", _tr('tui.screens.yes'), show=False),
-        Binding("n,escape", "answer(False)", _tr('tui.screens.no'), show=False),
-    ]
-
-    def __init__(self, text: str):
+    def __init__(self, text):
         super().__init__()
         self._text = text
 
     def compose(self) -> ComposeResult:
-        with Vertical(classes="dialog"):
-            yield Static(escape(self._text), classes="dialog-text")
-            with Horizontal(classes="dialog-buttons"):
-                yield Button(_tr('tui.screens.yes_y'), id="yes")
-                yield Button(_tr('tui.screens.no_n'), id="no")
+        with VerticalScroll(classes='terminal-dialog'):
+            yield Static(self._text, markup=False)
+            yield Static(_tr('tui.classic.confirm'), classes='prompt-keys', markup=False)
 
-    def on_mount(self) -> None:
-        self.query_one("#no", Button).focus()
-
-    def on_button_pressed(self, event: Button.Pressed) -> None:
-        event.stop()
-        self.dismiss(event.button.id == "yes")
-
-    def action_answer(self, value: bool) -> None:
+    def action_answer(self, value):
         self.dismiss(value)
 
 
 class HelpScreen(ModalScreen[None]):
-    BINDINGS = [Binding("escape,question_mark,enter", "close", _tr('tui.screens.close'), show=False)]
+    BINDINGS = [Binding('escape,question_mark,enter', 'close', '', show=False)]
 
     def compose(self) -> ComposeResult:
-        with VerticalScroll(classes="dialog help"):
-            yield Static(HELP_TEXT, markup=False, classes="dialog-text")
-            yield Static(_tr('tui.screens.esc_to_close'), classes="dim")
+        with VerticalScroll(classes='terminal-dialog help'):
+            yield Static(HELP_TEXT, markup=False)
+            yield Static(_tr('tui.screens.esc_to_close'), classes='prompt-keys', markup=False)
 
-    def action_close(self) -> None:
+    def on_mount(self):
+        self.query_one('.help', VerticalScroll).focus()
+
+    def action_close(self):
+        self.dismiss(None)
+
+
+class PromptScreen(ModalScreen[str | None]):
+    BINDINGS = [Binding('escape', 'cancel', '', show=False)]
+
+    def __init__(self, title, value=''):
+        super().__init__()
+        self.title_text = title
+        self.value = value
+
+    def compose(self) -> ComposeResult:
+        with VerticalScroll(classes='terminal-dialog'):
+            yield Static(self.title_text, markup=False)
+            yield Input(value=self.value, id='prompt-input', select_on_focus=True)
+            yield Static(_tr('tui.classic.input_keys'), classes='prompt-keys', markup=False)
+
+    def on_mount(self):
+        self.query_one(Input).focus()
+
+    def on_input_submitted(self, event):
+        event.stop()
+        self.dismiss(event.value)
+
+    def action_cancel(self):
+        self.dismiss(None)
+
+
+class MenuScreen(ModalScreen[str | None]):
+    BINDINGS = [Binding('escape', 'cancel', '', show=False)]
+
+    def __init__(self, title, choices):
+        super().__init__()
+        self.title_text = title
+        self.choices = choices
+
+    def compose(self) -> ComposeResult:
+        with VerticalScroll(classes='terminal-dialog'):
+            yield Static(self.title_text, markup=False)
+            yield OptionList(*(Option(Text(f'{i}. {label}'), id=key) for i, (key, label) in enumerate(self.choices, 1)), id='choices')
+            yield Static(_tr('tui.classic.choice_keys'), classes='prompt-keys', markup=False)
+
+    def on_mount(self):
+        self.query_one(OptionList).focus()
+
+    def on_key(self, event):
+        if event.key.isdigit() and 1 <= int(event.key) <= min(9, len(self.choices)):
+            event.stop()
+            self.dismiss(self.choices[int(event.key) - 1][0])
+
+    def on_option_list_option_selected(self, event):
+        event.stop()
+        self.dismiss(event.option.id)
+
+    def action_cancel(self):
         self.dismiss(None)
 
 
 class ListPicker(ModalScreen[list | None]):
-    """Выбор списков для провайдера hosts. Результат — имена отмеченных или None (отмена)."""
+    BINDINGS = [Binding('escape', 'cancel', '', show=False),
+                Binding('space', 'toggle', '', show=False, priority=True),
+                Binding('enter', 'apply', '', show=False, priority=True)]
 
-    BINDINGS = [Binding("escape", "cancel", _tr('tui.screens.cancel'), show=False)]
-
-    def __init__(self, title: str, names: list[str], selected: list[str]):
+    def __init__(self, title, names, selected):
         super().__init__()
-        self._title = title
-        self._names = names
-        self._selected = set(selected)
+        self.title_text, self.names, self.selected = title, names, set(selected)
 
     def compose(self) -> ComposeResult:
-        with Vertical(classes="dialog"):
-            yield Static(escape(self._title), classes="dialog-text")
-            yield SelectionList(*[(n, n, n in self._selected) for n in self._names], id="picker")
-            with Horizontal(classes="dialog-buttons"):
-                yield Button(_tr('tui.screens.apply'), id="ok")
-                yield Button(_tr('tui.screens.cancel'), id="cancel")
+        with VerticalScroll(classes='terminal-dialog'):
+            yield Static(self.title_text, markup=False)
+            yield OptionList(*(self._option(name) for name in self.names), id='picker')
+            yield Static(_tr('tui.classic.picker_keys'), classes='prompt-keys', markup=False)
 
-    def on_mount(self) -> None:
-        self.query_one("#picker", SelectionList).focus()
+    def _option(self, name):
+        return Option(Text(f"[{'x' if name in self.selected else ' '}] {name}"), id=name)
 
-    def on_button_pressed(self, event: Button.Pressed) -> None:
-        event.stop()
-        if event.button.id == "ok":
-            self.dismiss(list(self.query_one("#picker", SelectionList).selected))
-        else:
-            self.dismiss(None)
+    def on_mount(self):
+        self.query_one(OptionList).focus()
 
-    def action_cancel(self) -> None:
+    def action_toggle(self):
+        menu = self.query_one(OptionList)
+        if menu.highlighted is None:
+            return
+        name = menu.get_option_at_index(menu.highlighted).id
+        self.selected.symmetric_difference_update({name})
+        menu.replace_option_prompt(name, self._option(name).prompt)
+
+    def action_apply(self):
+        self.dismiss([name for name in self.names if name in self.selected])
+
+    def action_cancel(self):
         self.dismiss(None)

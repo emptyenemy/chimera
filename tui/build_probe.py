@@ -23,7 +23,7 @@ def run() -> int:
             if app.link is not True:
                 raise RuntimeError("TUI did not connect to the smoke instance")
             for i, (tab, _, _) in enumerate(SECTIONS, 1):
-                await pilot.press(str(i))
+                await pilot.press(f"ctrl+{i}")
                 await pilot.pause(0.1)
                 if app.active_section != tab:
                     raise RuntimeError(f"TUI section did not open: {tab}")

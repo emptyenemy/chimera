@@ -2,16 +2,19 @@
 
 from textual.app import ComposeResult
 from textual.containers import VerticalScroll
-from textual.widgets import DataTable, Input, OptionList, RadioSet, RichLog, Static, TextArea
+from textual.widgets import Input, OptionList, RichLog, Static, TextArea
 from textual.widgets.option_list import Option
 
 from modules.i18n import t
 
-LOGO = r"""   _____ _    _ _____ __  __ ______ _____
-  / ____| |  | |_   _|  \/  |  ____|  __ \     /\
- | |    | |__| | | | | \  / | |__  | |__) |   /  \
- | |____|  __  |_| |_| |\/| |  __| |  _  /   / /\ \
-  \_____|_|  |_|_____|_|  |_|______|_| \_\  /_/  \_\ """
+LOGO = r"""          .---.
+   .--.  / .-. \     ____   _  _   ___  __   __  ____   ____      _
+  / .-.\ / /_/_/    / ___| | || | |_ _| | \ / | | ___| |  _ \    / \
+  | '-'/ /\         | |    | __ |  | |  |  V  | | _|   | |_) |  / _ \
+   '---'  \ \       | |__  | || |  | |  | | | | | |__  |  _ <  / ___ \
+       .-./ |       \____| |_||_| |___| |_| |_| |____| |_| \_\ /_/ \_\
+       \___/"""
+LOGO_WIDTH = max(map(len, LOGO.splitlines()))
 
 
 def editing(widget) -> bool:
@@ -19,23 +22,16 @@ def editing(widget) -> bool:
 
 
 def move_focus(screen, direction: str) -> None:
-    """Стрелки/WASD в таблицах двигают курсор, в формах — фокус."""
     widget = screen.focused
-    if isinstance(widget, RadioSet):
-        if direction in ("up", "left"):
-            widget.action_previous_button()
+    if isinstance(widget, OptionList):
+        if direction == "right":
+            widget.action_select()
+        elif direction == "left":
+            screen.app.action_back()
         else:
-            widget.action_next_button()
-    elif isinstance(widget, (DataTable, OptionList)):
-        action = getattr(widget, f"action_cursor_{direction}", None)
-        if action is not None:
-            action()
-    elif isinstance(widget, RichLog) and direction in ("up", "down"):
+            getattr(widget, f"action_cursor_{direction}")()
+    elif isinstance(widget, (RichLog, VerticalScroll)) and direction in ("up", "down"):
         getattr(widget, f"action_scroll_{direction}")()
-    elif direction in ("up", "left"):
-        screen.focus_previous()
-    else:
-        screen.focus_next()
 
 
 class HomeMenu(VerticalScroll):
@@ -61,8 +57,14 @@ class HomeMenu(VerticalScroll):
         self.app.open_section(event.option.id)
 
     def compact(self, height: int) -> None:
-        self.query_one("#logo", Static).update("C H I M E R A" if height < 30 else LOGO)
+        full = height >= 30 and self.content_size.width >= LOGO_WIDTH
+        logo = self.query_one("#logo", Static)
+        logo.styles.height = len(LOGO.splitlines()) if full else 1
+        logo.update(LOGO if full else "C H I M E R A")
         self.query_one("#tagline", Static).display = height >= 26
+
+    def on_resize(self) -> None:
+        self.compact(self.app.size.height)
 
     def render_state(self) -> None:
         active = []

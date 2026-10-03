@@ -112,9 +112,13 @@ def loggable(act, argv: list[str]) -> str:
     if act.command == "proxy link":
         words = [w if w.startswith("--") or i < 2 else "***" for i, w in enumerate(words)]
     if act.command == "tg config":
-        for i, w in enumerate(words[:-1]):
-            if w == "--secret":
-                words[i + 1] = "***"
+        for i, word in enumerate(words):
+            flag, equal, _value = word.partition('=')
+            if flag.startswith('--') and len(flag) > 2 and '--secret'.startswith(flag):
+                if equal:
+                    words[i] = flag + '=***'
+                elif i + 1 < len(words):
+                    words[i + 1] = '***'
     if act.command == "tg advanced":
         words = [w.split("=", 1)[0] + "=***" if "=" in w else w for w in words]
     return " ".join(words)
@@ -277,7 +281,7 @@ def h_config_get(ctx, act, ns):
 def h_config_set(ctx, act, ns):
     from modules import appconfig
     key, value = ns["a0"], ns["a1"]
-    if cl.discover() is None:
+    if not ctx.running():
         if key not in control.CONFIG_KEYS_WRITABLE:
             raise CliError.of("cli.err.config_forbidden", "forbidden", 1, key=repr(key))
         try:
@@ -343,12 +347,12 @@ def h_tg_link(ctx, act, ns):
 
 
 def h_tg_config(ctx, act, ns):
-    cur = ctx.call("tg_state", reveal=True)
+    cur = ctx.call("tg_state")
     host, port, secret, auto = ns.get("a0"), ns.get("a1"), ns.get("a2"), ns.get("a3")
     return Result(ctx.call("tg_set_config",
                            cur.get("host") if host is None else host,
                            cur.get("port") if port is None else port,
-                           cur.get("secret") if secret is None else secret,
+                           secret,
                            bool(cur.get("autostart")) if auto is None else auto))
 
 
@@ -419,12 +423,16 @@ def _read_list(ctx, name: str) -> str:
     return ctx.call_or_local("lists_read", (name,), lambda: _domains().read_raw(name))
 
 
-def _list_exists(ctx, name: str) -> bool:
+def _read_list_for_add(ctx, name: str) -> str:
     try:
-        _read_list(ctx, name)
-        return True
-    except (CliError, FileNotFoundError):
-        return False
+        return _read_list(ctx, name)
+    except FileNotFoundError:
+        return f'# {name}\n'
+    except CliError as error:
+        if error.code == 'not_found' or error.key in (
+                'err.domains.list_was_not_found', 'err.domains.domain_list_was_not_found_in'):
+            return f'# {name}\n'
+        raise
 
 
 def _save_list(ctx, name: str, text: str):
@@ -432,7 +440,7 @@ def _save_list(ctx, name: str, text: str):
 
 
 def _entries(text: str) -> list[str]:
-    return [ln.strip() for ln in text.splitlines() if ln.strip() and not ln.strip().startswith("#")]
+    return [entry for line in text.splitlines() if (entry := line.split('#', 1)[0].strip())]
 
 
 def h_lists_show(ctx, act, ns):
@@ -445,10 +453,16 @@ def h_lists_show(ctx, act, ns):
     return Result({"name": name, "domains": _entries(text), "content": text}, _entries(text) or [t("cli.lists.empty")])
 
 
+def _saved_list_result(data, lines):
+    apply_errors = data.get('apply_errors') or []
+    lines += [t('cli.lists.apply_error', module=error['module'], error=error['error']) for error in apply_errors]
+    return Result(data, lines, exit_code=1 if apply_errors else 0)
+
+
 def h_lists_save(ctx, act, ns):
     name, path = ns["a0"], ns.get("a1")
     text = open(path, encoding="utf-8").read() if path else sys.stdin.read()
-    return Result(_save_list(ctx, name, text), [t("cli.lists.saved", name=name)])
+    return _saved_list_result(_save_list(ctx, name, text), [t("cli.lists.saved", name=name)])
 
 
 def h_lists_create(ctx, act, ns):
@@ -467,18 +481,20 @@ def h_lists_rename(ctx, act, ns):
 
 def h_lists_add(ctx, act, ns):
     name, items = ns["a0"], ns["a1"]
-    text = _read_list(ctx, name) if _list_exists(ctx, name) else f"# {name}\n"
+    text = _read_list_for_add(ctx, name)
     have = {e.lower() for e in _entries(text)}
     fresh, seen = [], set(have)
     for d in items:
         if d.lower() not in seen:
             seen.add(d.lower())
             fresh.append(d)
-    if fresh:
-        _save_list(ctx, name, text.rstrip("\n") + "\n" + "\n".join(fresh) + "\n")
+    saved = _save_list(ctx, name, text.rstrip("\n") + "\n" + "\n".join(fresh) + "\n") if fresh else {}
     lines = [t("cli.lists.added", count=len(fresh))
              + (t("cli.lists.added_skipped", count=len(items) - len(fresh)) if len(fresh) != len(items) else "")]
-    return Result({"name": name, "added": fresh, "skipped": [d for d in items if d not in fresh]}, lines)
+    data = {"name": name, "added": fresh, "skipped": [d for d in items if d not in fresh]}
+    if saved.get("apply_errors"):
+        data["apply_errors"] = saved["apply_errors"]
+    return _saved_list_result(data, lines)
 
 
 def h_lists_remove(ctx, act, ns):
@@ -487,25 +503,21 @@ def h_lists_remove(ctx, act, ns):
     drop = {d.lower() for d in items}
     kept, removed = [], []
     for line in text.splitlines():
-        (removed if line.strip().lower() in drop else kept).append(line.strip() if line.strip().lower() in drop else line)
-    if removed:
-        _save_list(ctx, name, "\n".join(kept).rstrip("\n") + "\n")
-    return Result({"name": name, "removed": removed}, [t("cli.lists.removed", count=len(removed))])
+        entry = line.split('#', 1)[0].strip()
+        (removed if entry.lower() in drop else kept).append(entry if entry.lower() in drop else line)
+    saved = _save_list(ctx, name, "\n".join(kept).rstrip("\n") + "\n") if removed else {}
+    data = {"name": name, "removed": removed}
+    if saved.get("apply_errors"):
+        data["apply_errors"] = saved["apply_errors"]
+    return _saved_list_result(data, [t("cli.lists.removed", count=len(removed))])
 
 
 def h_lists_validate(ctx, act, ns):
-    dm = _domains()
     name = ns.get("a0")
-    results = []
-    for n in [name] if name else dm.available_lists():
-        try:
-            results.append(dm.validate_list(n))
-        except (FileNotFoundError, ValueError) as e:
-            if name:
-                raise CliError(str(e), "not_found", 1, "err.raw", {"message": str(e)}) from e
-            # файл с именем, которое программа не откроет (`a b.txt`): ошибка этого списка, остальные проверяем
-            results.append({"name": n, "entries": 0, "domains": 0, "networks": 0, "warnings": [], "ok": False,
-                            "errors": [{"line": None, "entry": "", "problem": str(e)}]})
+    try:
+        results = ctx.call_or_local("lists_validate", (name,), lambda: _domains().validate_lists(name))["lists"]
+    except (FileNotFoundError, ValueError) as e:
+        raise CliError(str(e), "not_found", 1, "err.raw", {"message": str(e)}) from e
     lines = []
     for r in results:
         lines.append(t("cli.lists.check_line", name=r["name"],
@@ -526,7 +538,7 @@ def h_lists_validate(ctx, act, ns):
 def h_lists_apply(ctx, act, ns):
     from modules import service
     name = ns.get("a0")
-    if cl.discover() is None and service.is_running():
+    if not ctx.running() and service.is_running():
         raise CliError.of("cli.err.service_only", "service_only", 3)
     res = ctx.call("lists_apply", name)
     lines = [t("cli.lists.applied", names=", ".join(res["applied"]) or t("cli.lists.applied_none"))]

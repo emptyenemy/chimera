@@ -8,11 +8,13 @@
 import asyncio
 import time
 
-from textual.widgets import Input, OptionList, TabbedContent, Button, DataTable, RadioButton, RadioSet, RichLog, Static, Switch
+from textual.widgets import Input, OptionList, Button, RichLog, Static, TextArea
+
+from tui.editor import ListEditorScreen
 
 from modules import control
 from tui.remote import Offline, RemoteError
-from tui.screens import ConfirmScreen, HelpScreen, ListPicker
+from tui.screens import ConfirmScreen, HelpScreen, ListPicker, MenuScreen, PromptScreen
 from tui.textual_app import SECTIONS, ChimeraTui
 
 SECRET = "ddaa11bb22cc33dd44ee55ff66aa77bb88"
@@ -53,6 +55,7 @@ class FakeRemote:
         self.hosts = {"enabled": True, "applied": True, "count": 12, "assignments": {"comss": ["discord"]}}
         self.lists = [{"name": "discord", "count": 10, "winws": True, "proxy": False, "hosts": True},
                       {"name": "youtube", "count": 20, "winws": False, "proxy": False, "hosts": False}]
+        self.list_text = {'discord': '# Discord\ndiscord.com\n', 'youtube': 'youtube.com\n'}
         self.dns = {"adapters": [{"index": 7, "name": "Ethernet", "status": "Up", "dns": ["1.1.1.1"]}],
                     "providers": [{"id": "cf", "name": "Cloudflare", "servers": ["1.1.1.1"]}], "trial": None, "trials": []}
         self.config = {"interface": "ui", "ui_backend": "pyside6"}
@@ -144,6 +147,17 @@ class FakeRemote:
 
     def m_lists_all(self):
         return [dict(i) for i in self.lists]
+
+    def m_lists_read(self, name):
+        return self.list_text[name]
+
+    def m_lists_save(self, name, content):
+        self.list_text[name] = content.replace('\r\n', '\n').rstrip('\n') + '\n'
+        count = sum(bool(line.split('#', 1)[0].strip()) for line in content.splitlines())
+        for item in self.lists:
+            if item['name'] == name:
+                item['count'] = count
+        return {'name': name, 'count': count, 'apply_errors': []}
 
     def m_winws_set_lists(self, names):
         for i in self.lists:
@@ -245,520 +259,374 @@ def text(app, wid):
     return str(app.query_one(wid, Static).render())
 
 
-# --- вкладки ------------------------------------------------------------------------------------
 
-def test_nine_tabs_with_numbers():
-    assert [t[0] for t in SECTIONS] == ["overview", "strategies", "lists", "proxy", "hosts", "dns", "tg", "logs", "settings"]
-
-
-def test_menu_arrows_wasd_enter_and_back():
+def test_classic_menu_has_no_window_controls_or_visible_scrollbars():
     async def scenario(app, pilot, remote):
         await online(pilot, app)
-        assert app.active_section == "home"
-        assert not list(app.query(TabbedContent))
-        menu = app.query_one("#menu", OptionList)
-        await pilot.press("s", "down", "w")
-        assert menu.highlighted == 1
-        await pilot.press("d")
+        for number, (name, _, _) in enumerate(SECTIONS, 1):
+            await pilot.press(f"ctrl+{number}")
+            await pilot.pause(0.05)
+            assert app.active_section == name
+            assert not list(app.query("Button, Switch, RadioSet, DataTable, TabbedContent"))
+            pane = app.query_one('#' + name)
+            assert pane.styles.scrollbar_size_vertical == 0
+            for view in pane.query("OptionList, RichLog"):
+                assert view.styles.scrollbar_size_vertical == 0
+                assert view.styles.scrollbar_size_horizontal == 0
+        assert app.export_screenshot().lstrip().startswith("<svg")
+    drive(scenario)
+
+
+def test_home_numbers_and_arrows_open_sections_and_section_numbers_choose_actions():
+    async def scenario(app, pilot, remote):
+        await online(pilot, app)
+        await pilot.press("s", "down", "w", "d")
         assert app.active_section == "strategies"
-        await pilot.press("escape")
-        assert app.active_section == "home" and menu.highlighted == 1
-        await pilot.press("up", "enter")
-        assert app.active_section == "overview"
-        first = app.screen.focused
-        await pilot.press("tab")
-        assert app.active_section == "overview" and app.screen.focused is not first
-        await pilot.press("shift+tab")
-        assert app.screen.focused is first
-        await pilot.press("a", "w")
-        assert app.active_section == "home" and menu.highlighted == 8
-        await pilot.press("right")
-        assert app.active_section == "settings"
-    drive(scenario)
-
-
-def test_navigation_does_not_steal_input_text_or_arrows():
-    async def scenario(app, pilot, remote):
-        await online(pilot, app)
-        await pilot.press("2", "slash", *"wasd19")
-        field = app.query_one("#st-search", Input)
-        assert field.value == "wasd19" and app.active_section == "strategies"
-        await pilot.press("left", "left", "x")
-        assert field.value == "wasdx19"
-        await pilot.press("escape")
-        assert app.active_section == "home"
-    drive(scenario)
-
-
-def test_wasd_moves_focus_and_table_columns():
-    async def scenario(app, pilot, remote):
-        await online(pilot, app)
-        await pilot.press("1")
-        assert app.screen.focused.id == "sw-winws"
-        await pilot.press("s")
-        assert app.screen.focused.id == "sw-proxy"
-        await pilot.press("w")
-        assert app.screen.focused.id == "sw-winws"
+        await pilot.press("escape", "4")
+        assert app.active_section == "proxy"
+        await pilot.press("2")
+        assert isinstance(app.screen, MenuScreen)
         await pilot.press("3")
-        table = app.query_one("#ls-table", DataTable)
-        await until(pilot, lambda: table.row_count == 2)
-        await pilot.press("s", "d", "d")
-        assert table.cursor_coordinate.row == 1 and table.cursor_coordinate.column == 2
+        await until(pilot, lambda: ("proxy_set_mode", ("tun",)) in remote.calls)
         await pilot.press("a")
-        assert table.cursor_coordinate.column == 1 and app.active_section == "lists"
+        assert app.active_section == "home"
+        assert app.query_one('#menu', OptionList).highlighted == 3
     drive(scenario)
 
 
-def test_help_opens_and_closes_and_blocks_digits():
+def test_prompts_keep_letters_digits_and_arrows_as_text_and_escape_cancels():
     async def scenario(app, pilot, remote):
-        await pilot.press("question_mark")
-        assert isinstance(app.screen, HelpScreen)
-        await pilot.press("5")
-        assert app.active_section == "home"    # подсказка блокирует переходы
+        await online(pilot, app)
+        await pilot.press("4", "3")
+        assert isinstance(app.screen, PromptScreen)
+        await pilot.press(*"wasd19", "left", "left", "x")
+        assert app.screen.query_one(Input).value == "wasdx19"
+        assert app.active_section == "proxy"
         await pilot.press("escape")
-        assert not isinstance(app.screen, HelpScreen)
+        assert not isinstance(app.screen, PromptScreen)
+        assert "proxy_set_apps" not in remote.methods()
     drive(scenario)
 
 
-def test_q_quits_without_stopping_chimera():
+def test_overview_module_rows_toggle_and_missing_strategy_opens_choices():
     async def scenario(app, pilot, remote):
         await online(pilot, app)
-        app.action_goto(1)
-        await pilot.pause(0.05)
-        await pilot.press("q")
-        await pilot.pause(0.05)
-        assert not app.is_running or app._exit
-    remote = drive(scenario)
-    assert not [m for m in remote.methods() if m.endswith("stop") or m == "panic_all"]
-
-
-def test_startup_asks_remote_to_bring_chimera_up():
-    async def scenario(app, pilot, remote):
-        await online(pilot, app)
-        app.action_goto(1)
-        await pilot.pause(0.05)
-    assert drive(scenario).ensure_calls == 1
-
-
-# --- живое состояние -----------------------------------------------------------------------------
-
-def test_state_is_pushed_only_when_it_changes():
-    async def scenario(app, pilot, remote):
-        await online(pilot, app)
-        app.action_goto(1)
-        await pilot.pause(0.05)
-        await pilot.pause(0.4)                 # с десяток опросов подряд
-        assert len(remote.calls) > 15
-        assert app.pushes["winws"] == 1 and app.pushes["app"] == 1
-        remote.winws["running"] = True
-        await until(pilot, lambda: app.pushes["winws"] == 2)
-    drive(scenario)
-
-
-def test_lazy_sources_are_polled_only_while_their_tab_is_open():
-    async def scenario(app, pilot, remote):
-        await online(pilot, app)
-        app.action_goto(1)
-        await pilot.pause(0.05)
-        await pilot.pause(0.2)
-        assert "lists_all" not in remote.methods() and "dns_state" not in remote.methods()
-        await pilot.press("3")
-        await until(pilot, lambda: "lists_all" in remote.methods())
-        await pilot.press("1")
-        await pilot.pause(0.1)
-        n = remote.methods().count("lists_all")
-        await pilot.pause(0.4)
-        assert remote.methods().count("lists_all") == n
-    drive(scenario)
-
-
-def test_no_connection_shows_status_and_reconnects_by_itself():
-    async def scenario(app, pilot, remote):
-        remote.offline = True
-        await until(pilot, lambda: app.link is False)
-        assert "нет связи с Chimera" in text(app, "#top")
-        assert "Нет связи с Chimera" in app.status_text
-        remote.offline = False
-        await until(pilot, lambda: app.link is True)
-        assert "восстановлена" in app.status_text
-        assert "связь с Chimera есть" in text(app, "#top")
-    drive(scenario)
-
-
-def test_actions_are_refused_without_connection():
-    async def scenario(app, pilot, remote):
-        await online(pilot, app)
-        app.action_goto(1)
-        await pilot.pause(0.05)
-        remote.offline = True
-        await until(pilot, lambda: app.link is False)
-        before = len(remote.calls)
-        app.query_one("#sw-tg", Switch).focus()
-        await pilot.press("enter")
-        await pilot.pause(0.1)
-        assert "не выполнено" in app.status_text
-        assert "tg_start" not in remote.methods()
-        assert not app.query_one("#sw-tg", Switch).value     # тумблер вернулся на место
-        assert len(remote.calls) >= before
-    drive(scenario)
-
-
-def test_connection_lost_during_action_is_reported():
-    async def scenario(app, pilot, remote):
-        await online(pilot, app)
-        app.action_goto(1)
-        await pilot.pause(0.05)
-        def dies():
-            remote.offline = True
-            raise Offline("нет связи с Chimera")
-        remote.m_tg_start = dies
-        app.act("Запуск Telegram-прокси", "tg_start", journal="tg start")
-        await until(pilot, lambda: app.link is False)
-        assert "не выполнено" in app.status_text
-    drive(scenario)
-
-
-# --- обзор -----------------------------------------------------------------------------------------
-
-def test_overview_shows_module_states_and_toggles_work():
-    async def scenario(app, pilot, remote):
-        await online(pilot, app)
-        app.action_goto(1)
-        await pilot.pause(0.05)
-        assert "остановлен" in text(app, "#st-tg")
-        assert "1.2.3" in text(app, "#ov-app")
-        app.query_one("#sw-tg", Switch).focus()
-        await pilot.press("space")
+        await pilot.press("1", "3")
         await until(pilot, lambda: ("tg_start", ()) in remote.calls)
-        await until(pilot, lambda: "работает" in text(app, "#st-tg"))
-        assert app.query_one("#sw-tg", Switch).value is True
-        assert ("tg start", True) in remote.journal
-        await pilot.press("space")
+        await until(pilot, lambda: app.data('tg')['running'])
+        await pilot.press("3")
         await until(pilot, lambda: ("tg_stop", ()) in remote.calls)
-    drive(scenario)
-
-
-def test_winws_switch_needs_a_chosen_strategy_first():
-    async def scenario(app, pilot, remote):
-        await online(pilot, app)
-        app.action_goto(1)
-        await pilot.pause(0.05)
-        app.query_one("#sw-winws", Switch).focus()
-        await pilot.press("space")
-        await pilot.pause(0.1)
+        await pilot.press("1")
+        assert app.active_section == "strategies"
         assert "winws_start" not in remote.methods()
-        assert "Стратегии" in app.status_text
-        assert not app.query_one("#sw-winws", Switch).value
-        remote.winws["last_strategy"] = "discord"
-        await until(pilot, lambda: (app.data("winws") or {}).get("last_strategy") == "discord")
-        await pilot.press("space")
-        await until(pilot, lambda: ("winws_start", ("discord",)) in remote.calls)
     drive(scenario)
 
 
-def test_hosts_switch_on_overview_turns_hosts_off():
+def test_overview_hosts_row_and_panic_use_keyboard_confirmation():
     async def scenario(app, pilot, remote):
         await online(pilot, app)
-        app.action_goto(1)
-        await pilot.pause(0.05)
-        app.query_one("#sw-hosts_state", Switch).focus()
-        await pilot.press("space")
+        await pilot.press("1", "4")
         await until(pilot, lambda: ("hosts_set_enabled", (False,)) in remote.calls)
-    drive(scenario)
-
-
-def test_remote_error_is_shown_and_switch_returns():
-    async def scenario(app, pilot, remote):
-        await online(pilot, app)
-        app.action_goto(1)
-        await pilot.pause(0.05)
-        remote.errors["proxy_start"] = "Нужны права администратора"
-        app.query_one("#sw-proxy", Switch).focus()
-        await pilot.press("space")
-        await until(pilot, lambda: "Нужны права администратора" in app.status_text)
-        await until(pilot, lambda: not app.query_one("#sw-proxy", Switch).value)
-        assert ("proxy start", False) in remote.journal
-    drive(scenario)
-
-
-def test_panic_asks_for_confirmation():
-    async def scenario(app, pilot, remote):
-        await online(pilot, app)
-        app.action_goto(1)
-        await pilot.pause(0.05)
-        app.query_one("#panic").focus()
-        await pilot.press("enter")
+        await pilot.press("5")
         assert isinstance(app.screen, ConfirmScreen)
-        await pilot.press("n")
-        await pilot.pause(0.1)
-        assert "panic_all" not in remote.methods()
-        app.query_one("#panic").focus()
+        assert not list(app.screen.query(Button))
         await pilot.press("enter")
-        await pilot.press("y")
+        assert "panic_all" not in remote.methods()
+        await pilot.press("5", "y")
         await until(pilot, lambda: "panic_all" in remote.methods())
         await until(pilot, lambda: "hosts (нужны права)" in app.status_text)
     drive(scenario)
 
 
-# --- стратегии ------------------------------------------------------------------------------------------
-
-def test_strategies_search_and_enter_starts():
+def test_strategy_search_start_stop_and_cancel_search():
     async def scenario(app, pilot, remote):
         await online(pilot, app)
-        app.action_goto(1)
-        await pilot.pause(0.05)
-        await pilot.press("2")
-        table = app.query_one("#st-table", DataTable)
-        await until(pilot, lambda: table.row_count == 2)
-        await pilot.press("slash", "d", "i", "s")
-        await until(pilot, lambda: table.row_count == 1)
-        await pilot.press("enter")      # из поиска в таблицу
-        await pilot.press("enter")      # выбрать
+        await pilot.press("2", "slash", *"dis", "enter")
+        pane = app.query_one('#strategies')
+        assert pane.search == 'dis'
+        assert pane.selected() == 'strategy:discord'
+        await pilot.press("enter")
         await until(pilot, lambda: ("winws_start", ("discord",)) in remote.calls)
-        await until(pilot, lambda: "стратегия discord" in text(app, "#st-head"))
         await pilot.press("x")
         await until(pilot, lambda: "winws_stop" in remote.methods())
+        await pilot.press("slash", "ctrl+a", *"nothing", "escape")
+        assert pane.search == 'dis'
     drive(scenario)
 
 
-# --- списки --------------------------------------------------------------------------------------------------
-
-def test_lists_checkboxes_toggle_winws_and_proxy_and_hosts_is_readonly():
+def test_lists_use_submenu_to_assign_modules_and_edit_selected_file():
     async def scenario(app, pilot, remote):
         await online(pilot, app)
-        app.action_goto(1)
-        await pilot.pause(0.05)
         await pilot.press("3")
-        table = app.query_one("#ls-table", DataTable)
-        await until(pilot, lambda: table.row_count == 2)
-        assert table.get_row_at(0)[2:] == ["☑", "☐", "☑"]
-        await pilot.press("down", "right", "right", "space")          # youtube -> winws
+        await until(pilot, lambda: len(app.query_one('#lists').actions) == 2)
+        await pilot.press("2", "2")
         await until(pilot, lambda: ("winws_set_lists", (["discord", "youtube"],)) in remote.calls)
-        await pilot.press("right", "enter")                           # youtube -> прокси
+        await pilot.press("2", "3")
         await until(pilot, lambda: ("proxy_set_lists", (["youtube"],)) in remote.calls)
-        await pilot.press("right", "space")
-        assert "Hosts" in app.status_text
-        assert "hosts_set_assignments" not in remote.methods()
+        await pilot.press("e")
+        await until(pilot, lambda: isinstance(app.screen, ListEditorScreen) and not app.screen.area.read_only)
+        assert app.screen.query_one(TextArea).text == 'youtube.com\n'
+        await pilot.press('escape', "2", "4")
+        assert app.active_section == "hosts"
     drive(scenario)
 
 
-def test_lists_e_opens_external_editor_and_says_changes_apply_automatically(tmp_path):
-    opened = []
-
+def test_proxy_modes_start_add_and_remove_apps_without_buttons():
     async def scenario(app, pilot, remote):
         await online(pilot, app)
-        app.action_goto(1)
-        await pilot.pause(0.05)
-        await pilot.press("3")
-        table = app.query_one("#ls-table", DataTable)
-        await until(pilot, lambda: table.row_count == 2)
-        await pilot.press("down", "e")
-        await until(pilot, lambda: bool(opened))
-        assert opened == [tmp_path / "youtube.txt"]
-        assert "применяются автоматически" in app.status_text
-        assert not [m for m in remote.methods() if m.startswith("lists_save")]   # применение — дело наблюдателя за файлами
-    drive(scenario, editor=opened.append, lists_dir=tmp_path)
-
-
-# --- прокси -----------------------------------------------------------------------------------------------------
-
-def test_proxy_tab_mode_start_and_apps():
-    async def scenario(app, pilot, remote):
-        await online(pilot, app)
-        app.action_goto(1)
-        await pilot.pause(0.05)
-        await pilot.press("4")
-        await until(pilot, lambda: app.query_one("#mode-pac", RadioButton).value)
-        app.query_one("#px-mode", RadioSet).focus()
-        await pilot.press("s", "s", "enter")
-        await until(pilot, lambda: ("proxy_set_mode", ("tun",)) in remote.calls)
-        app.query_one("#px-toggle").focus()
-        await pilot.press("enter")
+        await pilot.press("4", "2", "2")
+        await until(pilot, lambda: ("proxy_set_mode", ("split",)) in remote.calls)
+        await pilot.press("1")
         await until(pilot, lambda: "proxy_start" in remote.methods())
-        await until(pilot, lambda: str(app.query_one("#px-toggle", Button).label) == "Остановить")
-        app.query_one("#px-add").focus()
-        await pilot.press(*"x.exe", "enter")
+        await pilot.press("3", *"x.exe", "enter")
         await until(pilot, lambda: ("proxy_set_apps", (["Discord.exe", "x.exe"],)) in remote.calls)
-        app.query_one("#px-apps", DataTable).focus()
-        await pilot.press("delete")
+        await pilot.press("4", "1")
         await until(pilot, lambda: ("proxy_set_apps", (["x.exe"],)) in remote.calls)
     drive(scenario)
 
 
-# --- hosts ------------------------------------------------------------------------------------------------------------
-
-def test_hosts_switch_and_provider_lists_picker():
+def test_hosts_keyboard_picker_and_static_provider_toggle():
     async def scenario(app, pilot, remote):
         await online(pilot, app)
-        app.action_goto(1)
-        await pilot.pause(0.05)
         await pilot.press("5")
-        table = app.query_one("#hs-table", DataTable)
-        await until(pilot, lambda: table.row_count == 3)
-        assert table.get_row_at(0)[2] == "discord"
-        table.focus()
-        await pilot.press("down", "enter")        # malw: выбрать списки
+        await until(pilot, lambda: len(app.query_one('#hosts').actions) == 4)
+        await pilot.press("3")
         assert isinstance(app.screen, ListPicker)
-        await pilot.press("space")                # отметить первый список
-        app.screen.query_one("#ok").focus()
-        await pilot.press("enter")
-        await until(pilot, lambda: any(c[0] == "hosts_set_assignments" for c in remote.calls))
-        assert ("hosts_set_assignments", ({"comss": ["discord"], "malw": ["discord"]},)) in remote.calls
-        app.query_one("#hs-enabled", Switch).focus()
-        await pilot.press("space")
-        await until(pilot, lambda: ("hosts_set_enabled", (False,)) in remote.calls)
+        await pilot.press("space", "enter")
+        await until(pilot, lambda: ("hosts_set_assignments", ({"comss": ["discord"], "malw": ["discord"]},)) in remote.calls)
+        await pilot.press("4")
+        await until(pilot, lambda: remote.hosts['assignments'].get('flowseal') is True)
+        await pilot.press("4")
+        await until(pilot, lambda: 'flowseal' not in remote.hosts['assignments'])
     drive(scenario)
 
 
-# --- DNS -----------------------------------------------------------------------------------------------------------------------
-
-def test_dns_trial_apply_keep_and_reset():
+def test_hosts_picker_escape_does_not_save():
     async def scenario(app, pilot, remote):
         await online(pilot, app)
-        app.action_goto(1)
-        await pilot.pause(0.05)
+        await pilot.press("5")
+        await until(pilot, lambda: len(app.query_one('#hosts').actions) == 4)
+        await pilot.press("2", "space", "escape")
+        assert "hosts_set_assignments" not in remote.methods()
+    drive(scenario)
+
+
+def test_dns_adapter_provider_confirmation_keep_and_dhcp_reset():
+    async def scenario(app, pilot, remote):
+        await online(pilot, app)
         await pilot.press("6")
-        adapters = app.query_one("#dn-adapters", DataTable)
-        await until(pilot, lambda: adapters.row_count == 1)
-        await pilot.press("f", "enter")
+        await until(pilot, lambda: app.query_one('#dns').adapter == 7)
+        await pilot.press("1", "1", "2", "1")
         assert isinstance(app.screen, ConfirmScreen)
+        assert "dns_set_trial" not in remote.methods()
         await pilot.press("y")
         await until(pilot, lambda: ("dns_set_trial", (7, "cf", 15)) in remote.calls)
-        await until(pilot, lambda: "Проба DNS" in text(app, "#dn-trial"))
-        app.query_one("#dn-keep").focus()
-        await pilot.press("enter")
-        await until(pilot, lambda: "dns_trial_confirm" in remote.methods())
-        adapters.focus()
-        await pilot.press("r")
-        assert isinstance(app.screen, ConfirmScreen)
-        await pilot.press("n")
-        await pilot.pause(0.1)
-        assert "dns_reset" not in remote.methods()
-        await pilot.press("r", "y")
-        await until(pilot, lambda: ("dns_reset", (7,)) in remote.calls)
+        await until(pilot, lambda: 'keep' in app.query_one('#dns').actions)
+        await pilot.press("4")
+        await until(pilot, lambda: 'dns_trial_confirm' in remote.methods())
+        await pilot.press("3", "n")
+        assert 'dns_reset' not in remote.methods()
+        await pilot.press("3", "y")
+        await until(pilot, lambda: ('dns_reset', (7,)) in remote.calls)
     drive(scenario)
 
 
-# --- Telegram ---------------------------------------------------------------------------------------------------------------------
-
-def test_telegram_link_is_masked_and_start_works():
-    async def scenario(app, pilot, remote):
-        await online(pilot, app)
-        app.action_goto(1)
-        await pilot.pause(0.05)
-        remote.tg["link"] = f"tg://proxy?server=127.0.0.1&port=1443&secret={SECRET}"   # так бы вышло без маски
-        await pilot.press("7")
-        await until(pilot, lambda: "secret=…(скрыто)" in text(app, "#tg-info"))
-        shown = " ".join(str(w.render()) for w in app.query(Static))
-        assert SECRET not in shown
-        app.query_one("#tg-toggle").focus()
-        await pilot.press("enter")
-        await until(pilot, lambda: "tg_start" in remote.methods())
-        await until(pilot, lambda: "tg_stats" in remote.methods())
-    drive(scenario)
-
-
-# --- логи и настройки ---------------------------------------------------------------------------------------------------------------
-
-def test_logs_tail_and_file_choice():
-    async def scenario(app, pilot, remote):
-        await online(pilot, app)
-        app.action_goto(1)
-        await pilot.pause(0.05)
-        await pilot.press("8")
-        view = app.query_one("#lg-view", RichLog)
-        await until(pilot, lambda: len(view.lines) == 2)
-        remote.log += "строка лога 3\n"
-        await until(pilot, lambda: len(view.lines) == 3)
-        app.query_one("#lg-file", RadioSet).focus()
-        await pilot.press("s", "enter")
-        await until(pilot, lambda: ("proxy_log", (0,)) in remote.calls)
-        await until(pilot, lambda: len(view.lines) == 1)
-    drive(scenario)
-
-
-def test_settings_theme_written_through_config_set_and_language_hidden():
-    async def scenario(app, pilot, remote):
-        await online(pilot, app)
-        app.action_goto(1)
-        await pilot.pause(0.05)
-        await pilot.press("9")
-        await until(pilot, lambda: app.query_one("#theme-system", RadioButton).value)
-        assert app.query_one("#se-lang").has_class("hidden")
-        app.query_one("#se-theme", RadioSet).focus()
-        await pilot.press("s", "s", "enter")
-        await until(pilot, lambda: ("config_set", ("theme", "dark")) in remote.calls)
-        assert ("config set theme dark", True) in remote.journal
-    drive(scenario)
-
-
-def test_language_shown_only_when_key_exists():
-    async def scenario(app, pilot, remote):
-        await online(pilot, app)
-        app.action_goto(1)
-        await pilot.pause(0.05)
-        await pilot.press("9")
-        await until(pilot, lambda: not app.query_one("#se-lang").has_class("hidden"))
-        assert "ru" in text(app, "#se-lang")
+def test_telegram_secret_is_hidden_and_start_collects_stats():
     remote = FakeRemote()
-    remote.config["language"] = "ru"
+    remote.tg['link'] = 'tg://proxy?secret=' + SECRET
+    async def scenario(app, pilot, remote):
+        await online(pilot, app)
+        await pilot.press("7")
+        assert SECRET not in ' '.join(str(widget.render()) for widget in app.query(Static))
+        await pilot.press("1")
+        await until(pilot, lambda: 'tg_start' in remote.methods() and 'tg_stats' in remote.methods())
     drive(scenario, remote)
 
 
-def test_screenshot_exports_svg():
-    async def scenario(app, pilot, remote):
-        await online(pilot, app)
-        app.action_goto(1)
-        await pilot.pause(0.05)
-        assert app.export_screenshot().lstrip().startswith("<svg")
-    drive(scenario)
-
-
-def test_trial_keyboard_flow_keeps_global_timer_visible_between_sections():
-    async def scenario(app, pilot, remote):
-        await online(pilot, app)
-        app.action_goto(2)
-        table = app.query_one("#st-table", DataTable)
-        await until(pilot, lambda: table.row_count == 2)
-        await pilot.press("down", "ctrl+t")
-        assert isinstance(app.screen, ConfirmScreen)
-        await pilot.press("y")
-        await until(pilot, lambda: "trial_start" in remote.methods())
-        assert ("trial_start", ("strategy", "discord", 60, None)) in remote.calls
-        await until(pilot, lambda: app.query_one("#trial-status").display)
-        await pilot.press("escape")
-        assert app.active_section == "home"
-        assert app.query_one("#trial-status").display
-        await pilot.press("ctrl+k")
-        await until(pilot, lambda: ("trial_confirm", ("trial-1",)) in remote.calls)
-        await until(pilot, lambda: not app.query_one("#trial-status").display)
-        app.action_goto(4)
-        await until(pilot, lambda: app.active_section == "proxy")
-        await pilot.press("ctrl+t")
-        await pilot.press("y")
-        await until(pilot, lambda: ("trial_start", ("tun", "tun", 60, None)) in remote.calls)
-        await until(pilot, lambda: app.query_one("#trial-status").display)
-        await pilot.press("ctrl+r")
-        await until(pilot, lambda: ("trial_revert", ("trial-1",)) in remote.calls)
-    drive(scenario)
-
-
-def test_static_hosts_provider_renders_and_toggles_boolean_with_enter():
+def test_settings_theme_and_language_are_keyboard_choices():
     remote = FakeRemote()
-    remote.hosts["assignments"]["flowseal"] = True
-
+    remote.config['lang'] = 'ru'
     async def scenario(app, pilot, remote):
         await online(pilot, app)
-        app.action_goto(5)
-        table = app.query_one("#hs-table", DataTable)
-        await until(pilot, lambda: table.row_count == 3)
-        assert table.get_row_at(2)[2] == "включено"
-        table.focus()
-        await pilot.press("down", "down", "enter")
-        await until(pilot, lambda: ("hosts_set_assignments", ({"comss": ["discord"]},)) in remote.calls)
-        assert not isinstance(app.screen, ListPicker)
-        await until(pilot, lambda: table.get_row_at(2)[2] == "—")
-        await pilot.press("enter")
-        await until(pilot, lambda: ("hosts_set_assignments", ({"comss": ["discord"], "flowseal": True},)) in remote.calls)
-        await until(pilot, lambda: table.get_row_at(2)[2] == "включено")
+        await pilot.press("9")
+        await until(pilot, lambda: 'language' in app.query_one('#settings').actions)
+        await pilot.press("1", "3")
+        await until(pilot, lambda: ('config_set', ('theme', 'dark')) in remote.calls)
+        await pilot.press("2", "3")
+        await until(pilot, lambda: ('config_set', ('lang', 'en')) in remote.calls)
+    drive(scenario, remote)
+
+
+def test_help_scrolls_in_a_short_terminal_and_blocks_section_shortcuts():
+    async def scenario(app, pilot, remote):
+        await pilot.resize_terminal(64, 22)
+        await pilot.press('question_mark')
+        help_view = app.screen.query_one('.help')
+        await pilot.press('down', 'down', 'down', 'ctrl+4')
+        await until(pilot, lambda: help_view.scroll_y > 0)
+        assert app.active_section == 'home'
+        await pilot.press('escape')
+        assert not isinstance(app.screen, HelpScreen)
+    drive(scenario)
+
+
+def test_connection_reconnects_and_read_only_state_is_not_repainted_every_poll():
+    async def scenario(app, pilot, remote):
+        await online(pilot, app)
+        await pilot.pause(0.3)
+        assert app.pushes['winws'] == 1
+        remote.offline = True
+        await until(pilot, lambda: app.link is False)
+        assert 'нет связи' in text(app, '#top')
+        remote.offline = False
+        await until(pilot, lambda: app.link is True)
+        assert 'восстановлена' in app.status_text
+    drive(scenario)
+
+
+def test_offline_actions_are_refused_and_failed_changes_revert():
+    async def scenario(app, pilot, remote):
+        await online(pilot, app)
+        await pilot.press('1')
+        remote.errors['proxy_start'] = 'Нужны права администратора'
+        await pilot.press('2')
+        await until(pilot, lambda: 'Нужны права' in app.status_text)
+        assert not app.data('proxy')['running']
+        remote.offline = True
+        await until(pilot, lambda: app.link is False)
+        await pilot.press('3')
+        assert 'tg_start' not in remote.methods()
+        assert 'не выполнено' in app.status_text
+    drive(scenario)
+
+
+def test_lazy_data_is_polled_only_for_the_active_section():
+    async def scenario(app, pilot, remote):
+        await online(pilot, app)
+        assert 'lists_all' not in remote.methods()
+        await pilot.press('3')
+        await until(pilot, lambda: 'lists_all' in remote.methods())
+        await pilot.press('escape', '1')
+        await pilot.pause(0.1)
+        count = remote.methods().count('lists_all')
+        await pilot.pause(0.3)
+        assert remote.methods().count('lists_all') == count
+    drive(scenario)
+
+
+def test_trial_hotkeys_keep_timer_between_sections_and_require_confirmation():
+    async def scenario(app, pilot, remote):
+        await online(pilot, app)
+        await pilot.press('2', 'down', 'ctrl+t')
+        assert isinstance(app.screen, ConfirmScreen)
+        await pilot.press('y')
+        await until(pilot, lambda: ('trial_start', ('strategy', 'discord', 60, None)) in remote.calls)
+        await until(pilot, lambda: app.query_one('#trial-status').display)
+        await pilot.press('escape', 'ctrl+k')
+        await until(pilot, lambda: ('trial_confirm', ('trial-1',)) in remote.calls)
+    drive(scenario)
+
+
+def test_brand_has_full_height_on_start_and_compacts_for_narrow_windows():
+    from tui.navigation import LOGO
+    async def scenario(app, pilot, remote):
+        await online(pilot, app)
+        logo = app.query_one('#logo', Static)
+        assert logo.content_size.height == len(LOGO.splitlines())
+        await pilot.resize_terminal(80, 30)
+        await until(pilot, lambda: text(app, '#logo') == LOGO)
+        assert app.query_one('#menu').region.bottom <= app.query_one('#keys').region.y
+        await pilot.resize_terminal(64, 30)
+        await until(pilot, lambda: text(app, '#logo') == 'C H I M E R A')
+        assert logo.content_size.height == 1
+        await pilot.resize_terminal(100, 35)
+        await until(pilot, lambda: text(app, '#logo') == LOGO)
+    drive(scenario)
+
+
+def test_logs_are_text_only_keep_history_position_and_resume_with_end():
+    remote = FakeRemote()
+    remote.log = ''.join(f'log {i}\n' for i in range(120))
+    async def scenario(app, pilot, remote):
+        await online(pilot, app)
+        await pilot.resize_terminal(64, 24)
+        await pilot.press('8')
+        view = app.query_one('#lg-view', RichLog)
+        await until(pilot, lambda: len(view.lines) == 120 and view.is_vertical_scroll_end)
+        await pilot.press('pageup')
+        await until(pilot, lambda: not view.is_vertical_scroll_end)
+        await pilot.pause(0.3)
+        position = view.scroll_y
+        remote.log += 'new first\nnew second\n'
+        await until(pilot, lambda: len(view.lines) == 122)
+        assert view.scroll_y == position
+        await pilot.press('end')
+        await until(pilot, lambda: view.is_vertical_scroll_end)
+        remote.log += 'latest\n'
+        await until(pilot, lambda: len(view.lines) == 123 and view.is_vertical_scroll_end)
+        await pilot.press('2')
+        await until(pilot, lambda: ('proxy_log', (0,)) in remote.calls)
+        assert app.active_section == 'logs'
+    drive(scenario, remote)
+
+
+def test_logs_wrap_and_keep_the_same_line_when_history_is_trimmed(monkeypatch):
+    monkeypatch.setattr('tui.panes.LOG_LINES', 40)
+    remote = FakeRemote()
+    remote.log = ''.join(f'log {i}\n' for i in range(40))
+    async def scenario(app, pilot, remote):
+        await online(pilot, app)
+        await pilot.resize_terminal(64, 24)
+        await pilot.press('8')
+        view = app.query_one('#lg-view', RichLog)
+        await until(pilot, lambda: len(view.lines) == 40 and view.is_vertical_scroll_end)
+        await pilot.press('pageup')
+        await until(pilot, lambda: not view.is_vertical_scroll_end)
+        await pilot.pause(0.3)
+        position = view.scroll_y
+        anchor = view.lines[int(position)]
+        remote.log += 'new first\nnew second\nnew third\n'
+        await until(pilot, lambda: app.query_one('#logs').log_offset == len(remote.log))
+        assert view.scroll_y == position - 3
+        assert view.lines[int(view.scroll_y)] is anchor
+        assert view.max_scroll_x == 0
+    drive(scenario, remote)
+
+
+def test_quit_keeps_chimera_running():
+    async def scenario(app, pilot, remote):
+        await online(pilot, app)
+        await pilot.press('q')
+        assert app._exit
+        assert not any(method.endswith('_stop') for method in remote.methods())
+    drive(scenario)
+
+
+
+def test_runtime_errors_are_visible_in_the_module_menu():
+    remote = FakeRemote()
+    remote.proxy['error'] = 'test kernel error'
+    async def scenario(app, pilot, remote):
+        await online(pilot, app)
+        await pilot.press('4')
+        assert 'test kernel error' in text(app, '#proxy-summary')
+        assert app.query_one('#proxy-summary').has_class('state-error')
+    drive(scenario, remote)
+
+
+def test_list_refresh_preserves_the_selected_item_in_a_long_menu():
+    remote = FakeRemote()
+    remote.lists = [{'name': f'list-{i}', 'count': i, 'winws': False, 'proxy': False, 'hosts': False} for i in range(80)]
+    async def scenario(app, pilot, remote):
+        await online(pilot, app)
+        await pilot.resize_terminal(64, 22)
+        await pilot.press('3')
+        pane = app.query_one('#lists')
+        await until(pilot, lambda: len(pane.actions) == 80)
+        await pilot.press(*(['down'] * 30))
+        assert pane.selected() == 'list-30'
+        remote.lists[0]['count'] += 1
+        await until(pilot, lambda: app.data('lists')[0]['count'] == 1)
+        assert pane.selected() == 'list-30'
+        assert pane.query_one(OptionList).scroll_y > 0
     drive(scenario, remote)

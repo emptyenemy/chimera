@@ -356,7 +356,7 @@ def test_tg_config_merges_with_current_settings(capsys, running):
     api, _ = running
     assert run(capsys, "tg", "config", "--host", "0.0.0.0")[0] == 0
     # порт, секрет и автозапуск берутся из текущих настроек (с реальным секретом, а не маской)
-    assert api.called("tg_set_config") == [["0.0.0.0", 1443, "abcdef", False]]
+    assert api.called("tg_set_config") == [["0.0.0.0", 1443, None, False]]
 
 
 def test_tg_advanced_parses_key_values(capsys, running):
