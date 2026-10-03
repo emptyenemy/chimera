@@ -166,7 +166,9 @@ def normalize(sid, raw):
         if not isinstance(raw, dict):
             _bad()
         if sid == "hosts":
-            if set(raw) - {"assignments", "enabled", "background", "entries", "health", "last_switch", "switch_log"}:
+            # provider и lists — формат до assignments; менеджер их не читает, в снимок не идут
+            if set(raw) - {"assignments", "enabled", "background", "entries", "health", "last_switch", "switch_log",
+                           "provider", "lists"}:
                 _bad()
             assignments = raw.get("assignments", {})
             if not isinstance(assignments, dict):

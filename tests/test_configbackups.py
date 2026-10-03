@@ -433,6 +433,14 @@ def test_cached_hosts_switch_log_does_not_prevent_new_import_snapshot(live):
     assert cb.load(Path(result["backup"]).name, live.root)
 
 
+def test_legacy_hosts_keys_do_not_prevent_auto_snapshot(live):
+    state = live.api.hosts._load_state()
+    state.update({"provider": "xbox", "lists": ["openai"]})
+    live.api.hosts._save_state(state)
+    snapshot = live.ops.backup_state(("hosts",), [])
+    assert cb.load(cb.create_snapshot(snapshot, live.root, kind="auto"), live.root)
+
+
 def test_request_language_does_not_leak_into_other_threads(live):
     from concurrent.futures import ThreadPoolExecutor
     with i18n.request_language("en"), ThreadPoolExecutor(max_workers=1) as pool:
