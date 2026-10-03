@@ -24,13 +24,13 @@ import { MODULES, proxyScope, type ModuleDef } from "@/pages/dashboard-modules"
 const PENDING_KEY = "dash.pending"
 type Pending = Record<string, boolean>
 
-// Плитка с иконкой: серая, пока модуль выключен, и зелёная, когда включён.
+// Плитка с иконкой: серая, пока модуль выключен, и цвета акцента, когда включён.
 function IconTile({ on, className, children }: { on: boolean; className?: string; children: ReactNode }) {
   return (
     <div
       className={cn(
         "grid shrink-0 place-items-center rounded-lg transition-colors",
-        on ? "bg-success/15 text-success" : "bg-muted text-muted-foreground",
+        on ? "bg-primary/15 text-primary" : "bg-muted text-muted-foreground",
         className
       )}
     >
@@ -42,7 +42,7 @@ function IconTile({ on, className, children }: { on: boolean; className?: string
 function Hero() {
   const { guard, count } = useStatus()
   return (
-    <Card data-testid="dashboard-hero" data-state={guard ? "on" : "off"} className={cn(guard && "ring-success/30")}>
+    <Card data-testid="dashboard-hero" data-state={guard ? "on" : "off"} className={cn(guard && "ring-primary/40")}>
       <CardContent className="flex-row items-center gap-4">
         <IconTile on={guard} className="size-12 [&_svg]:size-6">
           {guard ? <ShieldCheckIcon /> : <ShieldOffIcon />}
@@ -119,7 +119,7 @@ function ModuleCard({ m }: { m: ModuleDef<object> }) {
       size="sm"
       data-testid={`module-${m.key}`}
       data-state={on ? "on" : "off"}
-      className={cn("relative transition-colors hover:bg-muted/40", on && "ring-success/30")}
+      className={cn("relative transition-colors hover:bg-muted/40", on && "ring-primary/40")}
     >
       <CardContent className="flex-row items-center gap-3">
         <IconTile on={on} className="size-9 [&_svg]:size-[18px]">

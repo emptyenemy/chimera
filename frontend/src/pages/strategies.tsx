@@ -116,7 +116,7 @@ function StatusCard({
   const tip = noAdmin ? t("strat.needAdmin") : !on && !selected ? t("strat.pickFirst") : ""
 
   return (
-    <Card data-testid="strat-status" data-state={st.running ? "on" : "off"} className={cn(st.running && "ring-success/30")}>
+    <Card data-testid="strat-status" data-state={st.running ? "on" : "off"} className={cn(st.running && "ring-primary/40")}>
       <CardContent className="flex flex-col gap-3">
         <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
           <StatusDot tone={st.running ? "on" : lingers ? "warn" : "off"} />
@@ -178,7 +178,7 @@ function StrategyTile({ s, running, selected, onPick }: { s: Strategy; running: 
       data-testid={`strat-tile-${s.id}`}
       data-running={running ? "true" : undefined}
       data-selected={selected ? "true" : undefined}
-      className={cn("h-10 justify-start", running && "ring-1 ring-success/50", selected && "ring-1 ring-foreground/40")}
+      className={cn("h-10 justify-start", running && "ring-1 ring-primary/60", selected && "ring-1 ring-foreground/40")}
       onClick={() => onPick(s.id)}
     >
       {running && <StatusDot tone="on" />}

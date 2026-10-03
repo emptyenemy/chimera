@@ -87,7 +87,7 @@ function Hero({ st, onQr }: { st: TgFull | undefined; onQr: () => void }) {
   const on = !!st.running
   const noLink = !st.link
   return (
-    <Card data-testid="tg-hero" data-state={on ? "on" : "off"} className={on ? "ring-success/30" : undefined}>
+    <Card data-testid="tg-hero" data-state={on ? "on" : "off"} className={on ? "ring-primary/40" : undefined}>
       <CardContent className="flex-row items-center gap-3">
         <StatusDot tone={on ? "on" : "off"} />
         <div className="grow truncate font-semibold" data-testid="tg-status">

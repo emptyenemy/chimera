@@ -355,7 +355,7 @@ async function loadRegistryStatus(): Promise<void> {
 
 // --- отображение -------------------------------------------------------------------------
 
-const DOT_TONE = { success: "on", danger: "err", warning: "warn", muted: "off" } as const
+const DOT_TONE = { success: "ok", danger: "err", warning: "warn", muted: "off" } as const
 const TEXT_TONE: Record<Tone, string> = {
   success: "",
   danger: "text-destructive",

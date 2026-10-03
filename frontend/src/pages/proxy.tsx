@@ -125,7 +125,7 @@ function StatusCard({ st }: { st: ProxyView }) {
   }
 
   return (
-    <Card size="sm" data-testid="proxy-status" data-state={on ? "on" : "off"} className={on ? "ring-success/30" : undefined}>
+    <Card size="sm" data-testid="proxy-status" data-state={on ? "on" : "off"} className={on ? "ring-primary/40" : undefined}>
       <CardContent className="flex flex-row flex-wrap items-center gap-x-4 gap-y-3">
         <StatusDot tone={on ? "on" : "off"} />
         <div className="min-w-0 grow truncate font-semibold" data-testid="proxy-status-title">

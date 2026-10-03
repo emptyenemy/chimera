@@ -191,7 +191,7 @@ function StatusCard({ st }: { st: HostsView }) {
   }
 
   return (
-    <Card size="sm" data-testid="hosts-status" data-state={on ? "on" : "off"} className={on ? "ring-success/30" : undefined}>
+    <Card size="sm" data-testid="hosts-status" data-state={on ? "on" : "off"} className={on ? "ring-primary/40" : undefined}>
       <CardContent className="flex flex-row items-center gap-4">
         <StatusDot tone={on ? "on" : "off"} />
         <div className="min-w-0 grow truncate font-semibold" data-testid="hosts-status-title">
@@ -233,13 +233,13 @@ function PingView({ ping }: { ping: Ping | undefined }) {
   if (ping.ms == null)
     return (
       <>
-        <StatusDot tone="on" />
+        <StatusDot tone="ok" />
         <span className="text-muted-foreground">{t("hosts.ping.up")}</span>
       </>
     )
   return (
     <>
-      <StatusDot tone={ping.ms < 80 ? "on" : ping.ms < 250 ? "warn" : "err"} />
+      <StatusDot tone={ping.ms < 80 ? "ok" : ping.ms < 250 ? "warn" : "err"} />
       <span className="tabular-nums">{t("hosts.ping.ms", { ms: fmtNum(ping.ms) })}</span>
     </>
   )

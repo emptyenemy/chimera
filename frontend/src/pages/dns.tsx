@@ -289,7 +289,7 @@ function PingCell({ result }: { result: PingResult | undefined }) {
     )
   return (
     <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
-      <StatusDot tone={ms < 60 ? "on" : ms < 200 ? "warn" : "err"} />
+      <StatusDot tone={ms < 60 ? "ok" : ms < 200 ? "warn" : "err"} />
       {t("dns.ping.ms", { ms: fmtNum(ms) })}
     </span>
   )
