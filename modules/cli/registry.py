@@ -238,7 +238,7 @@ ACTIONS: tuple[Action, ...] = (
     _a("tg", "stats", "tg_stats",
        examples=("chimera tg stats",)),
     _a("tg", "link", handler="tg_link", methods=("tg_state",),
-       examples=("chimera tg link --show-secrets",)),
+       examples=("chimera tg link",)),
     _a("tg", "config", handler="tg_config", methods=("tg_state", "tg_set_config"), level=APP,
        args=(Arg("host", "str", optional=True, flag=True),
              Arg("port", "int", optional=True, flag=True),

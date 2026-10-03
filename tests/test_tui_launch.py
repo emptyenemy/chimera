@@ -113,11 +113,17 @@ class FakeClient:
 
 
 def test_remote_never_asks_for_secrets_and_masks_them_anyway():
-    client = FakeClient({"link": "vless://secret-uuid@host", "secret": "dd00", "port": 1})
+    client = FakeClient({"link": "vless://secret-uuid@host", "port": 1})
     data = Remote(connect=lambda: client).call("proxy_state", 1)
     assert client.calls == [("proxy_state", (1,), False)]
-    assert "secret-uuid" not in str(data) and "dd00" not in str(data)
+    assert "secret-uuid" not in str(data)
     assert data["port"] == 1
+
+
+def test_remote_keeps_telegram_link_for_connecting():
+    link = "tg://proxy?server=127.0.0.1&port=1443&secret=dd00"
+    data = Remote(connect=lambda: FakeClient({"link": link, "secret": "00"})).call("tg_state")
+    assert data == {"link": link, "secret": "00"}
 
 
 def test_remote_maps_errors():

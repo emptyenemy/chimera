@@ -38,7 +38,7 @@ The output is a single object:
 - `app` — changes the app
 - `system` — changes the system
 
-Levels exist so that remote channels can be restricted. Secrets (the proxy link, the Telegram proxy secret) are hidden in the output; `--show-secrets` shows them.
+Levels exist so that remote channels can be restricted. The proxy link is hidden in the output; `--show-secrets` shows it. The Telegram proxy link and secret are always shown: they are the key to your own local proxy.
 
 ## What is in the interface, which command
 
@@ -788,10 +788,10 @@ chimera tg stats
 
 #### `chimera tg link`
 
-The tg://proxy link to connect with (the secret is hidden without --show-secrets). Level: read-only.
+The tg://proxy link to connect Telegram. Level: read-only.
 
 ```
-chimera tg link --show-secrets
+chimera tg link
 ```
 
 #### `chimera tg config [--host <host>] [--port <port>] [--secret <secret>] [--autostart <autostart>]`

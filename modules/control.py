@@ -5,9 +5,8 @@ Api зовёт start_for(api). Слушает только 127.0.0.1 на слу
 пишутся в файл data/control.json (доступ только текущему пользователю) и убираются при
 выходе; по этому файлу CLI находит запущенную программу.
 
-Через канал доступен не весь Api, а явный набор ALLOWED_METHODS. Секреты (ссылка
-прокси, секрет Telegram-прокси) в ответах скрыты, пока клиент прямо не попросил
-показать. Защита от чужих страниц в браузере: токен в заголовке, проверка Host
+Через канал доступен не весь Api, а явный набор ALLOWED_METHODS. Ссылка прокси
+в ответах скрыта, пока клиент прямо не попросил показать. Защита от чужих страниц в браузере: токен в заголовке, проверка Host
 (подмена DNS) и запрет Origin (запросы из страниц).
 
 Сторожа «клиент пропал — выходим» здесь нет: он есть только у движка browser.
@@ -50,7 +49,10 @@ CONFIG_KEYS_WRITABLE = frozenset({
 })
 
 MAX_BODY = 1 << 20  # запросы CLI — доли килобайта; больше мегабайта — не наш клиент
-SECRET_KEYS = frozenset({"link", "secret"})
+# Скрываем только ссылку прокси: это доступ к чужому серверу. Ссылку и секрет Telegram-прокси
+# спрашивают ровно затем, чтобы вставить в Telegram, — это ключ к своему локальному прокси.
+SECRET_KEYS = frozenset({"link"})
+OPEN_SCHEMES = ("tg://",)
 CONTROL_ACTIONS = frozenset({"quit", "restart"})
 
 
@@ -66,7 +68,8 @@ def _mask(value: str) -> str:
 def redact(obj):
     """Копия структуры, где значения секретных ключей заменены на маску."""
     if isinstance(obj, dict):
-        return {k: (_mask(v) if k in SECRET_KEYS and isinstance(v, str) else redact(v))
+        return {k: (_mask(v) if k in SECRET_KEYS and isinstance(v, str) and not v.startswith(OPEN_SCHEMES)
+                    else redact(v))
                 for k, v in obj.items()}
     if isinstance(obj, list):
         return [redact(v) for v in obj]

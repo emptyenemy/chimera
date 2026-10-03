@@ -340,10 +340,7 @@ def h_tg_link(ctx, act, ns):
     link = (ctx.call("tg_state") or {}).get("link")
     if not link:
         raise CliError.of("cli.err.tg_no_link", "not_found", 1)
-    lines = [link]
-    if not ctx.reveal:
-        lines.append(t("cli.tg.secret_hidden"))
-    return Result({"link": link}, lines)
+    return Result({"link": link}, [link])
 
 
 def h_tg_config(ctx, act, ns):

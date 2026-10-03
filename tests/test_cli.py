@@ -210,7 +210,7 @@ def test_status_human(capsys, running):
     code, out, _ = run(capsys, "status")
     assert code == 0
     assert "1.0.0" in out and "general" in out
-    assert "1.2.3.4" not in out  # секреты скрыты
+    assert "uuid@" not in out  # ссылка прокси скрыта
 
 
 def test_status_json_has_stable_keys(capsys, running):
@@ -221,12 +221,12 @@ def test_status_json_has_stable_keys(capsys, running):
     assert d["winws"]["running"] is True and d["winws"]["current"] == "general"
     assert d["proxy"]["running"] is False and d["tg"]["running"] is True
     assert d["hosts"]["applied"] is True
-    assert "1.2.3.4" not in json.dumps(data)
+    assert "uuid@" not in json.dumps(data)
 
 
 def test_show_secrets_reveals_link(capsys, running):
     code, data, _ = run_json(capsys, "status", "--show-secrets")
-    assert code == 0 and "1.2.3.4" in json.dumps(data)
+    assert code == 0 and "uuid@1.2.3.4" in json.dumps(data)
 
 
 def test_json_returns_what_the_api_returned(capsys, running):
@@ -340,16 +340,16 @@ def test_tg_commands(capsys, running):
     assert ("tg_start", []) in api.calls and api.called("tg_regen_secret") == [[]]
 
 
-def test_tg_state_masks_link_by_default(capsys, running):
+def test_tg_state_shows_link_and_secret(capsys, running):
     code, out, _ = run(capsys, "tg", "state")
-    assert code == 0 and "abcdef" not in out
+    assert code == 0 and "ddabcdef" in out
 
 
-def test_tg_link_masked_and_revealed(capsys, running):
-    _, out, _ = run(capsys, "tg", "link")
-    assert "abcdef" not in out and "--show-secrets" in out
-    _, out2, _ = run(capsys, "tg", "link", "--show-secrets")
-    assert "ddabcdef" in out2
+def test_tg_link_is_shown_in_full(capsys, running):
+    code, out, _ = run(capsys, "tg", "link")
+    assert code == 0 and out.strip() == "tg://proxy?server=1.2.3.4&port=1443&secret=ddabcdef"
+    code, data, _ = run_json(capsys, "tg", "link")
+    assert data["data"]["link"].endswith("secret=ddabcdef")
 
 
 def test_tg_config_merges_with_current_settings(capsys, running):

@@ -431,13 +431,13 @@ def test_dns_adapter_provider_confirmation_keep_and_dhcp_reset():
     drive(scenario)
 
 
-def test_telegram_secret_is_hidden_and_start_collects_stats():
+def test_telegram_link_is_shown_and_start_collects_stats():
     remote = FakeRemote()
-    remote.tg['link'] = 'tg://proxy?secret=' + SECRET
+    remote.tg['link'] = 'tg://proxy?server=127.0.0.1&port=1443&secret=' + SECRET
     async def scenario(app, pilot, remote):
         await online(pilot, app)
         await pilot.press("7")
-        assert SECRET not in ' '.join(str(widget.render()) for widget in app.query(Static))
+        assert remote.tg['link'] in ' '.join(str(widget.render()) for widget in app.query(Static))
         await pilot.press("1")
         await until(pilot, lambda: 'tg_start' in remote.methods() and 'tg_stats' in remote.methods())
     drive(scenario, remote)

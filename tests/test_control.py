@@ -130,13 +130,23 @@ def test_private_method_name_is_forbidden(server):
 def test_secrets_are_masked_unless_revealed(server):
     srv, _ = server
     _, masked = _request(srv, "POST", "/api", {"method": "proxy_state", "args": []})
-    assert "1.2.3.4" not in json.dumps(masked) and "abcdef" not in json.dumps(masked)
+    assert "1.2.3.4" not in json.dumps(masked)
     assert masked["data"]["link"].startswith("vless://")  # схема видна, содержимое скрыто
     assert masked["data"]["running"] is True
+    assert masked["data"]["secret"] == "abcdef"  # секрет Telegram-прокси не скрываем
 
     _, raw = _request(srv, "POST", "/api", {"method": "proxy_state", "args": [], "reveal": True})
     assert raw["data"]["link"] == "vless://uuid@1.2.3.4:443?x=1"
     assert raw["data"]["secret"] == "abcdef"
+
+
+def test_redact_hides_proxy_link_but_keeps_telegram_link():
+    data = control.redact({"proxy": {"link": "vless://uuid@1.2.3.4:443"},
+                           "tg": {"link": "tg://proxy?server=127.0.0.1&port=1443&secret=ddabcdef", "secret": "abcdef"},
+                           "items": [{"link": "trojan://pass@host:443"}]})
+    assert "uuid" not in data["proxy"]["link"] and data["proxy"]["link"].startswith("vless://")
+    assert data["tg"] == {"link": "tg://proxy?server=127.0.0.1&port=1443&secret=ddabcdef", "secret": "abcdef"}
+    assert "pass" not in data["items"][0]["link"]
 
 
 def test_config_set_only_for_safe_keys(server):

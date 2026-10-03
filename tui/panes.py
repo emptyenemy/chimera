@@ -408,8 +408,7 @@ class TgPane(Pane):
 
     def render_state(self):
         state = self.app.data('tg') or {}
-        self.summary(tag(state.get('running')) + '\n' + _tr('tui.panes.tg_proxy_server_port_secret_hidden',
-                                                           p0=state.get('host', '—'), p1=state.get('port', '—')))
+        self.summary(tag(state.get('running')) + '\n' + (state.get('link') or f"{state.get('host', '—')}:{state.get('port', '—')}"))
         stats = self.app.data('tg_stats')
         if stats and state.get('running'):
             from modules.cli.commands import render
