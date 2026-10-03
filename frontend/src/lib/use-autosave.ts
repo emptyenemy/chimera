@@ -37,7 +37,12 @@ export function useDebounced(fn: () => void, delay = 500) {
   useEffect(() => {
     latest.current = fn
   })
-  useEffect(() => () => clearTimeout(timer.current), [])
+  useEffect(() => () => {
+    if (!timer.current) return
+    clearTimeout(timer.current)
+    timer.current = 0
+    latest.current()
+  }, [])
   const schedule = useCallback(() => {
     clearTimeout(timer.current)
     timer.current = window.setTimeout(() => {

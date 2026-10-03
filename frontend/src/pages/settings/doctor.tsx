@@ -74,10 +74,11 @@ export function DoctorCard() {
       <CardContent>
         <FieldGroup>
           <SettingRow
+            responsive
             title={t("settings.doctor.label")}
             hint={s ? t("settings.doctor.summary", { total: s.ok + s.warn + s.fail, warn: s.warn, fail: s.fail }) : t("settings.doctor.hint")}
           >
-            <div className="flex gap-2">
+            <div className="flex max-w-full flex-wrap gap-2">
               <Button variant="outline" size="sm" data-testid="settings-doctor-copy" disabled={!doctor || copying} onClick={() => void copy()}>
                 {copying ? <Spinner data-icon="inline-start" /> : <ClipboardCopyIcon data-icon="inline-start" />}
                 {t("settings.doctor.copy")}

@@ -2,7 +2,7 @@
    Чтобы добавить страницу: компонент в pages/, строка сюда, строки в locales/ru.json
    (см. docs/FRONTEND.md). */
 
-import type { ComponentType } from "react"
+import { lazy, type ComponentType } from "react"
 import {
   GlobeIcon,
   LayoutDashboardIcon,
@@ -18,14 +18,14 @@ import {
 
 import type { ModuleKey } from "@/lib/types"
 import { DashboardPage } from "@/pages/dashboard"
-import { SettingsPage } from "@/pages/settings"
-import { HostsPage } from "@/pages/hosts"
-import { ListsPage } from "@/pages/lists"
-import { ProxyPage } from "@/pages/proxy"
-import { TelegramPage } from "@/pages/telegram"
-import { ChecksPage } from "@/pages/checks"
-import { DnsPage } from "@/pages/dns"
-import { StrategiesPage } from "@/pages/strategies"
+const SettingsPage = lazy(() => import("@/pages/settings").then((module) => ({ default: module.SettingsPage })))
+const HostsPage = lazy(() => import("@/pages/hosts").then((module) => ({ default: module.HostsPage })))
+const ListsPage = lazy(() => import("@/pages/lists").then((module) => ({ default: module.ListsPage })))
+const ProxyPage = lazy(() => import("@/pages/proxy").then((module) => ({ default: module.ProxyPage })))
+const TelegramPage = lazy(() => import("@/pages/telegram").then((module) => ({ default: module.TelegramPage })))
+const ChecksPage = lazy(() => import("@/pages/checks").then((module) => ({ default: module.ChecksPage })))
+const DnsPage = lazy(() => import("@/pages/dns").then((module) => ({ default: module.DnsPage })))
+const StrategiesPage = lazy(() => import("@/pages/strategies").then((module) => ({ default: module.StrategiesPage })))
 
 export interface PageDef {
   id: string

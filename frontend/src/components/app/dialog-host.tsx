@@ -86,6 +86,7 @@ function PromptView({ req }: { req: Prompt }) {
                 className={opts.mono ? "font-mono" : undefined}
                 value={value}
                 placeholder={opts.placeholder}
+                aria-label={opts.label ? undefined : opts.title}
                 onChange={(e) => setValue(e.target.value)}
               />
             </Field>
@@ -108,5 +109,5 @@ function PromptView({ req }: { req: Prompt }) {
 export function DialogHost() {
   const req = useDialogRequest()
   if (!req) return null
-  return req.kind === "confirm" ? <ConfirmView key={req.opts.title} req={req} /> : <PromptView key={req.opts.title} req={req} />
+  return req.kind === "confirm" ? <ConfirmView key={req.id} req={req} /> : <PromptView key={req.id} req={req} />
 }

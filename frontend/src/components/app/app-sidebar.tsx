@@ -34,7 +34,7 @@ function ElevateButton() {
   const [pending, setPending] = useState(false)
   return <Button variant="ghost" size="sm" data-testid="sidebar-elevate"
     title={t("startup.elevate")} disabled={pending}
-    className="h-auto justify-start px-1.5 py-1 text-xs text-amber-500 group-data-[collapsible=icon]:px-0"
+    className="h-auto justify-start px-1.5 py-1 text-xs text-warning group-data-[collapsible=icon]:px-0"
     onClick={() => {
       setPending(true)
       void api("app_elevate").catch((error: Error) => notify.error(error.message)).finally(() => setPending(false))
@@ -61,6 +61,7 @@ function NavDot({ module }: { module: ModuleKey }) {
 function NavItem({ page, active }: { page: PageDef; active: boolean }) {
   const title = t(page.titleKey)
   const Icon = page.icon
+  const { isMobile, setOpenMobile } = useSidebar()
   return (
     <SidebarMenuItem>
       <SidebarMenuButton
@@ -68,7 +69,10 @@ function NavItem({ page, active }: { page: PageDef; active: boolean }) {
         isActive={active}
         aria-current={active ? "page" : undefined}
         data-testid={`nav-${page.id}`}
-        onClick={() => router.go(page.id)}
+        onClick={() => {
+          router.go(page.id)
+          if (isMobile) setOpenMobile(false)
+        }}
       >
         <Icon />
         <span>{title}</span>
@@ -79,10 +83,10 @@ function NavItem({ page, active }: { page: PageDef; active: boolean }) {
 }
 
 function Header() {
-  const { state, toggleSidebar } = useSidebar()
+  const { state, isMobile, toggleSidebar } = useSidebar()
   const app = useStore<AppInfo>("app")
   const upd = useStore<SelfUpdateState>("selfupdate")
-  const collapsed = state === "collapsed"
+  const collapsed = state === "collapsed" && !isMobile
   const hasUpdate = !!upd?.update
   const updateTip = hasUpdate ? t("sidebar.update", { version: fmtVersion(upd?.latest) }) : ""
 

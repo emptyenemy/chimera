@@ -24,9 +24,12 @@ async function boot(): Promise<void> {
   let info: AppInfo = { admin: true, version: "" }
   try {
     await initBridge()
-    await initLanguage()
-    await loadSnapshot().catch((e) => console.error(e))
-    info = await api<AppInfo>("app_info").catch(() => info)
+    const [, , appInfo] = await Promise.all([
+      initLanguage(),
+      loadSnapshot().catch((e) => console.error(e)),
+      api<AppInfo>("app_info").catch(() => info),
+    ])
+    info = appInfo
   } catch (e) {
     console.error(e)
     failure = e instanceof Error ? e.message : String(e)

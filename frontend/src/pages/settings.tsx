@@ -52,7 +52,7 @@ export function SettingsPage() {
   return (
     <Page id="settings" title={t("nav.settings")}>
       <Tabs value={tab} onValueChange={pick} className="gap-4">
-        <TabsList data-testid="settings-tabs">
+        <TabsList data-testid="settings-tabs" className="h-auto max-w-full flex-wrap">
           {TABS.map((id) => (
             <TabsTrigger key={id} value={id} data-testid={`settings-tab-${id}`}>
               {t(`settings.tab.${id}`)}

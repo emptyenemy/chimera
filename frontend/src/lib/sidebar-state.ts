@@ -16,7 +16,13 @@ export interface SidebarPrefs {
 
 export function loadSidebar(): SidebarPrefs {
   try {
-    return JSON.parse(localStorage.getItem(KEY) || "{}") || {}
+    const value: unknown = JSON.parse(localStorage.getItem(KEY) || "{}")
+    if (!value || typeof value !== "object" || Array.isArray(value)) return {}
+    const raw = value as Record<string, unknown>
+    const prefs: SidebarPrefs = {}
+    if (typeof raw.collapsed === "boolean") prefs.collapsed = raw.collapsed
+    if (raw.width === null || (typeof raw.width === "number" && Number.isFinite(raw.width))) prefs.width = raw.width
+    return prefs
   } catch {
     return {}
   }

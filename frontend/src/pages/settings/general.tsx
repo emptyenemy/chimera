@@ -27,9 +27,11 @@ import {
 } from "@/pages/settings/state"
 
 /** Строка настройки: слева название и пояснение, справа элемент управления. */
-export function SettingRow({ id, title, hint, children }: { id?: string; title: string; hint?: string; children: ReactNode }) {
+export function SettingRow({ id, title, hint, children, responsive = false }: {
+  id?: string; title: string; hint?: string; children: ReactNode; responsive?: boolean
+}) {
   return (
-    <Field orientation="horizontal">
+    <Field orientation={responsive ? "responsive" : "horizontal"}>
       <FieldContent>
         <FieldLabel htmlFor={id}>{title}</FieldLabel>
         {hint && <FieldDescription>{hint}</FieldDescription>}
@@ -57,10 +59,10 @@ export function LanguageCard() {
       <CardHeader><CardTitle>{t("settings.lang.title")}</CardTitle></CardHeader>
       <CardContent>
         <FieldGroup>
-          <SettingRow title={t("settings.lang.title")} hint={t("settings.lang.hint")}>
+          <SettingRow responsive title={t("settings.lang.title")} hint={t("settings.lang.hint")}>
             <ToggleGroup value={[state.setting]} disabled={state.pending} onValueChange={(v) => {
               if (v[0]) void setLanguageSetting(v[0] as typeof state.setting)
-            }} variant="outline" size="sm" aria-label={t("settings.lang.title")}>
+            }} variant="outline" size="sm" className="max-w-full flex-wrap justify-start" aria-label={t("settings.lang.title")}>
               {LANGUAGE_SETTINGS.map((mode) => (
                 <ToggleGroupItem key={mode} value={mode} data-testid={`settings-lang-${mode}`}>
                   {t(`settings.lang.${mode}`)}
@@ -129,13 +131,14 @@ export function GeneralCard() {
                 onCheckedChange={(v) => void setConfig("auto_elevate", v)}
               />
             </SettingRow>
-            <SettingRow title={t("settings.engine.title")} hint={t("settings.engine.hint")}>
+            <SettingRow responsive title={t("settings.engine.title")} hint={t("settings.engine.hint")}>
               <ToggleGroup
                 variant="outline"
                 value={[config.ui_backend ?? "pyside6"]}
                 disabled={!!pending.ui_backend}
                 onValueChange={(v) => v[0] && void setConfig("ui_backend", v[0])}
                 data-testid="settings-engine"
+                className="max-w-full flex-wrap justify-start"
               >
                 {ENGINES.filter((en) => !app?.ui_backends || app.ui_backends.includes(en.id)).map((en) => (
                   <ToggleGroupItem key={en.id} value={en.id} data-testid={`settings-engine-${en.id}`}>
@@ -161,14 +164,15 @@ interface DiscordReply {
 export function MaintenanceCard() {
   const [busy, setBusy] = useState(false)
   const clear = async () => {
-    const ok = await confirmDialog({
-      title: t("settings.discord.confirmTitle"),
-      description: t("settings.discord.confirmDesc"),
-      confirmText: t("settings.discord.confirm"),
-    })
-    if (!ok) return
+    if (busy) return
     setBusy(true)
     try {
+      const ok = await confirmDialog({
+        title: t("settings.discord.confirmTitle"),
+        description: t("settings.discord.confirmDesc"),
+        confirmText: t("settings.discord.confirm"),
+      })
+      if (!ok) return
       const r = await api<DiscordReply>("discord_clear_cache")
       if (!r) return
       if (!r.cleared?.length) notify.info(t("settings.discord.nothing"), r.note || t("settings.discord.notFound"))
@@ -186,7 +190,7 @@ export function MaintenanceCard() {
       </CardHeader>
       <CardContent>
         <FieldGroup>
-          <SettingRow title={t("settings.discord.title")} hint={t("settings.discord.hint")}>
+          <SettingRow responsive title={t("settings.discord.title")} hint={t("settings.discord.hint")}>
             <Button variant="outline" size="sm" data-testid="settings-discord-cache" disabled={busy} onClick={() => void clear()}>
               {busy ? <Spinner data-icon="inline-start" /> : <Trash2Icon data-icon="inline-start" />}
               {t("settings.discord.button")}

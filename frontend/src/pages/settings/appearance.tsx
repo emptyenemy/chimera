@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import {
   CircleAlertIcon,
   PaletteIcon,
@@ -40,6 +40,7 @@ import { fmtNum } from "@/lib/format"
 import { notify } from "@/lib/notify"
 import {
   applyAppearance,
+  discardAppearancePreview,
   previewAppearance,
   refreshAppearanceCatalog,
   THEME_SETTINGS,
@@ -48,6 +49,41 @@ import {
   type ThemeSetting,
 } from "@/lib/theme"
 
+function HueField({ disabled }: { disabled: boolean }) {
+  const state = useAppearance()
+  const [draft, setDraft] = useState<number | null>(null)
+  const hue = draft ?? state?.hue ?? 0
+  return (
+    <Field>
+      <FieldLabel htmlFor="appearance-hue">
+        {t("settings.appearance.hue")} · {hue}°
+      </FieldLabel>
+      <Slider
+        id="appearance-hue"
+        aria-label={t("settings.appearance.hue")}
+        value={[hue]}
+        min={0}
+        max={359}
+        step={1}
+        disabled={disabled}
+        data-testid="appearance-hue"
+        onPointerCancel={() => {
+          void discardAppearancePreview().finally(() => setDraft(null))
+        }}
+        onValueChange={(value) => {
+          const next = Array.isArray(value) ? value[0] : value
+          setDraft(next)
+          void previewAppearance({ hue: next }).catch(() => {})
+        }}
+        onValueCommitted={(value) => {
+          const next = Array.isArray(value) ? value[0] : value
+          void applyAppearance({ hue: next }).finally(() => setDraft(null))
+        }}
+      />
+    </Field>
+  )
+}
+
 export function AppearanceCard() {
   const state = useAppearance()
   const pending = useAppearancePending()
@@ -55,6 +91,7 @@ export function AppearanceCard() {
   const [name, setName] = useState("")
   const [refreshing, setRefreshing] = useState(false)
   const [invalid, setInvalid] = useState<string | null>(null)
+  useEffect(() => () => { void discardAppearancePreview() }, [])
   const appearance = state?.settings.appearance
   const custom = state?.settings.appearance_custom
   const windows = appearance?.accent_source === "windows"
@@ -175,6 +212,7 @@ export function AppearanceCard() {
                 value={[state.settings.theme]}
                 disabled={busy}
                 data-testid="settings-theme-group"
+                aria-label={t("settings.theme.label")}
                 onValueChange={(values) => {
                   if (values[0])
                     void applyAppearance({ theme: values[0] as ThemeSetting })
@@ -227,7 +265,10 @@ export function AppearanceCard() {
                 variant="outline"
                 className="flex-wrap justify-start"
                 disabled={busy || windows}
-                value={[]}
+                aria-label={t("settings.appearance.accent")}
+                value={appearance.accent_source === "custom"
+                  ? state.presets.filter((preset) => Math.min(Math.abs(preset.hue - state.hue), 360 - Math.abs(preset.hue - state.hue)) <= 1).map((preset) => preset.id)
+                  : []}
                 onValueChange={(values) => {
                   const preset = state.presets.find(
                     (item) => item.id === values[0]
@@ -255,29 +296,7 @@ export function AppearanceCard() {
                 {t("settings.appearance.accentHint")}
               </FieldDescription>
             </Field>
-            <Field>
-              <FieldLabel htmlFor="appearance-hue">
-                {t("settings.appearance.hue")} · {state.hue}°
-              </FieldLabel>
-              <Slider
-                id="appearance-hue"
-                aria-label={t("settings.appearance.hue")}
-                value={[state.hue]}
-                min={0}
-                max={359}
-                step={1}
-                disabled={busy || windows}
-                data-testid="appearance-hue"
-                onValueChange={(value) => {
-                  const hue = Array.isArray(value) ? value[0] : value
-                  void previewAppearance({ hue }).catch(() => {})
-                }}
-                onValueCommitted={(value) => {
-                  const hue = Array.isArray(value) ? value[0] : value
-                  void applyAppearance({ hue })
-                }}
-              />
-            </Field>
+            <HueField disabled={busy || windows} />
             <Field data-invalid={!!invalid}>
               <FieldLabel htmlFor="appearance-color">
                 {t("settings.appearance.customColor")}
@@ -370,6 +389,8 @@ export function AppearanceCard() {
               <FieldLabel>{t("settings.appearance.radius")}</FieldLabel>
               <ToggleGroup
                 value={[appearance.radius]}
+                className="max-w-full flex-wrap justify-start"
+                aria-label={t("settings.appearance.radius")}
                 variant="outline"
                 disabled={busy}
                 onValueChange={(values) => {
@@ -396,6 +417,7 @@ export function AppearanceCard() {
               <FieldLabel>{t("settings.appearance.density")}</FieldLabel>
               <ToggleGroup
                 value={[appearance.density]}
+                aria-label={t("settings.appearance.density")}
                 variant="outline"
                 disabled={busy}
                 onValueChange={(values) => {

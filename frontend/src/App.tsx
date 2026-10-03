@@ -1,5 +1,8 @@
-import { useEffect, useState, type CSSProperties } from "react"
+import { Suspense, useEffect, useState, type CSSProperties } from "react"
 
+import { Page } from "@/components/app/page"
+import { Skeleton } from "@/components/ui/skeleton"
+import { t } from "@/lib/i18n"
 import { TrialBanner } from "@/components/app/trial"
 import { AppSidebar } from "@/components/app/app-sidebar"
 import { DialogHost } from "@/components/app/dialog-host"
@@ -62,7 +65,14 @@ export default function App() {
           <SidebarInset id="main" data-testid="main" className="h-svh overflow-y-auto overflow-x-hidden">
             <TrialBanner />
             <FieldSet disabled={trialPending && page !== "dashboard"} className="contents">
-              <Current />
+              <Suspense fallback={
+                <Page id={page} title={t(pageById(page).titleKey)}>
+                  <Skeleton className="h-32" />
+                  <Skeleton className="h-64" />
+                </Page>
+              }>
+                <Current />
+              </Suspense>
             </FieldSet>
           </SidebarInset>
         </SidebarProvider>

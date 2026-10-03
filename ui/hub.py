@@ -79,7 +79,8 @@ class StateHub:
             if src:
                 # фронт мог отбросить пуш, пока ждал ответ команды (оптимистичная
                 # правка) — поэтому следующий снимок уходит в любом случае
-                src.force = True
+                with self._lock:
+                    src.force = True
                 src.wake.set()
 
     # --- цикл опроса --------------------------------------------------------
@@ -89,14 +90,17 @@ class StateHub:
 
     def _loop(self, src):
         while not self._stop.is_set():
+            src.wake.clear()
             if self._active(src):
                 self._poll(src)
                 src.wake.wait(src.interval)
             else:
                 src.wake.wait()  # спим, пока вкладку не откроют
-            src.wake.clear()
 
     def _poll(self, src):
+        with self._lock:
+            force = src.force
+            src.force = False
         try:
             res = src.fn()
         except Exception as e:  # модуль упал — фронт увидит ошибку, хаб живёт дальше
@@ -109,8 +113,9 @@ class StateHub:
         except (TypeError, ValueError):
             as_json = None
         with self._lock:
-            changed = as_json is None or as_json != src.last_json or src.force
-            src.force = False
+            if self._stop.is_set() or src.force:
+                return  # команда во время опроса: дождёмся нового снимка
+            changed = as_json is None or as_json != src.last_json or force
             src.last_json = as_json
             if data is not None:
                 src.data = data
@@ -120,4 +125,5 @@ class StateHub:
             try:
                 self._push(src.key, payload)
             except Exception:
-                pass  # окно закрывается/мост не готов — следующий опрос дошлёт
+                with self._lock:
+                    src.force = True  # следующий опрос повторит недоставленный снимок

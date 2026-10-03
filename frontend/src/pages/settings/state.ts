@@ -6,7 +6,7 @@ import { api } from "@/lib/bridge"
 import { fmtNum } from "@/lib/format"
 import { t } from "@/lib/i18n"
 import { notify } from "@/lib/notify"
-import { store, useStore } from "@/lib/store"
+import { optimistic, store, useStore } from "@/lib/store"
 
 /** config.json: то, что правится на этой странице. Режимы ui/tui/service — инструмент
     разработчика и остаются в файле. */
@@ -47,17 +47,27 @@ function setPending(key: string, on: boolean): void {
 
 const message = (e: unknown) => (e instanceof Error ? e.message : String(e))
 
+let configGeneration = 0
 export async function refreshConfig(): Promise<void> {
+  if (store.pending(CONFIG_KEY)) return
+  const generation = ++configGeneration
   try {
-    store.set(CONFIG_KEY, await api<AppConfig>("config_read"))
+    const config = await api<AppConfig>("config_read")
+    if (generation !== configGeneration || store.pending(CONFIG_KEY)) return
+    store.set(CONFIG_KEY, config)
   } catch (e) {
-    notify.error(t("settings.config.readFailed"), message(e))
+    if (generation === configGeneration) notify.error(t("settings.config.readFailed"), message(e))
   }
 }
 
+let autostartGeneration = 0
 export async function refreshAutostart(): Promise<void> {
+  if (store.get<Record<string, boolean>>(PENDING_KEY)?.autostart) return
+  const generation = ++autostartGeneration
   try {
-    store.set(AUTOSTART_KEY, await api<AutostartState>("autostart_get"))
+    const state = await api<AutostartState>("autostart_get")
+    if (generation === autostartGeneration && !store.get<Record<string, boolean>>(PENDING_KEY)?.autostart)
+      store.set(AUTOSTART_KEY, state)
   } catch {
     /* тумблер останется как был */
   }
@@ -66,24 +76,25 @@ export async function refreshAutostart(): Promise<void> {
 /** Оптимистичная запись ключа config.json: сразу в стор, при ошибке откат и тост. */
 export async function setConfig(key: keyof AppConfig, value: string | boolean): Promise<void> {
   const cur = store.get<AppConfig>(CONFIG_KEY)
-  if (!cur || cur[key] === value) return
-  const prev = cur[key]
-  store.set(CONFIG_KEY, { ...cur, [key]: value })
+  if (!cur || cur[key] === value || store.get<Record<string, boolean>>(PENDING_KEY)?.[key]) return
+  ++configGeneration
   setPending(key, true)
   try {
-    const res = await api<AppConfig>("config_set", key, value)
-    if (res) store.set(CONFIG_KEY, res)
-  } catch (e) {
-    store.set(CONFIG_KEY, { ...store.get<AppConfig>(CONFIG_KEY), [key]: prev })
-    notify.error(t("settings.saveFailed"), message(e))
+    await optimistic(CONFIG_KEY, { [key]: value }, () => api<AppConfig>("config_set", key, value), {
+      errorTitle: t("settings.saveFailed"),
+    })
+  } catch {
+    /* откат и тост уже выполнены */
   } finally {
+    ++configGeneration
     setPending(key, false)
   }
 }
 
 export async function toggleAutostart(target: boolean): Promise<void> {
   const cur = store.get<AutostartState>(AUTOSTART_KEY)
-  if (!cur?.supported) return
+  if (!cur?.supported || cur.enabled === target || store.get<Record<string, boolean>>(PENDING_KEY)?.autostart) return
+  ++autostartGeneration
   setPending("autostart", true)
   store.set(AUTOSTART_KEY, { ...cur, enabled: target })
   try {
@@ -92,9 +103,10 @@ export async function toggleAutostart(target: boolean): Promise<void> {
     store.set(AUTOSTART_KEY, next)
     notify.success(t(next.enabled ? "settings.autostart.on" : "settings.autostart.off"))
   } catch (e) {
-    store.set(AUTOSTART_KEY, { ...store.get<AutostartState>(AUTOSTART_KEY)!, enabled: !target })
+    store.set(AUTOSTART_KEY, { ...store.get<AutostartState>(AUTOSTART_KEY)!, enabled: cur.enabled })
     notify.error(t("settings.autostart.failed"), message(e))
   } finally {
+    ++autostartGeneration
     setPending("autostart", false)
   }
 }

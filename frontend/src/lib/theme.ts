@@ -19,6 +19,15 @@ let pending = false
 let previewSequence = 0
 let previewing = false
 let initialized = false
+let previewRunning = false
+let previewFrame = 0
+interface PreviewRequest {
+  patch: AppearancePatch
+  sequence: number
+  resolve: (state: AppearanceState | null) => void
+  reject: (error: unknown) => void
+}
+let queuedPreview: PreviewRequest | null = null
 function emit() {
   for (const fn of listeners) fn()
 }
@@ -29,10 +38,14 @@ function apply(next: AppearanceState) {
   root.dataset.palette = next.palette
   root.dataset.density = next.settings.appearance.density
   root.style.colorScheme = next.mode
-  for (const [key, value] of Object.entries(next.styles))
-    root.style.setProperty(key, value)
-  state = next
-  emit()
+  for (const [key, value] of Object.entries(next.styles)) {
+    if (state?.styles[key] !== value || root.style.getPropertyValue(key) !== value)
+      root.style.setProperty(key, value)
+  }
+  if (JSON.stringify(state) !== JSON.stringify(next)) {
+    state = next
+    emit()
+  }
 }
 if (state) apply(state)
 
@@ -75,22 +88,67 @@ export async function initTheme(): Promise<void> {
   }
 }
 
-export async function previewAppearance(
+function clearPreview() {
+  ++previewSequence
+  cancelAnimationFrame(previewFrame)
+  previewFrame = 0
+  queuedPreview?.resolve(null)
+  queuedPreview = null
+  previewing = false
+}
+
+function schedulePreview() {
+  if (previewRunning || previewFrame || !queuedPreview) return
+  previewFrame = requestAnimationFrame(() => {
+    previewFrame = 0
+    void runPreview()
+  })
+}
+
+async function runPreview() {
+  const request = queuedPreview
+  if (!request || pending) return
+  queuedPreview = null
+  previewRunning = true
+  try {
+    const next = await api<AppearanceState>("appearance_preview", request.patch)
+    if (request.sequence !== previewSequence || pending) request.resolve(null)
+    else {
+      apply(next)
+      request.resolve(next)
+    }
+  } catch (error) {
+    if (request.sequence !== previewSequence || pending) request.resolve(null)
+    else request.reject(error)
+  } finally {
+    previewRunning = false
+    schedulePreview()
+  }
+}
+
+export function previewAppearance(
   patch: AppearancePatch
 ): Promise<AppearanceState | null> {
-  const sequence = ++previewSequence
-  const next = await api<AppearanceState>("appearance_preview", patch)
-  if (sequence !== previewSequence || pending) return null
+  if (pending) return Promise.resolve(null)
   previewing = true
-  apply(next)
-  return next
+  const sequence = ++previewSequence
+  queuedPreview?.resolve(null)
+  return new Promise((resolve, reject) => {
+    queuedPreview = { patch, sequence, resolve, reject }
+    schedulePreview()
+  })
+}
+
+export async function discardAppearancePreview(): Promise<void> {
+  const restore = previewing
+  clearPreview()
+  if (restore) await refresh()
 }
 
 export async function applyAppearance(patch: AppearancePatch): Promise<void> {
   if (pending) return
   pending = true
-  previewing = false
-  ++previewSequence
+  clearPreview()
   emit()
   try {
     apply(await api<AppearanceState>("appearance_apply", patch))

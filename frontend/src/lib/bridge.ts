@@ -54,24 +54,42 @@ function initQtBridge(): Promise<void> {
   return new Promise((resolve, reject) => {
     if (!window.QWebChannel) return reject(new Error("qwebchannel.js не загружен"))
     new window.QWebChannel(window.qt!.webChannelTransport, (channel) => {
-      const bridge = channel.objects.bridge
-      const pending = new Map<string, (json: string) => void>()
-      let seq = 0
-      bridge.resolved.connect((id, resultJson) => {
-        const done = pending.get(id)
-        if (done) {
-          pending.delete(id)
-          done(resultJson)
-        }
-      })
-      bridge.pushed.connect((fn, payloadJson) => deliverPush(fn, JSON.parse(payloadJson)))
-      Bridge.call = (method, argsJson) =>
-        new Promise((done) => {
-          const id = String(++seq)
-          pending.set(id, done)
-          bridge.call(id, method, argsJson)
+      try {
+        const bridge = channel.objects.bridge
+        if (!bridge) throw new Error(t("bridge.notReady"))
+        const pending = new Map<string, (json: string) => void>()
+        let seq = 0
+        bridge.resolved.connect((id, resultJson) => {
+          const done = pending.get(id)
+          if (done) {
+            pending.delete(id)
+            done(resultJson)
+          }
         })
-      resolve()
+        bridge.pushed.connect((fn, payloadJson) => {
+          let payload: unknown
+          try {
+            payload = JSON.parse(payloadJson)
+          } catch {
+            return
+          }
+          deliverPush(fn, payload)
+        })
+        Bridge.call = (method, argsJson) =>
+          new Promise((done, fail) => {
+            const id = String(++seq)
+            pending.set(id, done)
+            try {
+              bridge.call(id, method, argsJson)
+            } catch (error) {
+              pending.delete(id)
+              fail(error)
+            }
+          })
+        resolve()
+      } catch (error) {
+        reject(error)
+      }
     })
   })
 }

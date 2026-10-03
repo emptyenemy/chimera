@@ -47,6 +47,7 @@ import {
   isDns,
   isUnavailable,
   loadOverview,
+  saveAssignments,
   toneClass,
   type Assignments,
   type HostsView,
@@ -89,24 +90,24 @@ function listOwner(name: string, assignments: Assignments): string | null {
 // --- привязки ----------------------------------------------------------------------
 
 // Привязка списка к dns-провайдеру: список у одного провайдера за раз, применяется сразу.
-function toggleListAssignment(st: HostsView, provider: string, name: string, checked: boolean) {
-  const mapping: Assignments = {}
-  for (const [pid, v] of Object.entries(st.assignments ?? {})) mapping[pid] = Array.isArray(v) ? v.filter((x) => x !== name) : v
-  if (checked) mapping[provider] = [...dnsAssigned(mapping, provider), name]
-  for (const pid of Object.keys(mapping)) if (Array.isArray(mapping[pid]) && !(mapping[pid] as string[]).length) delete mapping[pid]
-  return optimistic("hosts", { assignments: mapping }, () => api("hosts_set_assignments", mapping), {
-    errorTitle: t("hosts.assign.failed"),
-  }).catch(() => {})
+function toggleListAssignment(provider: string, name: string, checked: boolean) {
+  return saveAssignments((assignments) => {
+    const mapping: Assignments = {}
+    for (const [pid, v] of Object.entries(assignments)) mapping[pid] = Array.isArray(v) ? v.filter((x) => x !== name) : v
+    if (checked) mapping[provider] = [...dnsAssigned(mapping, provider), name]
+    for (const pid of Object.keys(mapping)) if (Array.isArray(mapping[pid]) && !(mapping[pid] as string[]).length) delete mapping[pid]
+    return mapping
+  }, t("hosts.assign.failed"))
 }
 
 // static ничего не выбирает списками — привязка это просто «включён/нет» (true в assignments)
-function toggleStaticAssignment(st: HostsView, id: string, checked: boolean) {
-  const mapping: Assignments = { ...(st.assignments ?? {}) }
-  if (checked) mapping[id] = true
-  else delete mapping[id]
-  return optimistic("hosts", { assignments: mapping }, () => api("hosts_set_assignments", mapping), {
-    errorTitle: t("hosts.static.failed"),
-  }).catch(() => {})
+function toggleStaticAssignment(id: string, checked: boolean) {
+  return saveAssignments((assignments) => {
+    const mapping: Assignments = { ...assignments }
+    if (checked) mapping[id] = true
+    else delete mapping[id]
+    return mapping
+  }, t("hosts.static.failed"))
 }
 
 async function deleteProvider(p: Provider): Promise<boolean> {
@@ -418,7 +419,7 @@ function SitesCard({ overview, st, provider }: { overview: Overview | undefined;
               id="hosts-static-switch"
               data-testid="hosts-static-toggle"
               checked={on}
-              onCheckedChange={(v) => void toggleStaticAssignment(st, provider.id, v)}
+              onCheckedChange={(v) => void toggleStaticAssignment(provider.id, v)}
             />
           </Field>
         </CardContent>
@@ -465,7 +466,7 @@ function SitesCard({ overview, st, provider }: { overview: Overview | undefined;
                   data-testid={`hosts-list-${l.name}`}
                   checked={mine}
                   disabled={!provider || elsewhere}
-                  onCheckedChange={(on) => provider && void toggleListAssignment(st, provider.id, l.name, on)}
+                  onCheckedChange={(on) => provider && void toggleListAssignment(provider.id, l.name, on)}
                 />
                 <FieldContent className="min-w-0 flex-row items-center justify-between gap-2">
                   <FieldLabel htmlFor={`hosts-list-${l.name}`} className="font-normal">

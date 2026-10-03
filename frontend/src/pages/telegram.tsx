@@ -59,9 +59,12 @@ async function toggleRunning(target: boolean) {
   }
 }
 
-async function toggleAutostart(st: TgFull, target: boolean) {
+async function toggleAutostart(target: boolean) {
   try {
-    await optimistic("tg", { autostart: target }, () => api("tg_set_config", st.host, st.port, st.secret, target), {
+    await optimistic("tg", { autostart: target }, () => {
+      const st = store.confirmed<TgFull>("tg")!
+      return api("tg_set_config", st.host, st.port, st.secret, target)
+    }, {
       errorTitle: t("tg.autostart.failed"),
     })
   } catch {
@@ -98,7 +101,7 @@ function Hero({ st, onQr }: { st: TgFull | undefined; onQr: () => void }) {
             id="tg-autostart"
             data-testid="tg-autostart"
             checked={!!st.autostart}
-            onCheckedChange={(v) => void toggleAutostart(st, v)}
+            onCheckedChange={(v) => void toggleAutostart(v)}
           />
         </Field>
         <Button
@@ -171,7 +174,7 @@ function ConnectionCard({ st }: { st: TgFull | undefined }) {
     const port = Number(snap.port ?? cur.port)
     const secret = snap.secret ?? cur.secret
     try {
-      await optimistic("tg", { host, port, secret }, () => api("tg_set_config", host, port, secret, !!cur.autostart), {
+      await optimistic("tg", { host, port, secret }, () => api("tg_set_config", host, port, secret, !!store.confirmed<TgFull>("tg")?.autostart), {
         errorTitle: t("tg.config.saveFailed"),
       })
       draft.clearIf(snap) // сохранилось — дальше рисуем из стора
@@ -225,7 +228,7 @@ function ConnectionCard({ st }: { st: TgFull | undefined }) {
       </CardHeader>
       <CardContent>
         <FieldGroup>
-          <Field orientation="horizontal">
+          <Field orientation="responsive">
             <FieldContent>
               <FieldLabel htmlFor="tg-host">{t("tg.host")}</FieldLabel>
               <FieldDescription>{t("tg.host.hint")}</FieldDescription>
@@ -233,21 +236,21 @@ function ConnectionCard({ st }: { st: TgFull | undefined }) {
             <Input
               id="tg-host"
               data-testid="tg-host"
-              className="w-[400px] flex-none"
+              className="w-full min-w-0 flex-none @md/field-group:w-1/2 @2xl/field-group:w-[400px]"
               spellCheck={false}
               value={d?.host ?? st.host ?? ""}
               onChange={(e) => edit({ host: e.target.value })}
               onKeyDown={commitOnEnter}
             />
           </Field>
-          <Field orientation="horizontal">
+          <Field orientation="responsive">
             <FieldContent>
               <FieldLabel htmlFor="tg-port">{t("tg.port")}</FieldLabel>
             </FieldContent>
             <Input
               id="tg-port"
               data-testid="tg-port"
-              className="w-[400px] flex-none"
+              className="w-full min-w-0 flex-none @md/field-group:w-1/2 @2xl/field-group:w-[400px]"
               type="number"
               min={1}
               max={65535}
@@ -256,11 +259,11 @@ function ConnectionCard({ st }: { st: TgFull | undefined }) {
               onKeyDown={commitOnEnter}
             />
           </Field>
-          <Field orientation="horizontal">
+          <Field orientation="responsive">
             <FieldContent>
               <FieldLabel htmlFor="tg-secret">{t("tg.secret")}</FieldLabel>
             </FieldContent>
-            <InputGroup className="w-[400px] flex-none">
+            <InputGroup className="w-full min-w-0 flex-none @md/field-group:w-1/2 @2xl/field-group:w-[400px]">
               <InputGroupInput
                 id="tg-secret"
                 data-testid="tg-secret"

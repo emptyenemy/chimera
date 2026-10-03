@@ -6,7 +6,7 @@
 import { api } from "@/lib/bridge"
 import { t } from "@/lib/i18n"
 import { notify } from "@/lib/notify"
-import { store } from "@/lib/store"
+import { optimistic, store } from "@/lib/store"
 
 export const OVERVIEW_KEY = "hosts.overview"
 
@@ -69,15 +69,25 @@ export interface Ping {
 export const isDns = (p: Provider) => p.type !== "static"
 export const isUnavailable = (p: Provider) => p.type === "static" && p.available === false
 
+let overviewGeneration = 0
 export async function loadOverview(): Promise<void> {
+  const generation = ++overviewGeneration
+  const before = store.get("hosts")
   try {
     const data = await api<(Overview & { state: HostsView }) | null>("hosts_overview")
-    if (!data) return
+    if (!data || generation !== overviewGeneration) return
     store.set(OVERVIEW_KEY, { providers: data.providers, lists: data.lists } satisfies Overview)
-    store.set("hosts", data.state)
+    if (before === store.get("hosts") && !store.pending("hosts")) store.set("hosts", data.state)
   } catch (e) {
-    notify.error(t("hosts.load.failed"), e instanceof Error ? e.message : String(e))
+    if (generation === overviewGeneration) notify.error(t("hosts.load.failed"), e instanceof Error ? e.message : String(e))
   }
+}
+
+export function saveAssignments(change: (value: Assignments) => Assignments, errorTitle: string): Promise<unknown> {
+  const patch = (value: unknown) => ({ assignments: change((value as HostsView | undefined)?.assignments ?? {}) })
+  return optimistic("hosts", patch, () => api("hosts_set_assignments", patch(store.confirmed("hosts")).assignments), {
+    errorTitle,
+  }).catch(() => {})
 }
 
 export function toneClass(pct: number): string {

@@ -93,16 +93,22 @@ def _readable(color, surfaces):
 
 
 def safe_accent(value, surfaces):
+    return _safe_accent(value, tuple(surfaces))
+
+
+@lru_cache(maxsize=512)
+def _safe_accent(value, surfaces):
     normalized, clamped = normalize_color(value)
     if _readable(normalized, surfaces):
         return normalized, clamped, False
     hue, lightness, saturation = colorsys.rgb_to_hls(*rgb(normalized))
     candidates = [hex_rgb(colorsys.hls_to_rgb(hue, n / 1000, saturation)) for n in range(200, 801)]
-    valid = [c for c in candidates if normalize_color(c)[0] == c and _readable(c, surfaces)]
-    if not valid:
-        raise ChimeraValueError("err.appearance.contrast")
-    chosen = min(valid, key=lambda c: abs(colorsys.rgb_to_hls(*rgb(c))[1] - lightness))
-    return chosen, clamped, True
+    # Stable order preserves the nearest quantized color and its tie-breaking.
+    candidates.sort(key=lambda c: abs(colorsys.rgb_to_hls(*rgb(c))[1] - lightness))
+    for candidate in candidates:
+        if _readable(candidate, surfaces) and normalize_color(candidate)[0] == candidate:
+            return candidate, clamped, True
+    raise ChimeraValueError("err.appearance.contrast")
 
 
 def validate_catalog(data):

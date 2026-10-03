@@ -52,7 +52,7 @@ import { t } from "@/lib/i18n"
 import { notify } from "@/lib/notify"
 import { store, useStore } from "@/lib/store"
 import { RecordDialog } from "@/pages/lists-record-dialog"
-import { LISTS_KEY, applyErrors, patchList, track, waitSaved, type ListInfo, type SaveInfo } from "@/pages/lists-data"
+import { LISTS_KEY, applyErrors, applySelections, patchList, readListDraft, registerEditor, setTransport, settleListDraft, track, waitSaved, withSavedList, writeListDraft, type ListInfo, type SaveInfo } from "@/pages/lists-data"
 
 const msg = (e: unknown) => (e instanceof Error ? e.message : String(e))
 
@@ -68,27 +68,17 @@ const TRANSPORTS: Transport[] = ["proxy", "winws", "hosts"]
 const transportName = (k: Transport) =>
   k === "proxy" ? t("lists.transport.proxy") : k === "winws" ? t("lists.transport.winws") : t("lists.transport.hosts")
 
+let listGeneration = 0
 async function loadLists(): Promise<void> {
+  const generation = ++listGeneration
+  const before = { proxy: store.get("proxy"), winws: store.get("winws") }
   try {
-    store.set(LISTS_KEY, await api<ListInfo[]>("lists_all"))
+    const items = await api<ListInfo[]>("lists_all")
+    if (generation === listGeneration) store.set(LISTS_KEY, applySelections(items, before))
   } catch (e) {
+    if (generation !== listGeneration) return
     if (!store.get(LISTS_KEY)) store.set(LISTS_KEY, [])
     notify.error(t("lists.load.failed"), msg(e))
-  }
-}
-
-// Подключение списка к прокси или запрету: бейдж меняется сразу, не ждём перезапуска движка
-async function setTransport(name: string, key: "proxy" | "winws", on: boolean): Promise<void> {
-  const label = t(key === "proxy" ? "lists.transport.label.proxy" : "lists.transport.label.winws")
-  patchList(name, { [key]: on })
-  notify.info(t(on ? "lists.transport.on" : "lists.transport.off", { name, label }))
-  const next = (store.get<ListInfo[]>(LISTS_KEY) ?? []).filter((f) => f[key]).map((f) => f.name)
-  try {
-    if (key === "proxy") await api("proxy_set_lists", next)
-    else await api("winws_set_lists", next)
-  } catch (e) {
-    patchList(name, { [key]: !on })
-    notify.error(t("lists.transport.failed", { label }), msg(e))
   }
 }
 
@@ -126,7 +116,7 @@ async function renameList(name: string): Promise<string | null> {
     return null
   }
   try {
-    const info = await api<{ name?: string } | null>("lists_rename", name, next)
+    const info = await withSavedList(name, () => api<{ name?: string } | null>("lists_rename", name, next), true)
     const renamed = info?.name ?? next
     notify.success(`${name} → ${renamed}`)
     await loadLists()
@@ -146,7 +136,7 @@ async function deleteList(name: string): Promise<boolean> {
   })
   if (!ok) return false
   try {
-    const res = await api<SaveInfo | null>("lists_delete", name)
+    const res = await withSavedList(name, () => api<SaveInfo | null>("lists_delete", name), true)
     notify.success(t("lists.delete.done", { name }))
     applyErrors(res, "lists.delete.applyFailed")
     await loadLists()
@@ -233,18 +223,32 @@ function ListEditor({ name, item }: { name: string; item?: ListInfo }) {
   const [loadError, setLoadError] = useState("")
   const [status, setStatus] = useState<SaveState>("")
   const [saveError, setSaveError] = useState("")
+  const [frozen, setFrozen] = useState(false)
   const [count, setCount] = useState<number | null>(item?.count ?? null)
 
   const latest = useRef("")
   const dirty = useRef(false)
   const timer = useRef(0)
   const alive = useRef(true)
+  const saveSequence = useRef(0)
+  const retired = useRef(false)
+  const lastSave = useRef<Promise<boolean>>(Promise.resolve(true))
 
   useEffect(() => {
     let cancelled = false
     void (async () => {
       // недосохранённая правка этого же списка ещё в пути — сначала дождёмся её
       await waitSaved(name)
+      if (cancelled) return
+      const draft = readListDraft(name)
+      if (draft) {
+        latest.current = draft.text
+        dirty.current = true
+        setText(draft.text)
+        setSaveError(draft.error ?? "")
+        setStatus(draft.error !== null ? "error" : "saving")
+        return
+      }
       try {
         const v = await api<string>("lists_read", name)
         if (cancelled) return
@@ -262,38 +266,66 @@ function ListEditor({ name, item }: { name: string; item?: ListInfo }) {
     }
   }, [name])
 
-  const flush = useCallback(async () => {
+  const flush = useCallback((): Promise<boolean> => {
     window.clearTimeout(timer.current)
-    if (!dirty.current) return
+    if (!dirty.current) return lastSave.current
     dirty.current = false
-    try {
-      const info = await track(name, api<SaveInfo | null>("lists_save", name, latest.current))
-      if (info) patchList(name, { count: info.count })
-      applyErrors(info, "lists.saveApplyFailed")
-      if (!alive.current) return
-      if (info) setCount(info.count)
-      setSaveError("")
-      setStatus(dirty.current ? "saving" : "saved")
-    } catch (e) {
-      dirty.current = true // не терять правки, если сохранить не вышло
-      if (!alive.current) return
-      setSaveError(msg(e))
-      setStatus("error")
-    }
+    const sequence = ++saveSequence.current
+    const value = latest.current
+    const draft = readListDraft(name)
+    const saving = (async () => {
+      try {
+        const info = await track(name, () => api<SaveInfo | null>("lists_save", name, value))
+        if (info) patchList(name, { count: info.count })
+        applyErrors(info, "lists.saveApplyFailed")
+        settleListDraft(name, draft, null)
+        if (alive.current && sequence === saveSequence.current) {
+          if (info) setCount(info.count)
+          setSaveError("")
+          setStatus(dirty.current ? "saving" : "saved")
+        }
+        return true
+      } catch (e) {
+        const retained = settleListDraft(name, draft, msg(e))
+        if (retained && !alive.current) notify.error(t("lists.saveFailed", { name }), `${msg(e)}\n${t("lists.draftRetained")}`)
+        if (sequence === saveSequence.current) {
+          dirty.current = true
+          if (alive.current) {
+            setSaveError(msg(e))
+            setStatus("error")
+          }
+        }
+        return false
+      }
+    })()
+    lastSave.current = saving
+    return saving
   }, [name])
 
   // уходим со списка или со страницы — недосохранённое уходит на диск сразу
   useEffect(() => {
     alive.current = true
+    const unregister = registerEditor(name, {
+      flush,
+      freeze: (on) => { if (alive.current) setFrozen(on || retired.current) },
+      retire: () => {
+        retired.current = true
+        dirty.current = false
+        window.clearTimeout(timer.current)
+      },
+    })
     return () => {
+      unregister()
       alive.current = false
       void flush()
     }
-  }, [flush])
+  }, [name, flush])
 
   const onChange = (e: ChangeEvent<HTMLTextAreaElement>) => {
     latest.current = e.target.value
+    writeListDraft(name, latest.current)
     dirty.current = true
+    setSaveError("")
     setStatus("saving")
     window.clearTimeout(timer.current)
     timer.current = window.setTimeout(() => void flush(), 500)
@@ -332,8 +364,11 @@ function ListEditor({ name, item }: { name: string; item?: ListInfo }) {
                 className="field-sizing-fixed h-[420px] resize-none font-mono"
                 spellCheck={false}
                 placeholder={t("lists.editor.placeholder")}
+                readOnly={frozen}
+                aria-busy={frozen}
                 defaultValue={text}
                 onChange={onChange}
+                onBlur={() => void flush()}
               />
             )}
           </Field>

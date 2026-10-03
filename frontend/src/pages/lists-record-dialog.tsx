@@ -21,7 +21,7 @@ import { Spinner } from "@/components/ui/spinner"
 import { api } from "@/lib/bridge"
 import { t } from "@/lib/i18n"
 import { notify } from "@/lib/notify"
-import { applyErrors, patchList, type ListInfo, type SaveInfo } from "@/pages/lists-data"
+import { applyErrors, patchList, withSavedList, type ListInfo, type SaveInfo } from "@/pages/lists-data"
 
 interface RecDomain {
   domain: string
@@ -94,17 +94,21 @@ export function RecordDialog({
     if (!target) return notify.warning(t("lists.record.noList"), t("lists.record.noListDesc"))
     setBusy(true)
     try {
-      const text = (await api<string>("lists_read", target)) ?? ""
-      const have = new Set(text.split(/\r?\n/).map((s) => s.trim()))
-      const fresh = (result?.domains ?? []).map((d) => d.domain).filter((d) => chosen.has(d) && !have.has(d))
-      if (!fresh.length) {
+      const { info, added } = await withSavedList(target, async () => {
+        const text = (await api<string>("lists_read", target)) ?? ""
+        const have = new Set(text.split(/\r?\n/).map((s) => s.trim()))
+        const fresh = (result?.domains ?? []).map((d) => d.domain).filter((d) => chosen.has(d) && !have.has(d))
+        if (!fresh.length) return { info: null, added: 0 }
+        const info = await api<SaveInfo | null>("lists_save", target, text.replace(/\s*$/, "") + "\n" + fresh.join("\n") + "\n")
+        return { info, added: fresh.length }
+      })
+      if (!added) {
         notify.info(t("lists.record.allExist"))
         return onClose()
       }
-      const info = await api<SaveInfo | null>("lists_save", target, text.replace(/\s*$/, "") + "\n" + fresh.join("\n") + "\n")
       if (info) patchList(target, { count: info.count })
       applyErrors(info, "lists.saveApplyFailed")
-      notify.success(t("lists.record.added", { name: target, n: fresh.length }))
+      notify.success(t("lists.record.added", { name: target, n: added }))
       onAdded(target)
       onClose()
     } catch (e) {

@@ -1,4 +1,4 @@
-import { useRef } from "react"
+import { useEffect, useRef } from "react"
 
 import { useSidebar } from "@/components/ui/sidebar"
 import { t } from "@/lib/i18n"
@@ -19,22 +19,41 @@ export function SidebarResizer({ width, onWidth }: { width: number; onWidth: (w:
   const { open, setOpen } = useSidebar()
   const drag = useRef<{ x0: number; w0: number; wOpen: number; raf: number; x: number } | null>(null)
 
+  const resize = (d: NonNullable<typeof drag.current>) => {
+    const raw = d.w0 + d.x - d.x0
+    if (raw < SIDEBAR_SNAP) {
+      onWidth(d.wOpen)
+      setOpen(false)
+    } else {
+      setOpen(true)
+      onWidth(clamp(raw))
+    }
+  }
   const finish = () => {
     const d = drag.current
     if (!d) return
     cancelAnimationFrame(d.raf)
+    resize(d)
     drag.current = null
     document.documentElement.classList.remove("sb-resizing")
   }
+  useEffect(() => () => {
+    if (drag.current) cancelAnimationFrame(drag.current.raf)
+    document.documentElement.classList.remove("sb-resizing")
+  }, [])
 
   return (
     <div
       role="separator"
       aria-orientation="vertical"
       aria-label={t("sidebar.resize")}
+      aria-valuemin={RAIL_WIDTH}
+      aria-valuemax={SIDEBAR_WIDTH_MAX}
+      aria-valuenow={open ? width : RAIL_WIDTH}
+      tabIndex={0}
       data-slot="sidebar-resizer"
       data-testid="sidebar-resize"
-      className="group/resize fixed inset-y-0 z-20 hidden w-1.5 -translate-x-1/2 cursor-col-resize transition-[left] duration-200 ease-linear md:block"
+      className="group/resize fixed inset-y-0 z-20 hidden w-1.5 -translate-x-1/2 cursor-col-resize focus-visible:outline-2 focus-visible:outline-ring transition-[left] duration-200 ease-linear md:block"
       style={{ left: open ? "var(--sidebar-width)" : "var(--sidebar-width-icon)" }}
       onPointerDown={(e) => {
         if (e.button !== 0) return
@@ -51,18 +70,32 @@ export function SidebarResizer({ width, onWidth }: { width: number; onWidth: (w:
         // не чаще раза в кадр: pointermove сыплет быстрее, чем браузер успевает перекладку
         d.raf ||= requestAnimationFrame(() => {
           d.raf = 0
-          const raw = d.w0 + d.x - d.x0
-          if (raw < SIDEBAR_SNAP) {
-            onWidth(d.wOpen)
-            setOpen(false)
-            return
-          }
-          setOpen(true)
-          onWidth(clamp(raw))
+          resize(d)
         })
       }}
-      onPointerUp={finish}
+      onPointerUp={(e) => {
+        if (drag.current) drag.current.x = e.clientX
+        finish()
+      }}
       onPointerCancel={finish}
+      onLostPointerCapture={finish}
+      onKeyDown={(e) => {
+        if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
+          e.preventDefault()
+          if (e.key === "ArrowLeft" && (!open || width <= SIDEBAR_WIDTH_MIN)) setOpen(false)
+          else {
+            setOpen(true)
+            onWidth(clamp(width + (e.key === "ArrowRight" ? 1 : -1) * (e.shiftKey ? 32 : 8)))
+          }
+        } else if (e.key === "Home" || e.key === "End") {
+          e.preventDefault()
+          setOpen(true)
+          onWidth(e.key === "Home" ? SIDEBAR_WIDTH_MIN : SIDEBAR_WIDTH_MAX)
+        } else if (e.key === "Enter") {
+          e.preventDefault()
+          setOpen(!open)
+        }
+      }}
       onDoubleClick={() => {
         onWidth(SIDEBAR_WIDTH_DEFAULT)
         setOpen(true)

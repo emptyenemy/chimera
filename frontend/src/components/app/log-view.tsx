@@ -39,9 +39,11 @@ export function LogView({
     let timer = 0
     let offset = 0
     let lines = 0
+    el.textContent = ""
 
     const poll = async () => {
       const r = await api<LogChunk>(method, offset)
+      if (stopped) return
       if (r.reset) {
         el.textContent = ""
         lines = 0

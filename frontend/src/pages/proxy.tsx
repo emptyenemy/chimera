@@ -39,6 +39,7 @@ import { t } from "@/lib/i18n"
 import { notify } from "@/lib/notify"
 import { router } from "@/lib/router"
 import { optimistic, store, useStore } from "@/lib/store"
+import { setTransport } from "@/pages/lists-data"
 import type { AppInfo } from "@/lib/types"
 import { AppsPickerDialog, type RunningApp } from "@/pages/proxy-apps-dialog"
 
@@ -250,24 +251,34 @@ function ServerCard({ st }: { st: ProxyView }) {
   const [error, setError] = useState<string | null>(null)
   const timer = useRef(0)
   const latest = useRef<string | null>(null)
+  const submitted = useRef<{ raw: string } | null>(null)
 
   const save = async (raw: string) => {
+    if (submitted.current?.raw === raw) return
     const value = raw.trim()
-    if (value === (store.get<ProxyView>("proxy")?.link ?? "")) {
-      if (latest.current === raw) setDraft(null)
+    if (!store.pending("proxy") && value === (store.get<ProxyView>("proxy")?.link ?? "")) {
+      if (latest.current === raw) {
+        latest.current = null
+        setDraft(null)
+        setError(null)
+      }
       return
     }
+    const submission = { raw }
+    submitted.current = submission
     try {
-      const res = await api<Partial<ProxyView> | null>("proxy_set_link", value)
-      setError(null)
-      store.patch("proxy", { link: value, ...res })
-      notify.success(t(value ? "proxy.link.saved" : "proxy.link.cleared"))
-      if (latest.current === raw) setDraft(null)
+      await optimistic("proxy", null, () => api<Partial<ProxyView> | null>("proxy_set_link", value), { notifyError: false })
+      if (latest.current === raw && submitted.current === submission) {
+        latest.current = null
+        setError(null)
+        setDraft(null)
+        notify.success(t(value ? "proxy.link.saved" : "proxy.link.cleared"))
+      }
     } catch (e) {
       // тост на каждую паузу посреди набора был бы навязчив: ошибка — надписью под полем
-      setError(msg(e))
+      if (latest.current === raw && submitted.current === submission) setError(msg(e))
     } finally {
-      api("hub_refresh", ["proxy"]).catch(() => {})
+      if (submitted.current === submission) submitted.current = null
     }
   }
 
@@ -335,8 +346,11 @@ function ServerCard({ st }: { st: ProxyView }) {
 // Выбор — только из запущенных программ: имя процесса берётся из системы как есть,
 // без угадывания. Выбранные, но сейчас не запущенные остаются в списке.
 
-function saveApps(names: string[]) {
-  return optimistic("proxy", { apps: names }, () => api("proxy_set_apps", names), {
+function saveApps(selection: string[] | string) {
+  const change = (value: unknown) => ({
+    apps: typeof selection === "string" ? ((value as ProxyView | undefined)?.apps ?? []).filter(name => name !== selection) : selection,
+  })
+  return optimistic("proxy", change, () => api("proxy_set_apps", change(store.confirmed("proxy")).apps), {
     errorTitle: t("proxy.apps.failed"),
   }).catch(() => {})
 }
@@ -375,7 +389,7 @@ function AppsCard({ st }: { st: ProxyView }) {
                   data-testid={`proxy-app-remove-${a}`}
                   aria-label={t("proxy.apps.remove", { name: a })}
                   title={t("proxy.apps.removeTip")}
-                  onClick={() => void saveApps(apps.filter((x) => x !== a))}
+                  onClick={() => void saveApps(a)}
                 >
                   <XIcon />
                 </Button>
@@ -413,10 +427,7 @@ function ListsCard({ st }: { st: ProxyView }) {
   const sel = new Set(st.lists ?? [])
 
   const toggle = (name: string, on: boolean) => {
-    const next = all.filter((n) => (n === name ? on : sel.has(n)))
-    void optimistic("proxy", { lists: next }, () => api("proxy_set_lists", next), {
-      errorTitle: t("proxy.lists.failed"),
-    }).catch(() => {})
+    void setTransport(name, "proxy", on, { notifyInfo: false, errorTitle: t("proxy.lists.failed") })
   }
 
   return (

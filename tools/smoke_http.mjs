@@ -33,6 +33,20 @@ try {
     else if (message.method === "Runtime.bindingCalled" && message.params.name === "__smokeSystemMode") {
       void call("Emulation.setEmulatedMedia", { features: [{ name: "prefers-color-scheme", value: message.params.payload }] })
     }
+    else if (message.method === "Runtime.bindingCalled" && message.params.name === "__smokePointer") {
+      void (async () => {
+        const { id, ...event } = JSON.parse(message.params.payload)
+        await call("Input.dispatchMouseEvent", { button: "left", pointerType: "mouse", ...event })
+        await call("Runtime.evaluate", { expression: `window.__SMOKE_POINTER_DONE__ = ${Number(id)}` })
+      })()
+    }
+    else if (message.method === "Runtime.bindingCalled" && message.params.name === "__smokeViewport") {
+      void (async () => {
+        const { id, width, height } = JSON.parse(message.params.payload)
+        await call("Emulation.setDeviceMetricsOverride", { width, height, deviceScaleFactor: 1, mobile: false })
+        await call("Runtime.evaluate", { expression: `window.__SMOKE_VIEWPORT_DONE__ = ${Number(id)}` })
+      })()
+    }
     else if (message.method === "Runtime.bindingCalled" && message.params.name === "__smokeKey") {
       void (async () => {
         await call("Input.dispatchKeyEvent", { type: "keyDown", key: message.params.payload, code: message.params.payload, windowsVirtualKeyCode: 39 })
@@ -48,6 +62,8 @@ try {
   await call("Runtime.enable")
   await call("Runtime.addBinding", { name: "__smokeSystemMode" })
   await call("Runtime.addBinding", { name: "__smokeKey" })
+  await call("Runtime.addBinding", { name: "__smokePointer" })
+  await call("Runtime.addBinding", { name: "__smokeViewport" })
   await call("Page.addScriptToEvaluateOnNewDocument", { source: `requestAnimationFrame(() => { window.__SMOKE_FIRST_FRAME__ = { palette: document.documentElement.dataset.palette, background: getComputedStyle(document.documentElement).getPropertyValue('--background').trim() }; });` })
   await call("Page.enable")
   await call("Emulation.setDeviceMetricsOverride", { width: 1280, height: 820, deviceScaleFactor: 1, mobile: false })

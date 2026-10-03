@@ -36,7 +36,7 @@ import { t } from "@/lib/i18n"
 import { notify } from "@/lib/notify"
 import { useStore } from "@/lib/store"
 import { CardTitleIcon, SettingRow } from "@/pages/settings/general"
-import { BUSY_KEY, SOURCES_KEY, checkAll, checkOne, updateAllConfirm, updateOneConfirm, type Busy, type Source } from "@/pages/settings/sources"
+import { BUSY_KEY, GROUP_KEY, SOURCES_KEY, checkAll, checkOne, updateAllConfirm, updateOneConfirm, type Busy, type Source, type SourceGroup } from "@/pages/settings/sources"
 import { setConfig, useConfig, usePending, type AppInfoFull } from "@/pages/settings/state"
 
 // --- обновление самой программы ------------------------------------------------
@@ -330,27 +330,20 @@ export function SourcesCard() {
   const appFrozen = useStore<AppInfoFull>("app")?.frozen
   const updFrozen = useStore<SelfUpdate>("selfupdate")?.frozen
   const frozen = appFrozen || updFrozen
-  const [allBusy, setAllBusy] = useState<"check" | "update" | null>(null)
+  const group = useStore<SourceGroup>(GROUP_KEY)
+  const allBusy = group?.updating ? "update" : group?.checking ? "check" : null
   if (frozen) return null
   const rows = (sources ?? []).filter((s) => s.kind === "tag" || s.kind === "commit")
-  const run = async (mode: "check" | "update", fn: () => Promise<void>) => {
-    setAllBusy(mode)
-    try {
-      await fn()
-    } finally {
-      setAllBusy(null)
-    }
-  }
   return (
     <Card data-testid="settings-sources">
-      <CardHeader>
+      <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-3">
         <CardTitleIcon icon={PackageIcon}>{t("settings.src.title")}</CardTitleIcon>
-        <CardAction className="flex gap-2">
-          <Button variant="outline" size="sm" data-testid="settings-src-check-all" disabled={!!allBusy} onClick={() => void run("check", checkAll)}>
+        <CardAction className="flex max-w-full flex-wrap gap-2">
+          <Button variant="outline" size="sm" data-testid="settings-src-check-all" disabled={!!allBusy} onClick={() => void checkAll()}>
             {allBusy === "check" ? <Spinner data-icon="inline-start" /> : <RefreshCwIcon data-icon="inline-start" />}
             {t("settings.src.checkAll")}
           </Button>
-          <Button size="sm" data-testid="settings-src-update-all" disabled={!!allBusy} onClick={() => void run("update", updateAllConfirm)}>
+          <Button size="sm" data-testid="settings-src-update-all" disabled={!!allBusy} onClick={() => void updateAllConfirm()}>
             {allBusy === "update" ? <Spinner data-icon="inline-start" /> : <DownloadIcon data-icon="inline-start" />}
             {t("settings.src.updateAll")}
           </Button>

@@ -8,6 +8,18 @@
   const input = value => { const node = el('verified-domains'); Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(node, value); node.dispatchEvent(new Event('input', { bubbles: true })); };
   const call = async (method, ...args) => JSON.parse(await Bridge.call(method, JSON.stringify(args)));
   try {
+    const originalCall = Bridge.call;
+    let releaseRead;
+    const readGate = new Promise(resolve => { releaseRead = resolve; });
+    let heldReads = 0;
+    Bridge.call = async (method, args) => {
+      const reply = await originalCall(method, args);
+      if (method === 'config_verified') {
+        heldReads++;
+        await readGate;
+      }
+      return reply;
+    };
     Pages.go('settings');
     await click('settings-tab-tools');
     await wait(() => el('verified-restore'), 'Verified section missing');
@@ -19,6 +31,12 @@
     need(el('verified-dialog').querySelector('[data-slot=dialog-title]'), 'Dialog has no title');
     await click('verified-save');
     await wait(() => !el('verified-dialog') && !el('verified-restore').disabled, 'Successful check did not save');
+    need(heldReads > 0, 'Initial verified-state read was not delayed');
+    Bridge.call = originalCall;
+    releaseRead();
+    await sleep(200);
+    need(!el('verified-restore').disabled && el('verified-summary').textContent.includes('discord.com'), 'Late initial read erased newly verified snapshot');
+    steps.push({ name: 'Late initial state cannot erase a newly saved snapshot', ok: true });
     const first = (await call('config_verified')).data.backup;
     need(first.checks.length === 2 && el('verified-summary').textContent.includes('discord.com'), 'Checked sites missing');
     steps.push({ name: 'Input validation, successful checks and verified snapshot', ok: true });

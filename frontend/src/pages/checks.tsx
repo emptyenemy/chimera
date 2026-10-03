@@ -35,6 +35,7 @@ import { notify } from "@/lib/notify"
 // --- данные --------------------------------------------------------------------
 
 interface RknResult {
+  _request_id?: string
   target?: string
   status?: string
   blocked?: boolean
@@ -44,6 +45,7 @@ interface RknResult {
 }
 
 interface ReachResult {
+  _request_id?: string
   target?: string
   status?: string
   ip?: string | null
@@ -57,6 +59,10 @@ interface Row {
 }
 
 interface RunState {
+  requestId: string | null
+  starting?: boolean
+  reachFinished?: boolean
+  rknFinished?: boolean
   total: number
   rknDone: number
   reachDone: number
@@ -117,15 +123,30 @@ function useView(): View {
 
 function parseTargets(text: string): string[] {
   const seen = new Set<string>()
-  for (const part of text.split(/[\s,;]+/)) {
-    const raw = part
-      .trim()
-      .replace(/^[a-z]+:\/\//i, "")
-      .split(/[/?#]/)[0]
-      .replace(/:\d+$/, "")
-      .replace(/^www\./i, "")
-      .toLowerCase()
-    if (/^[a-z0-9.-]+\.[a-z0-9-]{2,}$/i.test(raw)) seen.add(raw)
+  for (const part of text.split(/[\s,;]+/).filter(Boolean)) {
+    try {
+      const bareIpv6 = /^[a-f\d:.]+$/i.test(part) && part.split(":").length > 2
+      const address = bareIpv6 ? `[${part}]` : part
+      const link = new URL(/^[a-z][a-z\d+.-]*:\/\//i.test(part) ? part : `https://${address}`)
+      if (!['http:', 'https:'].includes(link.protocol) || link.username || link.password) continue
+      const host = link.hostname.toLowerCase()
+      if (host.startsWith("[") && host.endsWith("]")) {
+        seen.add(host.slice(1, -1))
+        continue
+      }
+      if (/^\d+\.\d+\.\d+\.\d+$/.test(host)) {
+        seen.add(host)
+        continue
+      }
+      const name = host.replace(/^www\./, "").replace(/\.$/, "")
+      const labels = name.split(".")
+      if (name.length > 253 || labels.length < 2 ||
+          !labels.every(label => /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(label)) ||
+          !/^(?:[a-z]{2,63}|xn--[a-z0-9-]+)$/.test(labels.at(-1)!)) continue
+      seen.add(name)
+    } catch {
+      continue
+    }
   }
   return [...seen]
 }
@@ -172,9 +193,10 @@ const isProblem = (r: Row) => verdict(r.rkn, r.reach).tone !== "success" && !!r.
 
 // --- проверка ----------------------------------------------------------------------------
 
-function put(site: string, key: "rkn" | "reach", value: RknResult | ReachResult): void {
+function put(site: string, key: "rkn" | "reach", value: RknResult | ReachResult): boolean {
   const cur = s.results.get(site) ?? { rkn: null, reach: null }
   s.results.set(site, { ...cur, [key]: value })
+  return cur[key] === null
 }
 
 function step(kind: "rknDone" | "reachDone"): void {
@@ -183,7 +205,7 @@ function step(kind: "rknDone" | "reachDone"): void {
 
 function finishIfDone(): void {
   const r = s.run
-  if (r && r.rknDone >= r.total && r.reachDone >= r.total) {
+  if (r && !r.starting && r.rknDone >= r.total && r.reachDone >= r.total) {
     s.run = null
     emit()
   } else emitSoon()
@@ -200,8 +222,9 @@ async function checkTyped(): Promise<void> {
     return
   }
   s.results = new Map(sites.map((site) => [site, { rkn: null, reach: null }]))
-  s.run = { total: sites.length, rknDone: 0, reachDone: 0 }
+  s.run = { requestId: null, total: sites.length, rknDone: 0, reachDone: 0 }
   emit()
+  const registryDown = !!s.registryDown
   const one = async (site: string) => {
     await Promise.all([
       api<ReachResult>("block_check_one", site)
@@ -210,7 +233,7 @@ async function checkTyped(): Promise<void> {
           (e) => put(site, "reach", { status: "error", reason: errText(e) })
         )
         .finally(() => step("reachDone")),
-      (s.registryDown ? Promise.resolve<RknResult>({ status: "error" }) : api<RknResult>("chebur_check_one", site))
+      (registryDown ? Promise.resolve<RknResult>({ status: "error" }) : api<RknResult>("chebur_check_one", site))
         .then(
           (r) => put(site, "rkn", r),
           () => put(site, "rkn", { status: "error" })
@@ -230,20 +253,27 @@ async function checkTyped(): Promise<void> {
 // список: обе проверки идут на бэкенде и стримятся пушами
 async function checkList(name: string): Promise<void> {
   if (!name || s.run) return
+  const requestId = globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random()}`
+  const registryDown = !!s.registryDown
   s.results = new Map()
-  s.run = { total: 0, rknDone: 0, reachDone: 0 }
+  s.run = { requestId, total: 0, rknDone: 0, reachDone: 0, starting: true }
   emit()
   try {
-    const reach = await api<{ total?: number }>("block_check_start", name)
-    const total = reach?.total || 0
-    s.run = s.run && { ...s.run, total }
-    if (s.registryDown) s.run = s.run && { ...s.run, rknDone: total }
-    else {
+    const reach = await api<{ total?: number; targets?: string[] }>("block_check_start", name, requestId)
+    const targets = reach?.targets
+    const total = targets?.length ?? reach?.total ?? 0
+    if (targets) s.results = new Map(targets.map(site => [site, s.results.get(site) ?? { rkn: null, reach: null }]))
+    s.run = s.run && { ...s.run, total, reachDone: s.run.reachFinished ? total : s.run.reachDone }
+    if (!registryDown) {
       try {
-        await api("chebur_check_start", name)
+        await api("chebur_check_start", name, requestId, targets)
       } catch {
-        s.run = s.run && { ...s.run, rknDone: total }
+        fillRegistryErrors()
       }
+    } else fillRegistryErrors()
+    if (s.run) {
+      s.run = { ...s.run, starting: false, rknDone: s.run.rknFinished ? total : s.run.rknDone }
+      finishIfDone()
     }
   } catch (e) {
     s.run = null
@@ -252,46 +282,72 @@ async function checkList(name: string): Promise<void> {
   emit()
 }
 
+function fillRegistryErrors(): void {
+  for (const site of s.results.keys()) put(site, "rkn", { status: "error" })
+  if (s.run) s.run = { ...s.run, rknDone: s.run.total, rknFinished: true }
+}
+
+function isCurrentStream(p: { _request_id?: string } | null | undefined): boolean {
+  return !!s.run?.requestId && p?._request_id === s.run.requestId
+}
+
+function acceptResult(kind: "rkn" | "reach", r: RknResult | ReachResult): void {
+  if (!s.run || !r?.target || (!s.run.starting && !s.results.has(r.target))) return
+  if (put(r.target, kind, r)) step(kind === "rkn" ? "rknDone" : "reachDone")
+}
+
 onPush("blockResult", (p) => {
   const r = p as ReachResult
-  if (!s.run || !r?.target) return
-  put(r.target, "reach", r)
-  step("reachDone")
+  if (!isCurrentStream(r)) return
+  acceptResult("reach", r)
   finishIfDone()
 })
 onPush("cheburResult", (p) => {
   const r = p as RknResult
-  if (!s.run || !r?.target) return
-  put(r.target, "rkn", r)
-  step("rknDone")
-  finishIfDone()
-})
-// «Done» только страхуют: итог считается по количеству пришедших ответов
-onPush("blockDone", () => {
-  if (!s.run) return
-  s.run = { ...s.run, reachDone: s.run.total }
-  finishIfDone()
-})
-onPush("cheburDone", () => {
-  if (!s.run) return
-  s.run = { ...s.run, rknDone: s.run.total }
+  if (!isCurrentStream(r)) return
+  acceptResult("rkn", r)
   finishIfDone()
 })
 
+interface StreamDone {
+  _request_id?: string
+  results?: (RknResult | ReachResult)[]
+}
+
+function acceptDone(kind: "rkn" | "reach", p: StreamDone): void {
+  if (!isCurrentStream(p)) return
+  for (const r of p.results ?? []) acceptResult(kind, r)
+  if (s.run) s.run = kind === "reach"
+    ? { ...s.run, reachDone: s.run.total, reachFinished: true }
+    : { ...s.run, rknDone: s.run.total, rknFinished: true }
+  finishIfDone()
+}
+onPush("blockDone", (p) => acceptDone("reach", p as StreamDone))
+onPush("cheburDone", (p) => acceptDone("rkn", p as StreamDone))
+
+let listReadGeneration = 0
 async function loadListNames(): Promise<void> {
+  const generation = ++listReadGeneration
   try {
-    s.listNames = await api<ListInfo[]>("lists_all")
+    const names = await api<ListInfo[]>("lists_all")
+    if (generation !== listReadGeneration) return
+    s.listNames = names
   } catch {
+    if (generation !== listReadGeneration) return
     s.listNames = s.listNames ?? []
   }
   emit()
 }
 
+let registryReadGeneration = 0
 async function loadRegistryStatus(): Promise<void> {
+  const generation = ++registryReadGeneration
   try {
     await api("chebur_status")
+    if (generation !== registryReadGeneration) return
     s.registryDown = null
   } catch (e) {
+    if (generation !== registryReadGeneration) return
     s.registryDown = errText(e)
   }
   emit()

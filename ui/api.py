@@ -572,14 +572,17 @@ class Api:
         except Exception as e:
             return _err(e)
 
-    def upstream_check_updates(self):
+    def upstream_check_updates(self, request_id=None):
         """Сверить версии источников с GitHub (медленно — ходит в сеть).
 
         Каждый готовый источник сразу уезжает в UI через srcChecked — ждать
         самый медленный ответ (а это бывают секунды) ради остальных незачем.
         """
         try:
-            return _ok(upstream.check_updates(lambda r: self._push("srcChecked", r)))
+            def push_result(result):
+                payload = {**result, "_request_id": request_id} if request_id is not None else result
+                self._push("srcChecked", payload)
+            return _ok(upstream.check_updates(push_result))
         except Exception as e:
             return _err(e)
 
@@ -1056,24 +1059,34 @@ class Api:
         except Exception as e:
             return _err(e)
 
-    def chebur_check_start(self, name):
+    def chebur_check_start(self, name, request_id=None, targets=None):
         """Гоняет домены списка через cheburcheck; результаты стримятся в UI."""
         try:
-            entries = domains.load_lists([name])
+            if targets is not None:
+                if not isinstance(targets, list) or not all(isinstance(item, str) and item for item in targets):
+                    raise TypeError("targets must be a list of nonempty strings")
+                entries = list(dict.fromkeys(targets))
+            else:
+                entries = domains.load_lists([name])
         except Exception as e:
             return _err(e)
         if not entries:
             return _err(ChimeraError("err.list.empty"))
-        threading.Thread(target=self._run_chebur, args=(entries,), daemon=True).start()
+        threading.Thread(target=self._run_chebur, args=(entries, request_id), daemon=True).start()
         return _ok({"total": len(entries)})
 
-    def _run_chebur(self, domain_list):
+    def _run_chebur(self, domain_list, request_id=None):
         # умеренная параллельность: cheburcheck публичный, не долбим его
+        results = []
         with ThreadPoolExecutor(max_workers=4) as pool:
             futures = [pool.submit(self._chebur_one, d) for d in domain_list]
             for fut in as_completed(futures):
-                self._push("cheburResult", fut.result())
-        self._push("cheburDone", {})
+                result = fut.result()
+                payload = {**result, "_request_id": request_id} if request_id is not None else result
+                results.append(result)
+                self._push("cheburResult", payload)
+        done = {"_request_id": request_id, "results": results} if request_id is not None else {}
+        self._push("cheburDone", done)
 
     @staticmethod
     def _chebur_one(domain):
@@ -1119,7 +1132,7 @@ class Api:
         except Exception as e:
             return _err(e)
 
-    def block_check_start(self, name):
+    def block_check_start(self, name, request_id=None):
         """Гоняет домены списка через локальный blockcheck; результаты стримятся в UI."""
         try:
             entries = domains.load_lists([name])
@@ -1127,16 +1140,21 @@ class Api:
             return _err(e)
         if not entries:
             return _err(ChimeraError("err.list.empty"))
-        threading.Thread(target=self._run_blockcheck, args=(entries,), daemon=True).start()
-        return _ok({"total": len(entries)})
+        threading.Thread(target=self._run_blockcheck, args=(entries, request_id), daemon=True).start()
+        return _ok({"total": len(entries), "targets": entries} if request_id is not None else {"total": len(entries)})
 
-    def _run_blockcheck(self, domain_list):
+    def _run_blockcheck(self, domain_list, request_id=None):
         # проверки локальные, без внешнего rate-limit — можно параллелить смелее
+        results = []
         with ThreadPoolExecutor(max_workers=16) as pool:
             futures = [pool.submit(self._block_one, d) for d in domain_list]
             for fut in as_completed(futures):
-                self._push("blockResult", fut.result())
-        self._push("blockDone", {})
+                result = fut.result()
+                payload = {**result, "_request_id": request_id} if request_id is not None else result
+                results.append(result)
+                self._push("blockResult", payload)
+        done = {"_request_id": request_id, "results": results} if request_id is not None else {}
+        self._push("blockDone", done)
 
     def _block_one(self, domain):
         try:

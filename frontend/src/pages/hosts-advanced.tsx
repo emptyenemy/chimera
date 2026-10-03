@@ -1,13 +1,13 @@
 /* Hosts → «Дополнительно»: автообновление IP, чекер записей, автопереключение
    провайдера и порядок переключения (фоновый поток modules/hosts/background.py). */
 
-import { useState } from "react"
+import { useRef, useState } from "react"
 import { ChevronDownIcon, ChevronUpIcon } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader } from "@/components/ui/card"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
-import { Field, FieldContent, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field"
+import { Field, FieldContent, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field"
 import { InputGroup, InputGroupAddon, InputGroupInput, InputGroupText } from "@/components/ui/input-group"
 import { Item, ItemActions, ItemContent, ItemGroup } from "@/components/ui/item"
 import { Separator } from "@/components/ui/separator"
@@ -15,19 +15,12 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { Switch } from "@/components/ui/switch"
 import { api } from "@/lib/bridge"
 import { t } from "@/lib/i18n"
+import { parseInterval } from "@/lib/interval"
 import { optimistic } from "@/lib/store"
 import type { Background, HostsView, Provider } from "@/pages/hosts-data"
 
 const REFRESH_DEFAULT_H = 6 // часы — как DEFAULT_OPTIONS.refresh_interval у background.py
 const CHECK_DEFAULT_M = 15 // минуты — как DEFAULT_OPTIONS.check_interval
-
-function parseInterval(value: string, unitSeconds: number, defaultUnits: number): number {
-  const s = value.trim()
-  if (!s) return defaultUnits * unitSeconds
-  const n = parseInt(s, 10)
-  if (!Number.isFinite(n) || n <= 0) return defaultUnits * unitSeconds
-  return n * unitSeconds
-}
 
 // Порядок из настроек может отставать от списка dns-провайдеров (добавили нового,
 // удалили старого): недостающих довешиваем в конец, забытых убираем.
@@ -38,13 +31,12 @@ function effectiveOrder(bg: Background, dns: Provider[]): string[] {
   return order
 }
 
-// hosts_set_background отдаёт объект background целиком, а не обёрнутый в состояние:
-// optimistic() слил бы его в корень ключа, поэтому applyResult: false, патчим сами.
-function saveBackground(current: Background, patch: Partial<Background>) {
-  return optimistic("hosts", { background: { ...current, ...patch } }, () => api("hosts_set_background", patch), {
-    applyResult: false,
+function saveBackground(patch: Partial<Background>) {
+  return optimistic("hosts", (value) => ({
+    background: { ...(value as HostsView | undefined)?.background, ...patch },
+  }), async () => ({ background: await api<Background>("hosts_set_background", patch) }), {
     errorTitle: t("hosts.bg.failed"),
-  }).catch(() => {})
+  }).then(() => true, () => false)
 }
 
 /** Число в поле с подписью единицы; сохраняется по уходу из поля или Enter. */
@@ -54,6 +46,8 @@ function IntervalInput({
   value,
   placeholder,
   unit,
+  unitSeconds,
+  label,
   onCommit,
 }: {
   id: string
@@ -61,32 +55,76 @@ function IntervalInput({
   value: number | ""
   placeholder: number
   unit: string
-  onCommit: (raw: string) => void
+  unitSeconds: number
+  label: string
+  onCommit: (seconds: number) => Promise<boolean>
 }) {
+  const [draft, setDraft] = useState<string | null>(null)
+  const [error, setError] = useState<"invalid" | "save" | null>(null)
+  const dirty = useRef(false)
+  const revision = useRef(0)
+  const commit = (raw: string) => {
+    if (!dirty.current) return
+    const seconds = parseInterval(raw, unitSeconds, placeholder)
+    if (seconds === null) {
+      setError("invalid")
+      return
+    }
+    const submitted = revision.current
+    dirty.current = false
+    setError(null)
+    void onCommit(seconds).then((ok) => {
+      if (revision.current !== submitted) return
+      if (ok) setDraft(null)
+      else {
+        dirty.current = true
+        setError("save")
+      }
+    })
+  }
   return (
-    <InputGroup className="w-36">
-      <InputGroupAddon>
-        <InputGroupText>{t("hosts.bg.every")}</InputGroupText>
-      </InputGroupAddon>
-      <InputGroupInput
-        // key: значение из стора обновилось снаружи — поле показывает новое
-        key={value}
-        id={id}
-        data-testid={testid}
-        className="text-center font-mono"
-        type="text"
-        inputMode="numeric"
-        placeholder={String(placeholder)}
-        defaultValue={value}
-        onBlur={(e) => onCommit(e.target.value)}
-        onKeyDown={(e) => {
-          if (e.key === "Enter") e.currentTarget.blur()
-        }}
-      />
-      <InputGroupAddon align="inline-end">
-        <InputGroupText>{unit}</InputGroupText>
-      </InputGroupAddon>
-    </InputGroup>
+    <Field className="w-36 gap-1" data-invalid={!!error}>
+      <InputGroup className="w-36">
+        <InputGroupAddon>
+          <InputGroupText>{t("hosts.bg.every")}</InputGroupText>
+        </InputGroupAddon>
+        <InputGroupInput
+          id={id}
+          data-testid={testid}
+          className="text-center font-mono"
+          type="text"
+          inputMode="numeric"
+          placeholder={String(placeholder)}
+          value={draft ?? value}
+          aria-label={`${label}, ${t("hosts.bg.every")} (${unit})`}
+          aria-invalid={!!error}
+          aria-describedby={error ? `${id}-error` : undefined}
+          onChange={(e) => {
+            setDraft(e.target.value)
+            dirty.current = true
+            revision.current += 1
+            setError(null)
+          }}
+          onBlur={(e) => commit(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") e.currentTarget.blur()
+            if (e.key === "Escape") {
+              e.preventDefault()
+              setDraft(null)
+              dirty.current = false
+              revision.current += 1
+              setError(null)
+            }
+          }}
+        />
+        <InputGroupAddon align="inline-end">
+          <InputGroupText>{unit}</InputGroupText>
+        </InputGroupAddon>
+      </InputGroup>
+      {error && <FieldError id={`${id}-error`} data-testid={`${testid}-error`}>
+        {t(error === "invalid" ? "hosts.bg.invalidInterval" : "hosts.bg.failed")}
+      </FieldError>}
+    </Field>
   )
 }
 
@@ -105,7 +143,7 @@ export function AdvancedCard({ st, providers }: { st: HostsView; providers: Prov
     const j = i + dir
     if (i < 0 || j < 0 || j >= next.length) return
     ;[next[i], next[j]] = [next[j], next[i]]
-    void saveBackground(bg, { provider_order: next })
+    void saveBackground({ provider_order: next })
   }
 
   return (
@@ -137,17 +175,17 @@ export function AdvancedCard({ st, providers }: { st: HostsView; providers: Prov
                     id="hosts-refresh-h"
                     testid="hosts-refresh-interval"
                     value={refreshH}
+                    unitSeconds={3600}
+                    label={t("hosts.bg.refresh")}
                     placeholder={REFRESH_DEFAULT_H}
                     unit={t("hosts.bg.hours")}
-                    onCommit={(raw) =>
-                      void saveBackground(bg, { refresh_interval: parseInterval(raw, 3600, REFRESH_DEFAULT_H) })
-                    }
+                    onCommit={(seconds) => saveBackground({ refresh_interval: seconds })}
                   />
                   <Switch
                     id="hosts-refresh-switch"
                     data-testid="hosts-refresh-enabled"
                     checked={bg.refresh_enabled !== false}
-                    onCheckedChange={(v) => void saveBackground(bg, { refresh_enabled: v })}
+                    onCheckedChange={(v) => void saveBackground({ refresh_enabled: v })}
                   />
                 </Field>
                 <Field orientation="horizontal" className="flex-wrap">
@@ -158,17 +196,17 @@ export function AdvancedCard({ st, providers }: { st: HostsView; providers: Prov
                     id="hosts-check-m"
                     testid="hosts-check-interval"
                     value={checkM}
+                    unitSeconds={60}
+                    label={t("hosts.bg.check")}
                     placeholder={CHECK_DEFAULT_M}
                     unit={t("hosts.bg.minutes")}
-                    onCommit={(raw) =>
-                      void saveBackground(bg, { check_interval: parseInterval(raw, 60, CHECK_DEFAULT_M) })
-                    }
+                    onCommit={(seconds) => saveBackground({ check_interval: seconds })}
                   />
                   <Switch
                     id="hosts-check-switch"
                     data-testid="hosts-check-enabled"
                     checked={bg.check_enabled !== false}
-                    onCheckedChange={(v) => void saveBackground(bg, { check_enabled: v })}
+                    onCheckedChange={(v) => void saveBackground({ check_enabled: v })}
                   />
                 </Field>
                 <Separator />
@@ -181,7 +219,7 @@ export function AdvancedCard({ st, providers }: { st: HostsView; providers: Prov
                     id="hosts-autoswitch"
                     data-testid="hosts-autoswitch"
                     checked={!!bg.autoswitch_enabled}
-                    onCheckedChange={(v) => void saveBackground(bg, { autoswitch_enabled: v })}
+                    onCheckedChange={(v) => void saveBackground({ autoswitch_enabled: v })}
                   />
                 </Field>
                 {bg.autoswitch_enabled &&

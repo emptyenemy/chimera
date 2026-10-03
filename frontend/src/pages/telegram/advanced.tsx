@@ -88,18 +88,17 @@ export function TgAdvanced() {
     const dc: Record<string, string> = {}
     for (const [num, ip] of text.dc) if (num.trim() && ip.trim()) dc[num.trim()] = ip.trim()
     try {
-      const res = await api<TgFull>("tg_set_advanced", {
+      const res = await optimistic("tg", null, () => api<TgFull>("tg_set_advanced", {
         cfproxy_user_domains: text.cfproxy_user_domains,
         cfproxy_worker_domains: text.cfproxy_worker_domains,
         fake_tls_domain: text.fake_tls_domain,
         dc_redirects: dc,
-      })
+      }), { errorTitle: t("tg.adv.saveFailed") })
       if (!res || typeof res !== "object") return // бэкенд не подтвердил — черновик остаётся
-      store.patch("tg", res)
       if (res.apply_error) notify.error(t("tg.adv.applyFailed"), res.apply_error)
       draft.clearIf(snap)
-    } catch (e) {
-      notify.error(t("tg.adv.saveFailed"), e instanceof Error ? e.message : String(e))
+    } catch {
+      /* черновик остаётся, откат и тост уже выполнены */
     }
   }
   const { schedule, flush } = useDebounced(() => void save())

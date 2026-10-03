@@ -4,7 +4,7 @@
    его включает useHubWatch, пока страница открыта. Пока данных нет — скелетон, остальное
    рисуется сразу. Проба возможностей и её настройки в хаб не входят — грузятся при заходе. */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import {
   CheckIcon,
   CircleCheckIcon,
@@ -44,6 +44,8 @@ import { useHubWatch } from "@/lib/hub-watch"
 import { t } from "@/lib/i18n"
 import { notify } from "@/lib/notify"
 import { store, useStore } from "@/lib/store"
+import { useDebounced } from "@/lib/use-autosave"
+import { PROBE_KEY, editProbeConfig, loadProbeConfig, saveProbeConfig, type ProbeFields, type ProbeState } from "@/pages/dns-probe"
 import type { AppInfo } from "@/lib/types"
 
 // --- данные --------------------------------------------------------------------
@@ -95,11 +97,6 @@ interface ProbeResult {
   unblock?: boolean | null
   filter?: boolean | null
   unblock_detail?: Record<string, unknown>
-}
-
-interface ProbeConfig {
-  bypass?: string[]
-  ad?: string
 }
 
 const TRIAL_SECONDS = 15 // сколько даём на «Оставить» после смены DNS
@@ -536,74 +533,71 @@ function AddProviderDialog({ open, onOpenChange }: { open: boolean; onOpenChange
 // --- настройки пробы -----------------------------------------------------------------------------
 
 function ProbeSettings() {
-  const [cfg, setCfg] = useState<{ bypass: string; ad: string } | null>(null)
-  const pending = useRef<{ bypass: string; ad: string } | null>(null)
-  const timer = useRef(0)
+  const state = useStore<ProbeState>(PROBE_KEY)
+  const cfg = state?.draft ?? state?.value
+  const debounce = useDebounced(() => void saveProbeConfig())
+  useEffect(() => { void loadProbeConfig() }, [])
 
-  const flush = useCallback(async () => {
-    clearTimeout(timer.current)
-    const v = pending.current
-    if (!v) return
-    pending.current = null
-    try {
-      await api<ProbeConfig>("dns_set_probe_config", v.bypass, v.ad)
-    } catch (e) {
-      notify.error(t("dns.probeCfg.failed"), errText(e))
-    }
-  }, [])
-
-  useEffect(() => {
-    let alive = true
-    api<ProbeConfig>("dns_probe_config")
-      .then((c) => alive && setCfg({ bypass: (c?.bypass ?? []).join(" "), ad: c?.ad ?? "" }))
-      .catch(() => {})
-    return () => {
-      alive = false
-      void flush() // не теряем правку, если ушли со страницы раньше срока
-    }
-  }, [flush])
-
-  const edit = (part: Partial<{ bypass: string; ad: string }>) => {
-    if (!cfg) return
-    const next = { ...cfg, ...part }
-    setCfg(next)
-    pending.current = next
-    clearTimeout(timer.current)
-    timer.current = window.setTimeout(() => void flush(), 500)
+  const edit = (part: Partial<ProbeFields>) => {
+    editProbeConfig(part)
+    debounce.schedule()
   }
-
-  if (!cfg)
-    return (
-      <div className="flex flex-col gap-2">
-        <Skeleton className="h-9 w-full" />
-        <Skeleton className="h-9 w-full" />
-      </div>
-    )
+  const flush = () => {
+    debounce.flush()
+    void saveProbeConfig()
+  }
+  const commitOnEnter = (event: { key: string; preventDefault: () => void }) => {
+    if (event.key !== "Enter") return
+    event.preventDefault()
+    flush()
+  }
+  const error = state?.draft?.error ?? state?.error
   return (
-    <FieldGroup className="gap-4">
-      <Field>
-        <FieldLabel htmlFor="dns-probe-bypass">{t("dns.probeCfg.bypass")}</FieldLabel>
-        <Input
-          id="dns-probe-bypass"
-          data-testid="dns-probe-bypass"
-          className="font-mono"
-          placeholder="rutracker.org"
-          value={cfg.bypass}
-          onChange={(e) => edit({ bypass: e.target.value })}
-        />
-        <FieldDescription>{t("dns.probeCfg.bypassHint")}</FieldDescription>
-      </Field>
-      <Field>
-        <FieldLabel htmlFor="dns-probe-ad">{t("dns.probeCfg.ad")}</FieldLabel>
-        <Input
-          id="dns-probe-ad"
-          data-testid="dns-probe-ad"
-          className="font-mono"
-          placeholder="doubleclick.net"
-          value={cfg.ad}
-          onChange={(e) => edit({ ad: e.target.value })}
-        />
-      </Field>
+    <FieldGroup className="gap-4" aria-busy={state?.busy}>
+      {error && (
+        <Alert variant="destructive" data-testid="dns-probe-error">
+          <AlertTitle>{t(state?.draft ? "dns.probeCfg.failed" : "dns.probeCfg.readFailed")}</AlertTitle>
+          <AlertDescription>
+            <p>{error}</p>
+            <Button variant="outline" size="sm" disabled={state?.busy} data-testid="dns-probe-retry"
+              onClick={() => state?.draft ? flush() : void loadProbeConfig()}>
+              {t("common.retry")}
+            </Button>
+          </AlertDescription>
+        </Alert>
+      )}
+      {!cfg ? !error && <>
+        <Skeleton className="h-9 w-full" />
+        <Skeleton className="h-9 w-full" />
+      </> : <>
+        <Field>
+          <FieldLabel htmlFor="dns-probe-bypass">{t("dns.probeCfg.bypass")}</FieldLabel>
+          <Input
+            id="dns-probe-bypass"
+            data-testid="dns-probe-bypass"
+            className="font-mono"
+            placeholder="rutracker.org"
+            value={cfg.bypass}
+            onChange={(e) => edit({ bypass: e.target.value })}
+            onBlur={flush}
+            onKeyDown={commitOnEnter}
+          />
+          <FieldDescription>{t("dns.probeCfg.bypassHint")}</FieldDescription>
+        </Field>
+        <Field>
+          <FieldLabel htmlFor="dns-probe-ad">{t("dns.probeCfg.ad")}</FieldLabel>
+          <Input
+            id="dns-probe-ad"
+            data-testid="dns-probe-ad"
+            className="font-mono"
+            placeholder="doubleclick.net"
+            value={cfg.ad}
+            onChange={(e) => edit({ ad: e.target.value })}
+            onBlur={flush}
+            onKeyDown={commitOnEnter}
+          />
+        </Field>
+      </>}
     </FieldGroup>
   )
 }

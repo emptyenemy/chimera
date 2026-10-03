@@ -69,10 +69,70 @@
     window.__smokeKey('ArrowRight');
     await wait(async () => (await api('appearance_state')).data.settings.appearance.accent !== beforeHue, 'Hue keyboard change not saved');
     steps.push({ name: 'Hue slider preview and committed keyboard change', ok: true });
+    el('appearance-hue').scrollIntoView({ block: 'center' });
+    await sleep(100);
+    const realCall = Bridge.call;
+    let activePreviews = 0, maxPreviews = 0, previews = 0, saves = 0;
+    Bridge.call = async (method, args) => {
+      if (method === 'appearance_apply') saves++;
+      if (method !== 'appearance_preview') return realCall(method, args);
+      previews++; maxPreviews = Math.max(maxPreviews, ++activePreviews);
+      try { await sleep(180); return await realCall(method, args); }
+      finally { activePreviews--; }
+    };
+    let pointerId = 0;
+    const mouse = async (type, x, y, extra = {}) => {
+      const id = ++pointerId;
+      window.__smokePointer(JSON.stringify({ id, type, x, y, ...extra }));
+      for (let i = 0; i < 200 && window.__SMOKE_POINTER_DONE__ !== id; i++) await sleep(5);
+      need(window.__SMOKE_POINTER_DONE__ === id, 'Pointer event did not complete');
+    };
+    try {
+      const track = el('appearance-hue').querySelector('[data-slot=slider-track]').getBoundingClientRect();
+      const y = track.top + track.height / 2;
+      const persistedBeforeDrag = (await api('appearance_state')).data.settings.appearance.accent;
+      await mouse('mousePressed', track.left + track.width * .1, y, { buttons: 1, clickCount: 1 });
+      for (let i = 1; i <= 30; i++) {
+        const fraction = .1 + .75 * i / 30;
+        await mouse('mouseMoved', track.left + track.width * fraction, y, { buttons: 1 });
+        const shown = Number(el('appearance-hue').querySelector('input[type=range]').value);
+        need(Math.abs(shown - fraction * 359) < 3, `Hue thumb lags: ${shown}, expected ${fraction * 359}`);
+      }
+      need(saves === 0, 'Dragging persisted intermediate hues');
+      need((await api('appearance_state')).data.settings.appearance.accent === persistedBeforeDrag, 'Preview wrote configuration');
+      const finalHue = Number(el('appearance-hue').querySelector('input[type=range]').value);
+      await mouse('mouseReleased', track.left + track.width * .85, y, { buttons: 0, clickCount: 1 });
+      await wait(async () => {
+        const saved = (await api('appearance_state')).data;
+        return Math.abs(saved.hue - finalHue) <= 1 && !el('appearance-hue').querySelector('input').disabled;
+      }, 'Final pointer hue not saved');
+      const savedColor = style('--primary');
+      await wait(() => activePreviews === 0, 'Preview requests did not finish');
+      await sleep(200);
+      need(style('--primary') === savedColor, 'Late preview overrode committed hue');
+      need(maxPreviews === 1 && previews < 15, `Preview flood: ${previews} requests, ${maxPreviews} concurrent`);
+      need(saves === 1, `Expected one final save, got ${saves}`);
+      steps.push({ name: 'Pointer drag stays responsive with a slow bridge; one final save', ok: true, previews, maxPreviews });
+    } finally { Bridge.call = realCall; }
+    input('appearance-color', '#cf5288'); await sleep(100); await click('appearance-check');
+    const savedAccent = (await api('appearance_state')).data.accent;
+    await wait(() => style('--primary') !== savedAccent, 'Color preview missing');
+    Pages.go('dashboard');
+    await wait(() => style('--primary') === savedAccent, 'Leaving appearance retained an unsaved preview');
+    Pages.go('settings');
+    await wait(() => el('settings-theme'), 'Settings did not return after preview');
+    steps.push({ name: 'Leaving appearance restores the saved palette', ok: true });
     el('settings-theme').scrollIntoView({ block: 'start' });
     const persisted = (await api('appearance_state')).data;
     need(persisted.settings.appearance_custom?.appearance.name === 'My checked theme', 'Own theme not persisted');
     steps.push({ name: 'Saved appearance remains readable and own variant persists', ok: true });
+    for (const page of Pages.list) {
+      Pages.go(page.id);
+      await wait(() => document.querySelector(`[data-page="${page.id}"]`) && !document.querySelector(`[data-page="${page.id}"] [data-slot="skeleton"]`), `Page ${page.id} did not load`);
+    }
+    Pages.go('settings');
+    await wait(() => el('settings-theme'), 'Settings missing after navigation');
+    steps.push({ name: 'All nine lazy routes open and return without reload', ok: true });
     return JSON.stringify(steps);
   } catch (error) {
     return JSON.stringify([...steps, { name: 'Appearance UI failure', ok: false, detail: error.stack, body: document.body.innerText.slice(-4000) }]);

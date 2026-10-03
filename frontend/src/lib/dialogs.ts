@@ -22,10 +22,11 @@ export interface PromptOptions {
 }
 
 export type DialogRequest =
-  | { kind: "confirm"; opts: ConfirmOptions; resolve: (ok: boolean) => void }
-  | { kind: "prompt"; opts: PromptOptions; resolve: (value: string | null) => void }
+  | { id: number; kind: "confirm"; opts: ConfirmOptions; resolve: (ok: boolean) => void }
+  | { id: number; kind: "prompt"; opts: PromptOptions; resolve: (value: string | null) => void }
 
 const queue: DialogRequest[] = []
+let sequence = 0
 const listeners = new Set<() => void>()
 
 function emit(): void {
@@ -45,12 +46,12 @@ export function dismissDialog(req: DialogRequest): void {
 }
 
 export function confirmDialog(opts: ConfirmOptions): Promise<boolean> {
-  return new Promise((resolve) => push({ kind: "confirm", opts, resolve }))
+  return new Promise((resolve) => push({ id: ++sequence, kind: "confirm", opts, resolve }))
 }
 
 /** null — отмена. */
 export function promptDialog(opts: PromptOptions): Promise<string | null> {
-  return new Promise((resolve) => push({ kind: "prompt", opts, resolve }))
+  return new Promise((resolve) => push({ id: ++sequence, kind: "prompt", opts, resolve }))
 }
 
 export function useDialogRequest(): DialogRequest | undefined {

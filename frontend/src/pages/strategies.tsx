@@ -3,7 +3,7 @@
    быть длинным: поиск по имени/описанию, выбранная плитка подсвечена, а клик по плитке во
    время работы сразу переключает стратегию. */
 
-import { useState, type ComponentProps } from "react"
+import { useEffect, useState, type ComponentProps } from "react"
 import {
   ArrowRightIcon,
   CircleAlertIcon,
@@ -28,7 +28,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardAction, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty"
-import { Field, FieldDescription, FieldGroup, FieldLabel, FieldTitle } from "@/components/ui/field"
+import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel, FieldTitle } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
 import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group"
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -44,8 +44,11 @@ import { useHubWatch } from "@/lib/hub-watch"
 import { t } from "@/lib/i18n"
 import { notify } from "@/lib/notify"
 import { router } from "@/lib/router"
-import { optimistic, store, useStore } from "@/lib/store"
+import { optimistic, useStore } from "@/lib/store"
+import { setTransport } from "@/pages/lists-data"
 import type { AppInfo } from "@/lib/types"
+import { commitRange, discardRange, editRange, flushRanges, resetRanges, reportFilterApply as reportApply, GAME_RANGE_DEFAULT, RANGE_DRAFTS_KEY, RANGE_RESET_KEY } from "@/pages/strategy-filters"
+import type { FiltersState, GameMode, IpsetMode, Proto, RangeDrafts } from "@/pages/strategy-filters"
 
 // --- данные --------------------------------------------------------------------
 
@@ -68,59 +71,10 @@ interface WinwsFull {
   error?: string
 }
 
-type GameMode = "off" | "all" | "tcp" | "udp"
-type IpsetMode = "none" | "any" | "loaded"
-type Proto = "tcp" | "udp"
-
-interface FakeSlot {
-  label: string
-  present?: boolean
-  current?: string | null
-}
-
-interface FiltersState {
-  game: GameMode
-  game_ranges?: Record<Proto, string>
-  ipset: IpsetMode
-  ipset_count?: number
-  ipset_stored?: number
-  fakes?: { slots: Record<string, FakeSlot>; candidates: string[] }
-  apply_error?: string
-}
-
-const GAME_RANGE_DEFAULT = "1024-65535"
 const CUSTOM_FAKE = "__custom__" // псевдо-пункт «свой файл»: блоб в слоте подложили руками
 
 const errText = (e: unknown) => (e instanceof Error ? e.message : String(e))
 const wdLingers = (st: WinwsFull | undefined) => !!st && !st.running && st.windivert === "RUNNING"
-
-// Формат диапазона — зеркало modules/winws/filters.py:validate_game_range. Проверяем на
-// месте (мгновенная подсказка, без похода на бэкенд за очевидной опечаткой); финальное
-// слово всё равно за бэкендом — его отказ ловит catch у вызова.
-const GAME_RANGE_ITEM_RE = /^[1-9][0-9]{0,4}(-[1-9][0-9]{0,4})?$/
-function validateGameRangeLocal(value: string): string | null {
-  const s = value.replace(/\s+/g, "")
-  if (!s) return t("strat.range.empty")
-  for (const item of s.split(",")) {
-    if (!GAME_RANGE_ITEM_RE.test(item)) return t("strat.range.format", { item })
-    const [startS, endS] = item.split("-")
-    const start = parseInt(startS, 10)
-    const end = parseInt(endS ?? startS, 10)
-    if (start > 65535 || end > 65535) return t("strat.range.outside", { item })
-    if (start > end) return t("strat.range.reversed", { item })
-  }
-  return null
-}
-
-// Перезапуск запущенной стратегии после смены фильтра делает бэкенд (Api), чтобы то же самое
-// получал CLI и агент; здесь только итог для пользователя.
-function reportApply(label: string, res: FiltersState | null | undefined): void {
-  if (res?.apply_error) {
-    notify.error(t("strat.applyFailed", { label }), res.apply_error)
-    return
-  }
-  if (store.get<WinwsFull>("winws")?.running) notify.success(t("strat.applied", { label }))
-}
 
 // --- статус, пуск и остановка ------------------------------------------------------------
 
@@ -258,13 +212,13 @@ function StrategyList({
   const list = q ? all.filter((s) => (s.name || s.id).toLowerCase().includes(q) || (s.desc || "").toLowerCase().includes(q)) : all
   return (
     <Card>
-      <CardHeader>
+      <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-3">
         <CardTitle className="flex items-center gap-2">
           <ListChecksIcon className="size-4" />
           {t("strat.list.title")}
         </CardTitle>
-        <CardAction>
-          <InputGroup className="w-48">
+        <CardAction className="w-full @md/card-header:w-48">
+          <InputGroup className="w-full">
             <InputGroupAddon>
               <SearchIcon />
             </InputGroupAddon>
@@ -324,8 +278,7 @@ function ListsCard({ st }: { st: WinwsFull | undefined }) {
   const all = st?.all_lists ?? []
   const chosen = new Set(st?.lists ?? [])
   const toggle = (name: string, on: boolean) => {
-    const next = all.filter((n) => (n === name ? on : chosen.has(n)))
-    void optimistic("winws", { lists: next }, () => api("winws_set_lists", next), { errorTitle: t("strat.lists.failed") }).catch(() => {})
+    void setTransport(name, "winws", on, { notifyInfo: false, errorTitle: t("strat.lists.failed") })
   }
   return (
     <Card>
@@ -388,47 +341,12 @@ function Segment(props: ComponentProps<typeof ToggleGroupItem>) {
 
 function GameRanges({ f }: { f: FiltersState }) {
   const ranges = f.game_ranges ?? { tcp: GAME_RANGE_DEFAULT, udp: GAME_RANGE_DEFAULT }
-  const [draft, setDraft] = useState<Partial<Record<Proto, string>>>({})
-  const [errors, setErrors] = useState<Partial<Record<Proto, string | null>>>({})
-
-  // Сохранение одного диапазона по Enter/blur. Ошибку показываем у самого поля, а не
-  // тостом: тост на опечатку посреди набора был бы навязчив.
-  const save = async (which: Proto) => {
-    const value = (draft[which] ?? ranges[which] ?? "").trim()
-    if (value === (ranges[which] || "")) {
-      setDraft((d) => ({ ...d, [which]: undefined }))
-      return
-    }
-    const localErr = validateGameRangeLocal(value)
-    if (localErr) {
-      setErrors((e) => ({ ...e, [which]: localErr }))
-      return
-    }
-    try {
-      const res = await api<FiltersState>("game_filter_set", f.game, which === "tcp" ? value : null, which === "udp" ? value : null)
-      setErrors((e) => ({ ...e, [which]: null }))
-      setDraft((d) => ({ ...d, [which]: undefined }))
-      store.patch("filters", res)
-      reportApply(t(which === "tcp" ? "strat.range.tcpLabel" : "strat.range.udpLabel"), res)
-    } catch (e) {
-      setErrors((x) => ({ ...x, [which]: errText(e) }))
-    }
-  }
-
-  const reset = async () => {
-    try {
-      const res = await api<FiltersState>("game_filter_set", f.game, GAME_RANGE_DEFAULT, GAME_RANGE_DEFAULT)
-      setErrors({})
-      setDraft({})
-      store.patch("filters", res)
-      reportApply(t("strat.range.resetLabel"), res)
-    } catch (e) {
-      notify.error(t("strat.range.resetFailed"), errText(e))
-    }
-  }
+  const draft = useStore<RangeDrafts>(RANGE_DRAFTS_KEY) ?? {}
+  const resetting = useStore<boolean>(RANGE_RESET_KEY) ?? false
+  useEffect(() => () => { void flushRanges() }, [])
 
   const field = (which: Proto, enabled: boolean) => {
-    const err = errors[which]
+    const err = draft[which]?.error
     return (
       <Field key={which} data-invalid={err ? true : undefined} data-disabled={enabled ? undefined : true} className="w-48">
         <FieldLabel htmlFor={`strat-range-${which}`} className="font-normal text-muted-foreground">
@@ -441,14 +359,19 @@ function GameRanges({ f }: { f: FiltersState }) {
           spellCheck={false}
           disabled={!enabled}
           aria-invalid={err ? true : undefined}
-          value={draft[which] ?? ranges[which] ?? ""}
-          onChange={(e) => setDraft((d) => ({ ...d, [which]: e.target.value }))}
-          onBlur={() => void save(which)}
+          aria-describedby={err ? `strat-range-${which}-error` : undefined}
+          value={draft[which]?.value ?? ranges[which] ?? ""}
+          onChange={(e) => editRange(which, e.target.value)}
+          onBlur={() => void commitRange(which)}
           onKeyDown={(e) => {
             if (e.key === "Enter") e.currentTarget.blur()
+            if (e.key === "Escape") {
+              e.preventDefault()
+              discardRange(which)
+            }
           }}
         />
-        {err && <FieldDescription className="text-destructive">{err}</FieldDescription>}
+        {err && <FieldError id={`strat-range-${which}-error`} data-testid={`strat-range-${which}-error`}>{err}</FieldError>}
       </Field>
     )
   }
@@ -457,7 +380,7 @@ function GameRanges({ f }: { f: FiltersState }) {
     <div className="flex flex-wrap items-start gap-3">
       {field("tcp", f.game === "all" || f.game === "tcp")}
       {field("udp", f.game === "all" || f.game === "udp")}
-      <Button variant="outline" size="sm" className="self-end" data-testid="strat-range-default" onClick={() => void reset()}>
+      <Button variant="outline" size="sm" className="self-end" data-testid="strat-range-default" disabled={resetting} onClick={() => void resetRanges()}>
         <RotateCcwIcon data-icon="inline-start" />
         {t("strat.range.default")}
       </Button>

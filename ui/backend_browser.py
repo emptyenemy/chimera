@@ -27,7 +27,7 @@ import mimetypes
 import secrets
 import threading
 import time
-from collections import deque
+from collections import OrderedDict, deque
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
@@ -68,6 +68,8 @@ class _Hub:
     def __init__(self):
         self._cv = threading.Condition()
         self._events = deque(maxlen=1000)
+        self._states = {}
+        self._completed = OrderedDict()
         self._seq = 0
         self.connected = threading.Event()
         self.touched = time.monotonic()  # когда страница в последний раз давала о себе знать
@@ -75,14 +77,29 @@ class _Hub:
     def push(self, fn: str, payload) -> None:
         with self._cv:
             self._seq += 1
-            self._events.append((self._seq, fn, payload))
+            event = (self._seq, fn, payload)
+            self._events.append(event)
+            if fn == "hub" and isinstance(payload, dict) and isinstance(payload.get("key"), str):
+                self._states[payload["key"]] = event
+            if fn in {"blockDone", "cheburDone"} and isinstance(payload, dict) and isinstance(payload.get("_request_id"), str):
+                key = (fn, payload["_request_id"])
+                self._completed[key] = event
+                self._completed.move_to_end(key)
+                while len(self._completed) > 8:
+                    self._completed.popitem(last=False)
             self._cv.notify_all()
 
     def poll(self, cursor: int, timeout: float) -> tuple[list, int]:
         deadline = time.monotonic() + timeout
         with self._cv:
             while True:
-                out = [{"fn": fn, "payload": p} for seq, fn, p in self._events if seq > cursor]
+                recovered = []
+                if self._events and cursor < self._events[0][0] - 1:
+                    oldest = self._events[0][0]
+                    snapshots = [*self._states.values(), *self._completed.values()]
+                    recovered = sorted(event for event in snapshots if cursor < event[0] < oldest)
+                out = [{"fn": fn, "payload": p} for seq, fn, p in recovered] + [
+                    {"fn": fn, "payload": p} for seq, fn, p in self._events if seq > cursor]
                 left = deadline - time.monotonic()
                 if out or left <= 0:
                     return out, self._seq

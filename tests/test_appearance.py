@@ -176,3 +176,34 @@ def test_invalid_virtual_hue(hue):
 def test_hue_rounding_stays_within_slider_range():
     result = a.state({"theme": "dark", "appearance": {"accent_source": "custom", "accent": "#bf3334"}})
     assert 0 <= result["hue"] <= 359
+
+
+@pytest.mark.parametrize("palette", ["classic", "dracula", "github-light", "nord"])
+@pytest.mark.parametrize("mode", ["light", "dark"])
+@pytest.mark.parametrize("hue", [0, 25, 60, 140, 195, 215, 275, 359])
+def test_fast_safe_accent_matches_exhaustive_search(palette, mode, hue):
+    entry = next(e for e in a.catalog()["themes"] if e["id"] == palette)
+    surfaces = [entry[mode]["tokens"][f"--color-{key}"] for key in ("background", "card", "popover", "sidebar")]
+    value = a.hue_color(hue)
+    normalized, clamped = a.normalize_color(value)
+    if a._readable(normalized, surfaces):
+        expected = normalized, clamped, False
+    else:
+        h, lightness, saturation = colorsys.rgb_to_hls(*a.rgb(normalized))
+        candidates = [a.hex_rgb(colorsys.hls_to_rgb(h, n / 1000, saturation)) for n in range(200, 801)]
+        valid = [c for c in candidates if a.normalize_color(c)[0] == c and a._readable(c, surfaces)]
+        chosen = min(valid, key=lambda c: abs(colorsys.rgb_to_hls(*a.rgb(c))[1] - lightness))
+        expected = chosen, clamped, True
+    assert a.safe_accent(value, surfaces) == expected
+
+
+def test_safe_accent_cache_includes_all_surfaces():
+    a._safe_accent.cache_clear()
+    value = a.hue_color(215)
+    dark = a.safe_accent(value, ["#000000"])
+    light = a.safe_accent(value, ["#ffffff"])
+    assert dark != light
+    assert a.contrast(dark[0], "#000000") >= 4.5
+    assert a.contrast(light[0], "#ffffff") >= 4.5
+    assert a.safe_accent(value, ["#000000"]) == dark
+    assert a._safe_accent.cache_info().hits == 1

@@ -16,6 +16,35 @@ type Listener = () => void
 const data = new Map<string, unknown>()
 const errors = new Map<string, string | null>()
 const listeners = new Map<string, Set<Listener>>()
+const revisions = new Map<string, number>()
+const hubTimestamps = new Map<string, number>()
+type OptimisticPatch = object | ((value: unknown) => object)
+interface Mutation {
+  patch: OptimisticPatch | null
+}
+interface MutationQueue {
+  confirmed: unknown
+  edits: Mutation[]
+  tail: Promise<void>
+}
+const mutations = new Map<string, MutationQueue>()
+
+function merge(value: unknown, patch: OptimisticPatch): object {
+  const part = typeof patch === "function" ? patch(value) : patch
+  return { ...((value as object | undefined) ?? {}), ...part }
+}
+
+function publish(key: string, value: unknown): void {
+  data.set(key, value)
+  revisions.set(key, (revisions.get(key) ?? 0) + 1)
+  emit(key)
+}
+
+function renderMutations(key: string, queue: MutationQueue): void {
+  let value = queue.confirmed
+  for (const edit of queue.edits) if (edit.patch) value = merge(value, edit.patch)
+  publish(key, value)
+}
 
 function emit(key: string): void {
   for (const fn of listeners.get(key) ?? []) fn()
@@ -30,10 +59,15 @@ function subscribe(key: string, fn: Listener): () => void {
 
 export const store = {
   get: <T = unknown>(key: string) => data.get(key) as T | undefined,
+  confirmed: <T = unknown>(key: string) => (mutations.get(key)?.confirmed ?? data.get(key)) as T | undefined,
   error: (key: string) => errors.get(key) ?? null,
+  pending: (key: string) => mutations.has(key),
   set(key: string, value: unknown): void {
-    data.set(key, value)
-    emit(key)
+    const queue = mutations.get(key)
+    if (queue) {
+      queue.confirmed = value
+      renderMutations(key, queue)
+    } else publish(key, value)
   },
   setError(key: string, err: string | null): void {
     if ((errors.get(key) ?? null) === err) return
@@ -42,8 +76,8 @@ export const store = {
   },
   /** Слияние с текущим значением (оптимистичные правки). */
   patch(key: string, part: object): void {
-    data.set(key, { ...((data.get(key) as object | undefined) ?? {}), ...part })
-    emit(key)
+    const queue = mutations.get(key)
+    store.set(key, merge(queue ? queue.confirmed : data.get(key), part))
   },
   subscribe,
 }
@@ -64,58 +98,79 @@ export function useStoreError(key: string): string | null {
   )
 }
 
-// Пуш хаба: { key, data, error, ts }. Пока идёт оптимистичная правка ключа, снимок в
-// полёте мог уйти до команды и откатил бы тумблер назад — такие пропускаем: после
-// команды хаб всё равно пришлёт свежий (poke).
-const pendingKeys = new Map<string, number>()
+// Снимок хаба в полёте мог уйти до команды: после последней записи просим свежий.
 
 interface HubPush {
   key?: string
   data?: unknown
   error?: string | null
+  ts?: number
 }
 
 onPush("hub", (raw) => {
   const p = raw as HubPush | null
-  if (!p?.key || pendingKeys.get(p.key)) return
+  if (!p?.key || mutations.has(p.key)) return
+  if (typeof p.ts === "number" && Number.isFinite(p.ts)) {
+    if (p.ts < (hubTimestamps.get(p.key) ?? -Infinity)) return
+    hubTimestamps.set(p.key, p.ts)
+  }
   if (p.data != null) store.set(p.key, p.data)
   store.setError(p.key, p.error || null)
 })
 
 /** Снимок хаба — всё, что уже опрошено; дальше живут пуши. */
 export async function loadSnapshot(): Promise<void> {
+  const before = new Map(revisions)
   const snap = await api<Record<string, unknown>>("hub_snapshot")
-  for (const [k, v] of Object.entries(snap ?? {})) store.set(k, v)
+  for (const [key, value] of Object.entries(snap ?? {})) {
+    if (before.get(key) === revisions.get(key) && !mutations.has(key)) store.set(key, value)
+  }
 }
 
 interface OptimisticOptions {
   applyResult?: boolean
   errorTitle?: string
+  notifyError?: boolean
 }
 
 /** Оптимистичное действие: сразу патчит стор, шлёт команду, результат (если это объект
     состояния) кладёт в стор, при ошибке откатывает и показывает тост. */
 export async function optimistic<T = unknown>(
   key: string,
-  patch: object | null,
+  patch: OptimisticPatch | null,
   call: () => Promise<T>,
-  { applyResult = true, errorTitle }: OptimisticOptions = {}
+  { applyResult = true, errorTitle, notifyError = true }: OptimisticOptions = {}
 ): Promise<T> {
-  const before = data.get(key)
-  pendingKeys.set(key, (pendingKeys.get(key) ?? 0) + 1)
-  if (patch) store.patch(key, patch)
+  let queue = mutations.get(key)
+  if (!queue) {
+    queue = { confirmed: data.get(key), edits: [], tail: Promise.resolve() }
+    mutations.set(key, queue)
+  }
+  const edit = { patch }
+  const previous = queue.tail
+  let release!: () => void
+  queue.tail = new Promise<void>((resolve) => { release = resolve })
+  queue.edits.push(edit)
+  renderMutations(key, queue)
+  await previous
   try {
     const res = await call()
-    if (applyResult && res && typeof res === "object" && !Array.isArray(res)) store.patch(key, res)
+    if (patch) queue.confirmed = merge(queue.confirmed, patch)
+    if (applyResult && res && typeof res === "object" && !Array.isArray(res))
+      queue.confirmed = merge(queue.confirmed, res)
     return res
   } catch (e) {
-    store.set(key, before)
-    notify.error(errorTitle ?? t("common.failed"), e instanceof Error ? e.message : String(e))
+    if (notifyError)
+      notify.error(errorTitle ?? t("common.failed"), e instanceof Error ? e.message : String(e))
     throw e
   } finally {
-    const n = (pendingKeys.get(key) ?? 1) - 1
-    if (n) pendingKeys.set(key, n)
-    else pendingKeys.delete(key)
-    api("hub_refresh", [key]).catch(() => {})
+    queue.edits.splice(queue.edits.indexOf(edit), 1)
+    if (!queue.edits.length) {
+      mutations.delete(key)
+      hubTimestamps.set(key, Math.max(hubTimestamps.get(key) ?? -Infinity, Date.now() / 1000))
+    }
+    renderMutations(key, queue)
+    release()
+    if (!mutations.has(key)) api("hub_refresh", [key]).catch(() => {})
   }
 }

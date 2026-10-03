@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { CircleCheckIcon, RotateCcwIcon, ScanSearchIcon } from "lucide-react"
 
 import { Alert, AlertDescription } from "@/components/ui/alert"
@@ -46,6 +46,7 @@ export function VerifiedConfig({
   onRestore: (id: string) => void
 }) {
   const [state, setState] = useState<VerifiedState | null>(null)
+  const stateRevision = useRef(0)
   const [open, setOpen] = useState(false)
   const [input, setInput] = useState("")
   const [busy, setBusy] = useState(false)
@@ -71,12 +72,13 @@ export function VerifiedConfig({
 
   useEffect(() => {
     let active = true
+    const before = stateRevision.current
     void api<VerifiedState>("config_verified")
       .then((value) => {
-        if (active) setState(value)
+        if (active && before === stateRevision.current) setState(value)
       })
       .catch((e: unknown) => {
-        if (active) setState({ backup: null, error: message(e) })
+        if (active && before === stateRevision.current) setState({ backup: null, error: message(e) })
       })
     return () => {
       active = false
@@ -91,6 +93,7 @@ export function VerifiedConfig({
       const reply = await api<VerifyReply>("config_verify", selected)
       setChecks(reply.checks)
       if (reply.saved) {
+        stateRevision.current++
         setState({ backup: reply.backup, error: null })
         notify.success(t("settings.verified.saved"))
         setOpen(false)
