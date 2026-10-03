@@ -703,6 +703,8 @@
   "err.proxy.manager.sing_box_is_not_installed_click_download_sing_bo": "sing-box is not installed. Click “Download sing-box”.",
   "err.proxy.manager.the_archive_does_not_contain_sing_box_exe": "The archive does not contain sing-box.exe",
   "err.proxy.manager.the_downloaded_sing_box_archive_failed_sha256_ve": "The downloaded sing-box archive failed SHA256 verification for version {p0}. Installation cancelled.",
+  "err.proxy.parser.invalid_port": "The proxy port must be an integer from 1 to 65535.",
+  "err.proxy.parser.invalid_vmess_configuration": "The VMess link contains incorrectly formatted settings.",
   "err.proxy.parser.protocol_is_not_supported_use_vless_trojan_ss_vm": "Protocol {p0}:// is not supported (use vless/trojan/ss/vmess)",
   "err.proxy.parser.ss_could_not_parse_host_port": "SS: could not parse host:port",
   "err.proxy.parser.this_does_not_look_like_a_link_missing_scheme": "This does not look like a link (missing scheme://)",

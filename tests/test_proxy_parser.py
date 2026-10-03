@@ -204,3 +204,75 @@ def test_unsupported_scheme_raises():
 def test_empty_string_raises():
     with pytest.raises(ValueError):
         parser.parse_link("")
+
+
+def test_legacy_ss_ipv6_and_password_delimiters():
+    body = base64.urlsafe_b64encode(b"aes-256-gcm:pass@word:extra@[2001:db8::1]:8388").decode().rstrip("=")
+    result = parser.parse_link(f"ss://{body}#IPv6")
+    assert result["server"] == "[2001:db8::1]:8388"
+    assert result["outbound"]["password"] == "pass@word:extra"
+
+
+@pytest.mark.parametrize("transport", ["ws", "http", "h2", "httpupgrade"])
+def test_transport_path_decoded_once(transport):
+    result = parser.parse_link(f"vless://uuid@example.com:443?type={transport}&path=%2Fliteral%252Fsegment")
+    assert result["outbound"]["transport"]["path"] == "/literal%2Fsegment"
+
+
+def test_vmess_transport_path_is_literal_json_string():
+    result = parser.parse_link(_vmess_link({"add": "example.com", "port": 443, "id": "uuid",
+                                           "net": "ws", "path": "/literal%2Fsegment"}))
+    assert result["outbound"]["transport"]["path"] == "/literal%2Fsegment"
+
+
+@pytest.mark.parametrize("port", [-1, 65536, 443.5, True, [], {}, "443.5", "not-a-port"])
+def test_vmess_rejects_invalid_port_with_value_error(port):
+    with pytest.raises(ValueError):
+        parser.parse_link(_vmess_link({"add": "example.com", "port": port, "id": "uuid"}))
+
+
+@pytest.mark.parametrize("payload", [None, [], 42, "not an object"])
+def test_vmess_non_object_payload_is_value_error(payload):
+    with pytest.raises(ValueError):
+        parser.parse_link(_vmess_link(payload))
+
+
+def test_ss_rejects_base64_with_inserted_junk():
+    body = base64.urlsafe_b64encode(b"aes-256-gcm:password").decode().rstrip("=")
+    with pytest.raises(ValueError):
+        parser.parse_link(f"ss://{body[:4]}!{body[4:]}@example.com:8388")
+
+
+@pytest.mark.parametrize("port", [-1, 65536])
+def test_legacy_ss_rejects_invalid_port(port):
+    body = base64.urlsafe_b64encode(f"aes-256-gcm:password@example.com:{port}".encode()).decode().rstrip("=")
+    with pytest.raises(ValueError):
+        parser.parse_link(f"ss://{body}")
+
+
+@pytest.mark.parametrize("port", [1, 65535, "1", "65535"])
+def test_vmess_accepts_port_boundaries(port):
+    result = parser.parse_link(_vmess_link({"add": "example.com", "port": port, "id": "uuid"}))
+    assert result["outbound"]["server_port"] == int(port)
+
+
+@pytest.mark.parametrize("key,value", [("net", []), ("path", {}), ("add", []), ("id", 123),
+                                      ("aid", -1), ("aid", 1.5), ("aid", True), ("aid", [])])
+def test_vmess_invalid_fields_are_value_errors(key, value):
+    cfg = {"add": "example.com", "port": 443, "id": "uuid", key: value}
+    with pytest.raises(ValueError):
+        parser.parse_link(_vmess_link(cfg))
+
+
+def test_ss_unicode_password_and_percent_encoded_base64_padding():
+    from urllib.parse import quote
+    password = "пароль@with:colon"
+    body = base64.urlsafe_b64encode(f"aes-256-gcm:{password}".encode()).decode()
+    result = parser.parse_link(f"ss://{quote(body, safe='')}@[2001:db8::1]:8388")
+    assert result["outbound"]["password"] == password
+
+
+def test_vmess_wrapped_base64_still_parses():
+    link = _vmess_link({"add": "example.com", "port": "443", "id": "uuid"})
+    result = parser.parse_link(link[:20] + "\n" + link[20:])
+    assert result["outbound"]["server_port"] == 443

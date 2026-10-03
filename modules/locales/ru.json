@@ -711,6 +711,8 @@
   "err.proxy.manager.sing_box_is_not_installed_click_download_sing_bo": "sing-box не установлен. Нажми «Скачать sing-box».",
   "err.proxy.manager.the_archive_does_not_contain_sing_box_exe": "В архиве нет sing-box.exe",
   "err.proxy.manager.the_downloaded_sing_box_archive_failed_sha256_ve": "Скачанный архив sing-box не прошёл проверку контрольной суммы (SHA256 не совпадает с ожидаемым для версии {p0}) — файл повреждён или подменён, установка отменена.",
+  "err.proxy.parser.invalid_port": "Порт прокси должен быть целым числом от 1 до 65535.",
+  "err.proxy.parser.invalid_vmess_configuration": "Ссылка VMess содержит неверный формат настроек.",
   "err.proxy.parser.protocol_is_not_supported_use_vless_trojan_ss_vm": "Протокол {p0}:// пока не поддержан (есть vless/trojan/ss/vmess)",
   "err.proxy.parser.ss_could_not_parse_host_port": "SS: не разобрать host:port",
   "err.proxy.parser.this_does_not_look_like_a_link_missing_scheme": "Это не похоже на ссылку (нет scheme://)",

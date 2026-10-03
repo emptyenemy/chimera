@@ -309,3 +309,26 @@ def test_reload_lists_does_nothing_when_proxy_is_stopped(pm, monkeypatch, rs_pat
 
     dom, ips = rs_paths
     assert not dom.exists() and not ips.exists()
+
+
+def test_invalid_vmess_json_is_reported_in_state_without_crashing(pm, monkeypatch):
+    import base64
+    pm.config["link"] = "vmess://" + base64.b64encode(b"[]").decode()
+    monkeypatch.setattr(pm, "core_version", lambda: None)
+    monkeypatch.setattr(pm, "_split", lambda: ([], []))
+    state = pm.state()
+    assert state["parsed"] is None
+    assert state["error"]
+
+
+def test_invalid_vmess_port_does_not_replace_saved_link(pm, monkeypatch):
+    import base64
+    invalid = "vmess://" + base64.b64encode(b'{"add":"example.com","port":443.5,"id":"uuid"}').decode()
+    pm.config["link"] = VLESS_LINK
+    before = dict(pm.config)
+    saved = []
+    monkeypatch.setattr(pm, "_save", lambda: saved.append(True))
+    with pytest.raises(ValueError):
+        pm.set_link(invalid)
+    assert pm.config == before
+    assert saved == []
