@@ -22,8 +22,6 @@
 
 ## Quick start
 
-The following editions are being prepared for the next update; available archives are listed on Releases.
-
 1. Download an archive from [Releases](https://github.com/emptyenemy/chimera/releases/latest):
    - `Chimera-<version>-win64.zip`: Qt, including its own Chromium engine;
    - `Chimera-<version>-win64-webview.zip`: system WebView2, with a native Windows tray;
@@ -37,7 +35,7 @@ Updates install only when requested in Settings. The updater keeps your build va
 
 The tools work independently and share domain lists:
 
-- **Strategies (zapret2 / winws2)**: DPI bypass through [bol-van/zapret2](https://github.com/bol-van/zapret2), with strategies ported from [Flowseal/zapret-discord-youtube](https://github.com/Flowseal/zapret-discord-youtube).
+- **Strategies (zapret2 / winws2)**: DPI bypass through [bol-van/zapret2](https://github.com/bol-van/zapret2), with strategies ported from [Flowseal/zapret-discord-youtube](https://github.com/Flowseal/zapret-discord-youtube). Fresh strategies and site lists arrive over the air, without a new program version.
 - **Proxy (sing-box)**: every protocol of the core, from VLESS, VMess, Trojan and Shadowsocks to Hysteria2, TUIC and WireGuard, for selected domains. A provider subscription works too: Chimera downloads its servers and picks the fastest. Sites behind Cloudflare go through the proxy all at once, with one list; when the provider is in Russia, Russian banks and government portals bypass the proxy even in full TUN. PAC mode works without administrator rights; TUN supports routing by application or all traffic.
 - **Telegram proxy**: local MTProto proxy powered by [Flowseal/tg-ws-proxy](https://github.com/Flowseal/tg-ws-proxy).
 - **Hosts**: override system hosts entries using alternative DNS providers such as xbox, comss and malw.
@@ -48,7 +46,9 @@ The tools work independently and share domain lists:
 - **Share configurations**: export selected sections to a `.chimera` file; preview the contents before importing.
 - **Import backups**: preview and restore through the window or CLI; save the current state before restoring and roll back on failure ([details, in Russian](docs/BACKUPS.md)).
 - **CLI and TUI**: commands and a keyboard menu with arrows/WASD for controlling the application or service.
-- **Configuration trials (next update)**: strategies, hosts on/off and TUN with control checks, confirmation and automatic rollback ([details, in Russian](docs/TRIALS.md)).
+- **Configuration trials**: strategies, hosts on/off and TUN with control checks, confirmation and automatic rollback ([details, in Russian](docs/TRIALS.md)).
+- **Verified configuration**: checks of the sites you choose, a pinned snapshot and “Restore what worked” in the window, CLI and TUI.
+- **Route explanation**: `chimera explain <domain or IP>` and Ctrl+E in the TUI show the matching lists, why the proxy was chosen and the hosts entries ([details, in Russian](docs/ROUTES.md)).
 - **Live lists**: edits to `lists/*.txt` are validated and applied automatically.
 - **Languages and themes**: Russian/English and system/light/dark themes, selectable in Settings.
 
