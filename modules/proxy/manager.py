@@ -256,11 +256,22 @@ class ProxyManager:
         return [{"index": i, **row, "ms": self._pings.get(link), "current": link == current}
                 for i, (link, row) in enumerate(zip(servers, self._summaries[1], strict=True))]
 
+    def _change(self, target: dict, apply) -> dict:
+        """Сохраняет настройки и применяет их. Не применилось (файл правил занят) — прежние
+        настройки возвращаются: иначе страница показывала бы списки, которых нет в правилах."""
+        before = self.config
+        self._save(target)
+        try:
+            apply()
+        except Exception:
+            self._save(before)
+            raise
+        return self.state()
+
     def set_lists(self, names) -> dict:
         valid = {i["name"] for i in domains.list_info()}
-        self._save({**self.config, "lists": [n for n in (names or []) if n in valid]})
-        self.reload_lists()  # без перезапуска: ядро перечитает файлы правил само
-        return self.state()
+        # без перезапуска: ядро перечитает файлы правил само
+        return self._change({**self.config, "lists": [n for n in (names or []) if n in valid]}, self.reload_lists)
 
     def reload_lists(self) -> None:
         """Применяет текущие списки к работающему прокси: переписывает файлы правил
@@ -414,9 +425,8 @@ class ProxyManager:
     def set_direct_lists(self, names) -> dict:
         """Списки «всегда напрямую»: их домены и подсети идут мимо прокси, в том числе в TUN."""
         valid = {i["name"] for i in domains.list_info()}
-        self._save({**self.config, "direct_lists": [n for n in (names or []) if n in valid]})
-        self.reload_lists()  # правила — в файлах, ядро перечитает их само
-        return self.state()
+        # правила — в файлах, ядро перечитает их само
+        return self._change({**self.config, "direct_lists": [n for n in (names or []) if n in valid]}, self.reload_lists)
 
     def _domains(self) -> list[str]:
         return self._split()[0]

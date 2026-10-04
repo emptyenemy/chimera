@@ -215,8 +215,13 @@ class WinwsManager:
         не нужен — winws2 сам перечитывает hostlist и ipset при изменении файла."""
         from modules import domains
         valid = {i["name"] for i in domains.list_info()}
+        before = self.config
         self._save({**self.config, "lists": [n for n in (names or []) if n in valid]})
-        self.refresh_user_lists()
+        try:
+            self.refresh_user_lists()
+        except Exception:
+            self._save(before)   # файлы winws2 остались прежними — выбор тоже, иначе он соврёт
+            raise
         return self.state()
 
     def select_strategy(self, strategy_id: str) -> dict:
