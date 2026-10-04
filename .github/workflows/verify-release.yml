@@ -80,6 +80,6 @@ jobs:
       - name: Нативное окно WebView2
         if: matrix.flavor == 'webview'
         run: python tools/smoke_build.py build/Chimera-webview --flavor webview --native-webview
-      - name: Настоящее обновление 1.0.2 → новая версия
+      - name: Настоящее обновление 1.0.3 → новая версия
         if: matrix.flavor == 'qt'
-        run: python tools/verify_upgrade.py "archives/Chimera-$env:VERSION-win64.zip" --version $env:VERSION --from-version 1.0.2
+        run: python tools/verify_upgrade.py "archives/Chimera-$env:VERSION-win64.zip" --version $env:VERSION --from-version 1.0.3
