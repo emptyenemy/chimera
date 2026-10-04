@@ -125,7 +125,10 @@ def _config(raw):
 
 
 def normalize(sid, raw):
-    """Strictly validate one supported state file, without leaking rejected values."""
+    """Strictly validate one supported state file, without leaking rejected values.
+
+    Значения проверяются строго, а неизвестные ключи просто не берутся: поле, оставшееся от
+    прежней версии программы, не должно запрещать снимок — а с ним любое изменение настроек."""
     from modules.hosts.background import DEFAULT_OPTIONS
     from modules.proxy import manager as proxy_manager, parser
     from modules.tgproxy import manager as tg_manager
@@ -155,7 +158,7 @@ def normalize(sid, raw):
                 _bad()
             result, ids = [], set()
             for item in raw:
-                if not isinstance(item, dict) or set(item) - set(shareconfig._PROVIDER_KEYS) - {"unblock", "builtin"}:
+                if not isinstance(item, dict):   # лишние поля _clean_provider не берёт
                     _bad()
                 invalid = []
                 clean = shareconfig._clean_provider(item, "dns", invalid)
@@ -169,10 +172,8 @@ def normalize(sid, raw):
         if not isinstance(raw, dict):
             _bad()
         if sid == "hosts":
-            # provider и lists — формат до assignments; менеджер их не читает, в снимок не идут
-            if set(raw) - {"assignments", "enabled", "background", "entries", "health", "last_switch", "switch_log",
-                           "provider", "lists"}:
-                _bad()
+            # в снимок идут только assignments, enabled и background; остальное — работа фона
+            # и поля старых версий (provider, lists до assignments)
             assignments = raw.get("assignments", {})
             if not isinstance(assignments, dict):
                 _bad()
@@ -198,9 +199,7 @@ def normalize(sid, raw):
                     "background": background}
         defaults = {"proxy": proxy_manager.DEFAULTS, "telegram": tg_manager.DEFAULTS,
                     "winws": winws_manager.DEFAULTS}[sid]
-        if set(raw) - set(defaults):
-            _bad()
-        full = {**defaults, **raw}
+        full = {**defaults, **{k: v for k, v in raw.items() if k in defaults}}
         _bool(full["autostart"])
         portable = dict(full)
         if sid == "proxy":
