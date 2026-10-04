@@ -87,6 +87,25 @@
     need(text("autotune-summary").includes("сработала сама"), "Background fix is not marked");
     await click("autotune-keep");
     steps.push({ name: "Fix automatically switch persists; a background fix is marked in the result", ok: true });
+
+    await click("autotune-method-dns"); await click("autotune-method-proxy");
+    await wait(async () => JSON.stringify((await call("config_read")).data.autotune_steps) === '["strategy","hosts"]',
+      "Methods were not saved");
+    need(el("autotune-method-strategy").getAttribute("aria-checked") === "true", "A method that stayed on looks off");
+    await click("autotune-options-toggle");
+    await wait(() => el("autotune-option-strategy-alt"), "Options were not listed");
+    need(!el("autotune-options-dns"), "Options of a switched-off method are still offered");
+    await click("autotune-option-strategy-alt");
+    await wait(async () => ((await call("config_read")).data.autotune_exclude?.strategy || []).includes("alt"),
+      "Excluded option was not saved");
+    await smoke("break");
+    await click("autotune-check");
+    await click("autotune-fix-youtube");
+    await wait(() => el("autotune-result"), "Fix with narrowed methods did not finish");
+    const narrowed = (await call("autotune_state")).data.active;
+    need(JSON.stringify(narrowed.steps) === '["strategy","hosts"]', "The session did not use the chosen methods");
+    need((await smoke("state")).net.strategy !== "alt", "An excluded strategy was tried");
+    steps.push({ name: "What to try: switched-off methods and excluded options are skipped", ok: true });
   } catch (error) {
     steps.push({ name: String(error), ok: false });
   } finally {

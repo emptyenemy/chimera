@@ -865,7 +865,7 @@ def test_fix_without_arguments_runs_fast_mode_for_everything_and_waits(capsys, r
                                                                              "index": 1, "total": 23}}}
     api.extra["autotune_state"] = {"active": _fix_session()}
     code, out, _ = run(capsys, "fix")
-    assert api.called("autotune_start") == [[None, "fast"]]
+    assert api.called("autotune_start") == [[None, "fast", None]]   # способы — из настроек
     assert "Пробую стратегию alt — 2 из 23" in out
     assert "youtube: открывается — стратегия alt" in out and "нужен прокси" in out
     assert code == 1   # openai так и не открылся
@@ -876,8 +876,27 @@ def test_fix_for_chosen_services_in_smart_mode(capsys, running, monkeypatch):
     api.extra["autotune_start"] = {"active": {"phase": "done", "report": {"fixes": {}, "services": [
         {"name": "youtube", "after": {"ok": True}, "fix": None}]}}}
     code, data, _ = run_json(capsys, "fix", "youtube", "--smart")
-    assert api.called("autotune_start") == [[["youtube"], "smart"]] and code == 0
+    assert api.called("autotune_start") == [[["youtube"], "smart", None]] and code == 0
     assert data["data"]["active"]["phase"] == "done"
+
+
+@pytest.mark.parametrize("flags,steps", [
+    (["--only", "strategy"], ["strategy"]),
+    (["--skip", "proxy,dns"], ["strategy", "hosts"]),
+    (["--only", "strategy, proxy", "--skip", "proxy"], ["strategy"]),
+])
+def test_fix_can_narrow_the_methods_for_one_run(capsys, running, flags, steps):
+    api, _ = running
+    api.extra["autotune_start"] = {"active": {"phase": "done", "report": {"fixes": {}, "services": []}}}
+    code, _, _ = run_json(capsys, "fix", "youtube", *flags)
+    assert api.called("autotune_start") == [[["youtube"], "fast", steps]] and code == 0
+
+
+@pytest.mark.parametrize("flags", [["--only", "vpn"], ["--only", "proxy", "--skip", "proxy"]])
+def test_fix_refuses_unknown_or_empty_methods_before_starting(capsys, running, flags):
+    api, _ = running
+    code, _, _ = run(capsys, "fix", *flags)
+    assert code == 2 and api.called("autotune_start") == []
 
 
 def test_fix_check_names_the_reason_and_changes_nothing(capsys, running):

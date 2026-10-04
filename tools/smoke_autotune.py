@@ -71,6 +71,8 @@ def stand(lang="ru", theme="dark"):
                         gate.set()
                     elif action == "watch-fix":   # как будто самолечение заметило отвал
                         self._autotune.start(["youtube"], "fast", trigger="watch")
+                    elif action == "break":       # стратегию сняли — YouTube снова не открывается
+                        net.state.update(strategy=None, winws_lists=[])
                     return json.dumps({"ok": True, "data": {"net": net.state, "restored": len(net.restored),
                                                             "opened": opened}})
                 if method == "open_url":
@@ -88,7 +90,9 @@ def stand(lang="ru", theme="dark"):
 
         api = CheckApi(push=hub.push, service_owned=True)
         api._autotune = AutotuneManager(net, work / "autotune.json", api._mutation_lock,
-                                        memory_path=work / "autotune-memory.json", changed=api._autotune_changed)
+                                        memory_path=work / "autotune-memory.json", changed=api._autotune_changed,
+                                        settings=lambda: {"steps": appconfig.load().get("autotune_steps"),
+                                                          "exclude": appconfig.load().get("autotune_exclude")})
         server = QuietServer(("127.0.0.1", 0), _Handler)
         server.api, server.hub, server.token = api, hub, "autotune-test"
         server.web_dir, server.missing_next, server.daemon_threads = ROOT / "ui/web-next", False, True

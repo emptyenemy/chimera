@@ -128,7 +128,9 @@ class Api:
                                           changed=self._trial_changed, load_pending=service_owned or not service.is_running())
         owner = service_owned or not service.is_running()
         self._autotune = AutotuneManager(AutotuneOps(self), paths.data_path("autotune.json"), self._mutation_lock,
-                                         changed=self._autotune_changed, load_pending=owner)
+                                         changed=self._autotune_changed, load_pending=owner,
+                                         settings=lambda: {"steps": appconfig.load().get("autotune_steps"),
+                                                           "exclude": appconfig.load().get("autotune_exclude")})
         self.hosts.background.can_mutate = lambda: self._trial.active is None and not self._autotune.blocks_changes()
         if owner:
             self._trial.recover()
@@ -759,7 +761,7 @@ class Api:
     _READ_NAMES = frozenset({"tg_check_update", "upstream_check_updates", "doctor_run", "doctor_report", "providers_list",
                              "config_export", "config_import_preview", "config_backups", "config_backup_preview", "config_backup_compare", "config_verified",
                               "appearance_preview", "route_explain", "lists_validate", "lists_index",
-                              "autotune_catalog", "autotune_diagnose", "autotune_share", "data_check",
+                              "autotune_catalog", "autotune_diagnose", "autotune_share", "autotune_methods", "data_check",
                               "proxy_ping_servers"})
 
     @classmethod
@@ -863,6 +865,23 @@ class Api:
         except Exception as e:
             return _err(e)
 
+    def autotune_methods(self):
+        """Чем подбирает автонастройка: способы, варианты каждого и что из этого выбрано в настройках."""
+        try:
+            from modules.autotune.engine import STEPS
+            ops = self._autotune.ops
+            names = {s["id"]: s.get("name") or s["id"] for s in self.winws.strategies()}
+            names.update({p["id"]: p.get("name") or p["id"] for p in self.hosts.providers()})
+            names.update({p["id"]: p.get("name") or p["id"] for p in self.dns.list_providers()})
+            def rows(ids):
+                return [{"id": i, "name": names.get(i, i)} for i in dict.fromkeys(ids)]
+            cfg = appconfig.load()
+            return _ok({"steps": list(STEPS), "enabled": cfg["autotune_steps"], "exclude": cfg["autotune_exclude"],
+                        "candidates": {"strategy": rows(ops.strategies()), "hosts": rows(ops.hosts_providers()),
+                                       "dns": rows(ops.dns_providers(unblock=False) + ops.dns_providers(unblock=True))}})
+        except Exception as e:
+            return _err(e)
+
     def autotune_diagnose(self, services=None):
         """Проверить сервисы при текущих настройках, ничего не меняя."""
         try:
@@ -871,11 +890,12 @@ class Api:
         except Exception as e:
             return _err(e)
 
-    def autotune_start(self, services=None, mode="fast"):
+    def autotune_start(self, services=None, mode="fast", steps=None):
+        """steps — способы на этот запуск; без них — из настроек (autotune_steps)."""
         try:
             with self._mutation_lock:
-                remote = self._backup_owner("autotune_start", services, mode)
-                return remote if remote is not None else _ok(self._autotune.start(services, mode))
+                remote = self._backup_owner("autotune_start", services, mode, steps)
+                return remote if remote is not None else _ok(self._autotune.start(services, mode, steps=steps))
         except Exception as e:
             return _err(e)
 

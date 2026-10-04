@@ -69,10 +69,11 @@ Levels exist so that remote channels can be restricted. The proxy link is hidden
 | Strategies / Hosts / Proxy: Try | `chimera trial start <strategy|hosts|tun> <target> [--seconds <seconds>] [--domains <domains>]` | system |
 | Trial: Keep | `chimera trial confirm <id>` | app |
 | Trial: Revert | `chimera trial revert <id>` | system |
-| Auto-setup → Set up everything / Fix | `chimera fix run [services…] [--smart]` | system |
+| Auto-setup → Set up everything / Fix | `chimera fix run [services…] [--smart] [--only <only>] [--skip <skip>]` | system |
 | Auto-setup → Check | `chimera fix check [services…]` | read |
 | Auto-setup page | `chimera fix status` | read |
 | Auto-setup → service list | `chimera fix services` | read |
+| Auto-setup → What to try | `chimera fix methods` | read |
 | Auto-setup → Cancel | `chimera fix cancel` | system |
 | Auto-setup → Undo | `chimera fix revert` | system |
 | Auto-setup → Done | `chimera fix keep` | app |
@@ -1524,17 +1525,21 @@ chimera providers hide google false
 
 Auto-setup: check services, find a working bypass method and apply it..
 
-#### `chimera fix run [services…] [--smart]`
+#### `chimera fix run [services…] [--smart] [--only <only>] [--skip <skip>]`
 
 Find a bypass method for unreachable services: strategies, hosts providers, DNS, and the proxy if a link is set. Waits until done and prints the progress. Cancellation or an error restores the original state. Level: changes the system.
 
 - `services` — service lists (youtube, discord…); all by default
 - `--smart` — smart mode: compare every option and pick the fastest
+- `--only` — only these methods, comma-separated: strategy, hosts, dns, proxy
+- `--skip` — without these methods, comma-separated
 
 ```
 chimera fix
 chimera fix youtube discord
 chimera fix openai --smart --json
+chimera fix youtube --only strategy
+chimera fix --skip proxy,dns
 ```
 
 #### `chimera fix check [services…]`
@@ -1562,6 +1567,15 @@ Services and the addresses auto-setup checks them with. Level: read-only.
 
 ```
 chimera fix services
+```
+
+#### `chimera fix methods`
+
+Auto-setup methods and the options of each (strategies, hosts providers, DNS), what is enabled and what is excluded in the settings. Level: read-only.
+
+```
+chimera fix methods
+chimera fix methods --json
 ```
 
 #### `chimera fix cancel`

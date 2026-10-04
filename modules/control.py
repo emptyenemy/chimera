@@ -47,7 +47,7 @@ ALLOWED_METHODS = allowed_methods()
 # Режим интерфейса (interface) и остальное — правкой config.json.
 CONFIG_KEYS_WRITABLE = frozenset({
     "ui_backend", "auto_elevate", "close_to_tray", "update_channel", "update_check", "theme", "lang", "appearance", "appearance_custom",
-    "autotune_watch",
+    "autotune_watch", "autotune_steps", "autotune_exclude",
 })
 
 MAX_BODY = 1 << 20  # запросы CLI — доли килобайта; больше мегабайта — не наш клиент

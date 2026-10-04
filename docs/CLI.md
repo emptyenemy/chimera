@@ -69,10 +69,11 @@
 | Стратегии / Hosts / Прокси: Попробовать | `chimera trial start <strategy|hosts|tun> <target> [--seconds <seconds>] [--domains <domains>]` | system |
 | Проба: Оставить | `chimera trial confirm <id>` | app |
 | Проба: Вернуть | `chimera trial revert <id>` | system |
-| Автонастройка → Настроить всё / Починить | `chimera fix run [сервисы…] [--smart]` | system |
+| Автонастройка → Настроить всё / Починить | `chimera fix run [сервисы…] [--smart] [--only <only>] [--skip <skip>]` | system |
 | Автонастройка → Проверить | `chimera fix check [сервисы…]` | read |
 | Страница «Автонастройка» | `chimera fix status` | read |
 | Автонастройка → список сервисов | `chimera fix services` | read |
+| Автонастройка → Что пробовать | `chimera fix methods` | read |
 | Автонастройка → Отменить | `chimera fix cancel` | system |
 | Автонастройка → Вернуть как было | `chimera fix revert` | system |
 | Автонастройка → Готово | `chimera fix keep` | app |
@@ -1524,17 +1525,21 @@ chimera providers hide google false
 
 Автонастройка: проверить сервисы, подобрать способ обхода и применить его..
 
-#### `chimera fix run [сервисы…] [--smart]`
+#### `chimera fix run [сервисы…] [--smart] [--only <only>] [--skip <skip>]`
 
 Подобрать способ обхода для недоступных сервисов: стратегии, hosts-провайдеры, DNS и прокси, если ссылка задана. Ждёт окончания и печатает ход подбора. При отмене или ошибке возвращает исходное состояние. Уровень: изменение системы.
 
 - `сервисы` — списки сервисов (youtube, discord…); по умолчанию — все
 - `--smart` — умный режим: сравнить все варианты и выбрать самый быстрый
+- `--only` — только эти способы, через запятую: strategy, hosts, dns, proxy
+- `--skip` — без этих способов, через запятую
 
 ```
 chimera fix
 chimera fix youtube discord
 chimera fix openai --smart --json
+chimera fix youtube --only strategy
+chimera fix --skip proxy,dns
 ```
 
 #### `chimera fix check [сервисы…]`
@@ -1562,6 +1567,15 @@ chimera fix status --json
 
 ```
 chimera fix services
+```
+
+#### `chimera fix methods`
+
+Способы автонастройки и варианты каждого (стратегии, hosts-провайдеры, DNS), что выбрано и что исключено в настройках. Уровень: чтение.
+
+```
+chimera fix methods
+chimera fix methods --json
 ```
 
 #### `chimera fix cancel`

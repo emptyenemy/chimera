@@ -182,13 +182,16 @@ ACTIONS: tuple[Action, ...] = (
 
     # --- автонастройка ----------------------------------------------------------------
     _a("fix", "run", handler="fix_run", methods=("autotune_start", "autotune_state"), level=SYSTEM,
-       args=(Arg("сервисы", "names", optional=True), Arg("smart", "switch", flag=True, default=False)),
-       examples=("chimera fix", "chimera fix youtube discord", "chimera fix openai --smart --json")),
+       args=(Arg("сервисы", "names", optional=True), Arg("smart", "switch", flag=True, default=False),
+             Arg("only", "str", flag=True), Arg("skip", "str", flag=True)),
+       examples=("chimera fix", "chimera fix youtube discord", "chimera fix openai --smart --json",
+                 "chimera fix youtube --only strategy", "chimera fix --skip proxy,dns")),
     _a("fix", "check", handler="fix_check", methods=("autotune_diagnose",),
        args=(Arg("сервисы", "names", optional=True),),
        examples=("chimera fix check", "chimera fix check youtube --json")),
     _a("fix", "status", "autotune_state", examples=("chimera fix status --json",)),
     _a("fix", "services", "autotune_catalog", examples=("chimera fix services",)),
+    _a("fix", "methods", "autotune_methods", examples=("chimera fix methods", "chimera fix methods --json")),
     _a("fix", "cancel", "autotune_cancel", level=SYSTEM, examples=("chimera fix cancel",)),
     _a("fix", "revert", "autotune_revert", level=SYSTEM, examples=("chimera fix revert",)),
     _a("fix", "keep", "autotune_keep", level=APP, examples=("chimera fix keep",)),

@@ -21,7 +21,7 @@ from modules import control
 from modules.autotune import memory as memory_mod
 from modules.autotune import provider as provider_mod
 from modules.autotune import report as report_mod
-from modules.autotune.engine import MODES, Cancelled, Engine
+from modules.autotune.engine import MODES, STEPS, Cancelled, Engine
 from modules.errors import ChimeraError
 from modules.fileutil import atomic_write_text
 
@@ -31,8 +31,8 @@ LOG_LIMIT = 60
 # Операции, которые меняют систему: в потоке подбора — только под блокировкой и без отмены.
 MUTATIONS = ("prepare_strategy", "apply_strategy", "commit_strategy", "restore_strategy", "assign_hosts",
              "apply_dns", "keep_dns", "revert_dns", "apply_proxy", "commit_proxy", "restore_proxy")
-PUBLIC = ("id", "phase", "mode", "trigger", "services", "stage", "current", "log", "report", "error", "reason",
-          "started", "finished", "cancelling")
+PUBLIC = ("id", "phase", "mode", "trigger", "services", "steps", "stage", "current", "log", "report", "error",
+          "reason", "started", "finished", "cancelling")
 # кто начал подбор: пользователь или самолечение в фоне (modules/autotune/watch.py)
 TRIGGERS = ("user", "watch")
 
@@ -56,13 +56,15 @@ class _GuardedOps:
 
 class AutotuneManager:
     def __init__(self, ops, path, lock, *, memory_path=None, worker=None, changed=None, load_pending=True,
-                 engine=Engine, now=time.time):
+                 engine=Engine, now=time.time, settings=None):
         self.ops, self.path, self.lock = ops, path, lock
         self.memory_path = memory_path or memory_mod.PATH
         self.worker = worker or self._worker
         self.changed = changed or (lambda: None)
         self.engine = engine
         self.now = now
+        # {"steps": [...], "exclude": {шаг: [варианты]}} из настроек: чем подбирать и что не пробовать
+        self.settings = settings or (lambda: {})
         self._records = threading.RLock()   # быстрая: состояние читает хаб каждую секунду
         self.active = self.last = None
         self._cancel = threading.Event()
@@ -141,10 +143,21 @@ class AutotuneManager:
 
     # --- сессия --------------------------------------------------------------------------
 
-    def start(self, services=None, mode="fast", trigger="user"):
+    def _plan(self, steps):
+        """Способы и исключения подбора: из настроек, способы можно сузить на один запуск."""
+        saved = self.settings() or {}
+        chosen = steps if steps is not None else (saved.get("steps") or list(STEPS))
+        if (isinstance(chosen, str) or not isinstance(chosen, (list, tuple)) or not chosen
+                or not all(s in STEPS for s in chosen)):
+            raise ChimeraError("err.autotune.arguments")
+        exclude = saved.get("exclude") if isinstance(saved.get("exclude"), dict) else {}
+        return [s for s in STEPS if s in chosen], exclude
+
+    def start(self, services=None, mode="fast", trigger="user", steps=None):
         if mode not in MODES or trigger not in TRIGGERS:
             raise ChimeraError("err.autotune.arguments")
         services = self._services(services)
+        steps, exclude = self._plan(steps)
         with self.lock, self._records:
             if self.blocks_changes():
                 raise ChimeraError("err.autotune.busy")
@@ -153,7 +166,8 @@ class AutotuneManager:
             self.ops.require_admin()
             before = self.ops.capture()
             self.ops.snapshot()
-            record = {"schema": 1, "id": secrets.token_hex(8), "phase": RUNNING, "mode": mode, "trigger": trigger, "services": services,
+            record = {"schema": 1, "id": secrets.token_hex(8), "phase": RUNNING, "mode": mode, "trigger": trigger,
+                      "services": services, "steps": steps, "exclude": exclude,
                       "before": before, "stage": "diagnose", "current": None, "log": [], "report": None,
                       "started": self.now()}
             self.active = record
@@ -221,8 +235,10 @@ class AutotuneManager:
             if rec is None or rec["id"] != record_id:
                 return
             services, mode = rec["services"], rec["mode"]
+            steps, exclude = rec.get("steps") or list(STEPS), rec.get("exclude") or {}
             rec["provider"] = provider
         engine = self.engine(_GuardedOps(self.ops, self.lock, cancel), mode=mode,
+                             allowed=tuple(steps), exclude=exclude,
                              memory=memory_mod.load(key, self.memory_path), hints=hints,
                              progress=lambda event: self._progress(record_id, event), cancel=cancel)
         try:

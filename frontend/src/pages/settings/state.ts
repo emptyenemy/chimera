@@ -18,6 +18,8 @@ export interface AppConfig {
   update_check?: boolean
   theme?: string
   autotune_watch?: boolean
+  autotune_steps?: string[]
+  autotune_exclude?: Record<string, string[]>
 }
 
 export interface AutostartState {

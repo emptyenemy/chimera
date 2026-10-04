@@ -34,13 +34,16 @@ def _median(values):
 
 
 class Engine:
-    def __init__(self, ops, *, mode="fast", allowed=STEPS, memory=None, hints=None, progress=None, cancel=None):
+    def __init__(self, ops, *, mode="fast", allowed=STEPS, memory=None, hints=None, exclude=None, progress=None,
+                 cancel=None):
         if mode not in MODES:
             raise ValueError(mode)
         self.ops, self.mode = ops, mode
         self.allowed = tuple(s for s in STEPS if s in allowed)
         self.memory = memory or {}          # {сервис: {"kind": шаг, "id": вариант}} для этой сети
         self.hints = hints or {}            # {сервис: [{"kind", "id"}, ...]} — у того же провайдера
+        # {шаг: [вариант, ...]} — что пользователь велел не пробовать: знает, что не поможет
+        self.exclude = {step: set(ids) for step, ids in (exclude or {}).items()}
         self.progress = progress or (lambda event: None)
         self.cancel = cancel or threading.Event()
         self._targets = {}
@@ -167,7 +170,8 @@ class Engine:
         remembered = [self.memory[s]["id"] for s in goal
                       if self.memory.get(s, {}).get("kind") == step and self.memory[s].get("id") in candidates]
         hinted = [h["id"] for s in goal for h in self.hints.get(s, ()) if h["kind"] == step and h["id"] in candidates]
-        return list(dict.fromkeys(remembered + hinted + list(candidates)))
+        skip = self.exclude.get(step, set())
+        return [c for c in dict.fromkeys(remembered + hinted + list(candidates)) if c not in skip]
 
     # --- шаги ------------------------------------------------------------------------------
 

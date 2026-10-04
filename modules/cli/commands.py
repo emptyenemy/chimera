@@ -840,9 +840,29 @@ def _fix_session_lines(session) -> list[str]:
     return lines
 
 
+def _fix_steps(only, skip):
+    """--only strategy,hosts / --skip proxy: способы на этот запуск; без флагов — из настроек."""
+    from modules.autotune.engine import STEPS
+    if only is None and skip is None:
+        return None
+    def split(text):
+        names = [n.strip() for n in (text or "").split(",") if n.strip()]
+        unknown = [n for n in names if n not in STEPS]
+        if unknown:
+            raise CliError(t("cli.fix.unknown_step", step=unknown[0], steps=", ".join(STEPS)), "usage", 2)
+        return names
+    chosen = split(only) if only is not None else list(STEPS)
+    dropped = set(split(skip)) if skip is not None else set()
+    steps = [s for s in chosen if s not in dropped]
+    if not steps:
+        raise CliError(t("cli.fix.no_steps"), "usage", 2)
+    return steps
+
+
 def h_fix_run(ctx, act, ns):
-    services, smart = arg_values(act, ns)
-    state = ctx.call("autotune_start", services or None, "smart" if smart else "fast")
+    services, smart, only, skip = arg_values(act, ns)
+    steps = _fix_steps(only, skip)
+    state = ctx.call("autotune_start", services or None, "smart" if smart else "fast", steps)
     shown = None
     while (state.get("active") or {}).get("phase") == "running":
         current = state["active"].get("current")

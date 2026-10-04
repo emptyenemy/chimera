@@ -4,6 +4,7 @@
 
 import { useEffect, useState } from "react"
 import {
+  ChevronDownIcon,
   CircleAlertIcon,
   GaugeIcon,
   RotateCcwIcon,
@@ -22,7 +23,9 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty"
-import { FieldDescription, FieldGroup } from "@/components/ui/field"
+import { Checkbox } from "@/components/ui/checkbox"
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
+import { Field, FieldDescription, FieldGroup, FieldLabel, FieldLegend, FieldSet } from "@/components/ui/field"
 import { Progress } from "@/components/ui/progress"
 import { Spinner } from "@/components/ui/spinner"
 import { Switch } from "@/components/ui/switch"
@@ -34,10 +37,10 @@ import { copyText } from "@/lib/clipboard"
 import { fmtNum } from "@/lib/format"
 import { t } from "@/lib/i18n"
 import { notify } from "@/lib/notify"
-import { store, useStore } from "@/lib/store"
+import { optimistic, store, useStore } from "@/lib/store"
 import type { AppInfo } from "@/lib/types"
 import { SettingRow } from "@/pages/settings/general"
-import { refreshConfig, setConfig, useConfig, usePending } from "@/pages/settings/state"
+import { CONFIG_KEY, refreshConfig, setConfig, useConfig, usePending, type AppConfig } from "@/pages/settings/state"
 import {
   CATALOG_KEY,
   absorbReport,
@@ -188,6 +191,124 @@ function WatchCard() {
             onCheckedChange={(v) => void setConfig("autotune_watch", v)}
           />
         </SettingRow>
+      </CardContent>
+    </Card>
+  )
+}
+
+// --- что пробовать: способы и варианты --------------------------------------------------------
+// Человек знает, что DNS у него не поможет или что прокси режет скорость и пинг, — и не ждёт
+// перебора там, где перспективы нет. Те же настройки у самолечения.
+
+const STEPS = ["strategy", "hosts", "dns", "proxy"] as const
+type Step = (typeof STEPS)[number]
+type OptionStep = Exclude<Step, "proxy">
+
+interface Methods {
+  candidates: Record<OptionStep, { id: string; name: string }[]>
+}
+
+// очередь правок config.json: быстрые клики по галочкам не теряются, каждая строится от подтверждённого
+function saveMethods(key: "autotune_steps" | "autotune_exclude", change: (config: AppConfig) => Partial<AppConfig>) {
+  const patch = (value: unknown) => change((value ?? {}) as AppConfig)
+  return optimistic(CONFIG_KEY, patch, () => {
+    const next = patch(store.confirmed(CONFIG_KEY))
+    return api<AppConfig>("config_set", key, next[key])
+  }, { errorTitle: t("autotune.methods.failed") }).catch(() => {})
+}
+
+const stepsOf = (config: AppConfig | undefined): string[] => config?.autotune_steps ?? [...STEPS]
+
+function toggleStep(step: Step, on: boolean) {
+  void saveMethods("autotune_steps", (config) => {
+    const steps = stepsOf(config).filter((s) => s !== step)
+    return { autotune_steps: STEPS.filter((s) => s === step ? on : steps.includes(s)) }
+  })
+}
+
+function toggleOption(step: OptionStep, id: string, tried: boolean) {
+  void saveMethods("autotune_exclude", (config) => {
+    const exclude = { ...(config.autotune_exclude ?? {}) }
+    const ids = (exclude[step] ?? []).filter((x) => x !== id)
+    exclude[step] = tried ? ids : [...ids, id]
+    return { autotune_exclude: exclude }
+  })
+}
+
+function MethodsCard() {
+  const config = useConfig()
+  const [open, setOpen] = useState(false)
+  const [methods, setMethods] = useState<Methods | null>(null)
+  const steps = stepsOf(config)
+  const exclude = config?.autotune_exclude ?? {}
+
+  const expand = async (next: boolean) => {
+    setOpen(next)
+    if (!next || methods) return
+    try {
+      setMethods(await api<Methods>("autotune_methods"))
+    } catch (e) {
+      notify.error(t("autotune.methods.loadFailed"), errText(e))
+    }
+  }
+
+  return (
+    <Card size="sm" data-testid="autotune-methods">
+      <CardHeader>
+        <CardTitle>{t("autotune.methods.title")}</CardTitle>
+        <CardDescription>{t("autotune.methods.hint")}</CardDescription>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-3">
+        <FieldGroup className="grid grid-cols-[repeat(auto-fill,minmax(200px,1fr))] gap-x-4 gap-y-3">
+          {STEPS.map((step) => {
+            const on = steps.includes(step)
+            return (
+              <Field key={step} orientation="horizontal">
+                <Checkbox
+                  id={`autotune-method-${step}`}
+                  data-testid={`autotune-method-${step}`}
+                  checked={on}
+                  disabled={!config || (on && steps.length === 1)}
+                  onCheckedChange={(v) => toggleStep(step, v === true)}
+                />
+                <FieldLabel htmlFor={`autotune-method-${step}`} className="font-normal">
+                  {t(`autotune.methods.step.${step}`)}
+                </FieldLabel>
+              </Field>
+            )
+          })}
+        </FieldGroup>
+        {steps.includes("proxy") && <FieldDescription>{t("autotune.methods.proxyHint")}</FieldDescription>}
+        <Collapsible open={open} onOpenChange={(next) => void expand(next)}>
+          <CollapsibleTrigger render={<Button variant="ghost" size="sm" className="w-fit" data-testid="autotune-options-toggle" />}>
+            {t("autotune.methods.options")}
+            <ChevronDownIcon data-icon="inline-end" className={open ? "rotate-180" : undefined} />
+          </CollapsibleTrigger>
+          <CollapsibleContent className="flex flex-col gap-4 pt-2">
+            <FieldDescription>{t("autotune.methods.optionsHint")}</FieldDescription>
+            {!methods && <Spinner />}
+            {methods && (["strategy", "hosts", "dns"] as const).filter((step) => steps.includes(step)).map((step) => (
+              <FieldSet key={step} data-testid={`autotune-options-${step}`}>
+                <FieldLegend variant="label">{t(`autotune.methods.step.${step}`)}</FieldLegend>
+                <FieldGroup className="grid grid-cols-[repeat(auto-fill,minmax(180px,1fr))] gap-x-4 gap-y-2">
+                  {methods.candidates[step].map((option) => (
+                    <Field key={option.id} orientation="horizontal">
+                      <Checkbox
+                        id={`autotune-option-${step}-${option.id}`}
+                        data-testid={`autotune-option-${step}-${option.id}`}
+                        checked={!(exclude[step] ?? []).includes(option.id)}
+                        onCheckedChange={(v) => toggleOption(step, option.id, v === true)}
+                      />
+                      <FieldLabel htmlFor={`autotune-option-${step}-${option.id}`} className="font-normal">
+                        {option.name}
+                      </FieldLabel>
+                    </Field>
+                  ))}
+                </FieldGroup>
+              </FieldSet>
+            ))}
+          </CollapsibleContent>
+        </Collapsible>
       </CardContent>
     </Card>
   )
@@ -456,6 +577,7 @@ export function AutotunePage() {
       {recoverable && active && <SessionAlert session={active} recoverable />}
       {running && active ? <RunningCard session={active} /> : <StartCard busy={recoverable} />}
       {active?.phase === "done" && <ResultCard session={active} />}
+      <MethodsCard />
       <WatchCard />
       {!active && last && ["cancelled", "failed", "reverted", "interrupted"].includes(last.phase) && (
         <SessionAlert session={last} recoverable={false} />
