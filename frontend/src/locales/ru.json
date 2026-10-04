@@ -722,7 +722,7 @@
   "proxy.servers.title.many": "Подписка: {n} серверов",
   "proxy.servers.title.other": "Подписка: {n} сервера",
   "proxy.servers.refresh": "Обновить подписку",
-  "proxy.servers.fastest": "Выбрать быстрее",
+  "proxy.servers.fastest": "Выбрать самый быстрый",
   "proxy.servers.use": "Выбрать",
   "proxy.servers.current": "Выбран",
   "proxy.servers.ms": "{ms} мс",

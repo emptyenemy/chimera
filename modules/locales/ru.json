@@ -293,7 +293,7 @@
   "cli.cmd.proxy.direct.summary": "Какие списки всегда идут мимо прокси, даже в TUN (без имён — очистить). Применяется сразу.",
   "cli.cmd.proxy.direct.ui": "Прокси → Всегда напрямую",
   "cli.cmd.proxy.fastest.summary": "Замерить серверы подписки и выбрать самый быстрый.",
-  "cli.cmd.proxy.fastest.ui": "Прокси → Серверы подписки → Выбрать быстрее",
+  "cli.cmd.proxy.fastest.ui": "Прокси → Серверы подписки → Выбрать самый быстрый",
   "cli.cmd.proxy.link.arg.clear": "удалить ссылку",
   "cli.cmd.proxy.link.arg.link": "ссылка или `-`",
   "cli.cmd.proxy.link.summary": "Задать ссылку прокси (vless://, trojan://, ss://, vmess://). `-` — прочитать из stdin, `--clear` — удалить.",

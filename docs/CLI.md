@@ -98,7 +98,7 @@
 | Прокси → поле ссылки | `chimera proxy link [ссылка] [--clear]` | app |
 | Прокси → Серверы подписки | `chimera proxy servers` | read |
 | Прокси → Серверы подписки → Выбрать | `chimera proxy server <номер>` | app |
-| Прокси → Серверы подписки → Выбрать быстрее | `chimera proxy fastest` | app |
+| Прокси → Серверы подписки → Выбрать самый быстрый | `chimera proxy fastest` | app |
 | Прокси → Обновить подписку | `chimera proxy subscription` | app |
 | Прокси → выбор списков | `chimera proxy lists [списки…]` | app |
 | Прокси → Всегда напрямую | `chimera proxy direct [списки…]` | app |
