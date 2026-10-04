@@ -856,3 +856,14 @@ def test_rejected_game_filter_preserves_settings_and_backup_history(live):
     assert not live.api.game_filter_set("tcp", "9000", "invalid")["ok"]
     assert full_snapshot(live) == before
     assert {path: path.read_bytes() for path in live.root.rglob("*") if path.is_file()} == history
+
+
+def test_a_setting_left_from_an_older_version_does_not_break_snapshots(live):
+    # dns_hidden и hosts_hidden писала промежуточная версия скрытия провайдеров
+    config = {**appconfig.load(), "dns_hidden": ["google"], "hosts_hidden": []}
+    clean = cb.normalize("config", config)
+    assert "dns_hidden" not in clean and "hosts_hidden" not in clean
+    appconfig.CONFIG_PATH.write_text(json.dumps(config), encoding="utf-8")
+    assert live.api.config_set("theme", "light")["ok"]
+    assert cb.list_backups(), "снимок перед изменением не сохранился"
+

@@ -80,14 +80,14 @@ def _port(value):
 def _config(raw):
     if not isinstance(raw, dict):
         _bad()
-    # Unknown settings have no restore setter; never carry them into runtime config.
+    # Неизвестным настройкам нечем восстанавливаться — в снимок они не идут. Но и не бракуют его:
+    # ключ, оставшийся от прежней версии (dns_hidden до providers_hidden), не должен запрещать
+    # снимок, а с ним автонастройку и запуск стратегии.
     known = set(appconfig.DEFAULTS) | {"ui_port", "tray_hint_shown", "dns_probe", "game_filter",
                                      "game_filter_tcp", "game_filter_udp"}
     if "frontend" in raw and raw["frontend"] not in ("legacy", "next"):
         _bad()
-    if set(raw) - known - {"frontend"}:
-        _bad()
-    out = {**appconfig.DEFAULTS, **{k: v for k, v in raw.items() if k != "frontend"}}
+    out = {**appconfig.DEFAULTS, **{k: v for k, v in raw.items() if k in known}}
     for key in ("auto_elevate", "close_to_tray", "update_check", "tray_hint_shown", "autotune_watch"):
         if key in out:
             _bool(out[key])
