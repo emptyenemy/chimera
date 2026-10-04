@@ -14,11 +14,13 @@ _WRITE_LOCK = threading.RLock()
 # close_to_tray — крестик окна прячет его в трей (движок pyside6), а не закрывает программу;
 # update_channel — stable | beta (пре-релизы), update_check — проверять обновления в фоне;
 # theme — оформление окна: system (как в Windows) | light | dark (см. ui/theme.py);
-# lang — язык программы: auto (как в Windows) | ru | en (см. modules/i18n.py)
+# lang — язык программы: auto (как в Windows) | ru | en (см. modules/i18n.py);
+# autotune_watch — самолечение в фоне: чинить сервисы, которые автонастройка уже чинила (docs/AUTOTUNE.md)
 THEMES = ("system", "light", "dark")
 DEFAULTS = {"interface": "ui", "auto_elevate": False, "ui_backend": default_backend(), "close_to_tray": True,
             "update_channel": "stable", "update_check": True, "theme": "system", "lang": "auto",
-            "appearance": dict(appearance.DEFAULTS), "appearance_custom": None, "providers_hidden": []}
+            "appearance": dict(appearance.DEFAULTS), "appearance_custom": None, "providers_hidden": [],
+            "autotune_watch": False}
 
 
 def load() -> dict:
@@ -76,6 +78,8 @@ def _normalize_value(key: str, value):
         value = appearance.normalize_custom(value)
     if key == "appearance":
         value = appearance.normalize_settings(value)
+    if key == "autotune_watch" and not isinstance(value, bool):
+        raise ChimeraValueError("err.appearance.settings")
     if key == "providers_hidden" and (not isinstance(value, list) or len(value) > 200
                                 or not all(isinstance(i, str) and i for i in value)):
         raise ChimeraValueError("err.appearance.settings")

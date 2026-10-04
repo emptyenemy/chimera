@@ -60,9 +60,11 @@ def main(screenshot=None):
                         gate.clear()
                     elif action == "release":
                         gate.set()
+                    elif action == "watch-fix":   # как будто самолечение заметило отвал
+                        self._autotune.start(["youtube"], "fast", trigger="watch")
                     return json.dumps({"ok": True, "data": {"net": net.state, "restored": len(net.restored)}})
                 allowed = {"hub_snapshot", "hub_watch", "hub_refresh", "autotune_start", "autotune_cancel",
-                           "autotune_revert", "autotune_keep"}
+                           "autotune_revert", "autotune_keep", "config_set"}
                 if self.is_read(method) or method in allowed:
                     return super().dispatch(method, args_json)
                 return json.dumps({"ok": False, "error": "Operation outside auto-setup check"})

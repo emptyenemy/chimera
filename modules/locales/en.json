@@ -90,7 +90,7 @@
   "cli.cmd.config.restore.ui": "Settings → Tools → Backups → Restore",
   "cli.cmd.config.set.arg.key": "setting name",
   "cli.cmd.config.set.arg.value": "true/false, a number or a string",
-  "cli.cmd.config.set.summary": "Change a setting. Available are the ones the window changes: ui_backend, auto_elevate, close_to_tray, update_channel, update_check, theme (system, light or dark), lang (auto, ru or en). Anything else means editing config.json by hand.",
+  "cli.cmd.config.set.summary": "Change a setting. Available are the ones the window changes: ui_backend, auto_elevate, close_to_tray, update_channel, update_check, autotune_watch, theme (system, light or dark), lang (auto, ru or en). Anything else means editing config.json by hand.",
   "cli.cmd.config.set.ui": "Settings: switches and choices",
   "cli.cmd.config.verified.summary": "Show the last verified snapshot and its sites",
   "cli.cmd.config.verified.ui": "Settings → Tools → Last verified configuration",

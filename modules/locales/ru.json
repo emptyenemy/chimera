@@ -90,7 +90,7 @@
   "cli.cmd.config.restore.ui": "Настройки → Инструменты → Резервные копии → Восстановить",
   "cli.cmd.config.set.arg.key": "имя настройки",
   "cli.cmd.config.set.arg.value": "true/false, число или строка",
-  "cli.cmd.config.set.summary": "Изменить настройку. Доступно то, что меняет окно: ui_backend, auto_elevate, close_to_tray, update_channel, update_check, theme (system, light или dark), lang (auto, ru или en). Остальное — правкой config.json.",
+  "cli.cmd.config.set.summary": "Изменить настройку. Доступно то, что меняет окно: ui_backend, auto_elevate, close_to_tray, update_channel, update_check, autotune_watch, theme (system, light или dark), lang (auto, ru или en). Остальное — правкой config.json.",
   "cli.cmd.config.set.ui": "Настройки: переключатели и выбор",
   "cli.cmd.config.verified.summary": "Показать последний проверенный снимок и его сайты",
   "cli.cmd.config.verified.ui": "Настройки → Инструменты → Последняя проверенная конфигурация",

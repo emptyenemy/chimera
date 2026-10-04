@@ -17,6 +17,7 @@ export interface AppConfig {
   update_channel?: string
   update_check?: boolean
   theme?: string
+  autotune_watch?: boolean
 }
 
 export interface AutostartState {

@@ -28,8 +28,10 @@ LOG_LIMIT = 60
 # Операции, которые меняют систему: в потоке подбора — только под блокировкой и без отмены.
 MUTATIONS = ("prepare_strategy", "apply_strategy", "commit_strategy", "restore_strategy", "assign_hosts",
              "apply_dns", "keep_dns", "revert_dns", "apply_proxy", "commit_proxy", "restore_proxy")
-PUBLIC = ("id", "phase", "mode", "services", "stage", "current", "log", "report", "error", "reason",
+PUBLIC = ("id", "phase", "mode", "trigger", "services", "stage", "current", "log", "report", "error", "reason",
           "started", "finished", "cancelling")
+# кто начал подбор: пользователь или самолечение в фоне (modules/autotune/watch.py)
+TRIGGERS = ("user", "watch")
 
 
 class _GuardedOps:
@@ -141,8 +143,8 @@ class AutotuneManager:
 
     # --- сессия --------------------------------------------------------------------------
 
-    def start(self, services=None, mode="fast"):
-        if mode not in MODES:
+    def start(self, services=None, mode="fast", trigger="user"):
+        if mode not in MODES or trigger not in TRIGGERS:
             raise ChimeraError("err.autotune.arguments")
         services = self._services(services)
         with self.lock, self._records:
@@ -153,7 +155,7 @@ class AutotuneManager:
             self.ops.require_admin()
             before = self.ops.capture()
             self.ops.snapshot()
-            record = {"schema": 1, "id": secrets.token_hex(8), "phase": RUNNING, "mode": mode, "services": services,
+            record = {"schema": 1, "id": secrets.token_hex(8), "phase": RUNNING, "mode": mode, "trigger": trigger, "services": services,
                       "before": before, "stage": "diagnose", "current": None, "log": [], "report": None,
                       "started": self.now()}
             self.active = record

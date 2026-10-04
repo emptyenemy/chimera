@@ -64,6 +64,7 @@ export interface Session {
   id: string | null
   phase: Phase
   mode: Mode
+  trigger?: "user" | "watch"
   services: string[]
   stage: string | null
   current: Current | null

@@ -55,6 +55,7 @@ from ui.updater import Updater
 from ui.trials import TrialOps
 from ui.autotune import AutotuneOps
 from modules.autotune.manager import AutotuneManager
+from modules.autotune.watch import AutotuneWatch
 
 WEB_DIR = Path(__file__).parent / "web-next"
 
@@ -165,6 +166,11 @@ class Api:
             ("autotune", self.autotune_state, 1.0, False),
         ])
         self.hub.start()
+        # самолечение в фоне: по желанию (config.json -> autotune_watch), только у владельца модулей
+        self._autotune_watch = AutotuneWatch(self._autotune, enabled=lambda: bool(appconfig.load().get("autotune_watch")),
+                                             can_run=lambda: self._trial.active is None)
+        if owner and not self._smoke:
+            self._autotune_watch.start_background(self._bg_stop)
         if not self._smoke:
             self._watch_lists()
 

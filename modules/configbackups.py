@@ -88,7 +88,7 @@ def _config(raw):
     if set(raw) - known - {"frontend"}:
         _bad()
     out = {**appconfig.DEFAULTS, **{k: v for k, v in raw.items() if k != "frontend"}}
-    for key in ("auto_elevate", "close_to_tray", "update_check", "tray_hint_shown"):
+    for key in ("auto_elevate", "close_to_tray", "update_check", "tray_hint_shown", "autotune_watch"):
         if key in out:
             _bool(out[key])
     hidden = out["providers_hidden"]

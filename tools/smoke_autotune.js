@@ -69,6 +69,16 @@
     const cancelled = (await smoke("state")).net;
     need(cancelled.strategy === null && cancelled.hosts.openai === "comss", "Cancel did not restore the state before the search");
     steps.push({ name: "Cancel stops the search and restores the previous state", ok: true });
+
+    await click("autotune-watch");
+    await wait(async () => (await call("config_read")).data.autotune_watch === true, "Fix automatically was not saved");
+    await click("autotune-watch");
+    await wait(async () => (await call("config_read")).data.autotune_watch === false, "Fix automatically was not switched off");
+    await smoke("watch-fix");
+    await wait(() => el("autotune-result"), "Background fix result missing");
+    need(text("autotune-summary").includes("сработала сама"), "Background fix is not marked");
+    await click("autotune-keep");
+    steps.push({ name: "Fix automatically switch persists; a background fix is marked in the result", ok: true });
   } catch (error) {
     steps.push({ name: String(error), ok: false });
   } finally {

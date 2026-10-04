@@ -24,6 +24,7 @@ import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/
 import { FieldDescription, FieldGroup } from "@/components/ui/field"
 import { Progress } from "@/components/ui/progress"
 import { Spinner } from "@/components/ui/spinner"
+import { Switch } from "@/components/ui/switch"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
@@ -33,6 +34,8 @@ import { t } from "@/lib/i18n"
 import { notify } from "@/lib/notify"
 import { store, useStore } from "@/lib/store"
 import type { AppInfo } from "@/lib/types"
+import { SettingRow } from "@/pages/settings/general"
+import { refreshConfig, setConfig, useConfig, usePending } from "@/pages/settings/state"
 import {
   CATALOG_KEY,
   absorbReport,
@@ -152,6 +155,27 @@ function StartCard({ busy }: { busy: boolean }) {
   )
 }
 
+// Самолечение в фоне: чинить снова то, что автонастройка уже чинила в этой сети
+function WatchCard() {
+  const config = useConfig()
+  const pending = usePending()
+  return (
+    <Card size="sm" data-testid="autotune-watch-card">
+      <CardContent>
+        <SettingRow id="autotune-watch" title={t("autotune.watch.title")} hint={t("autotune.watch.hint")}>
+          <Switch
+            id="autotune-watch"
+            data-testid="autotune-watch"
+            checked={!!config?.autotune_watch}
+            disabled={!config || !!pending.autotune_watch}
+            onCheckedChange={(v) => void setConfig("autotune_watch", v)}
+          />
+        </SettingRow>
+      </CardContent>
+    </Card>
+  )
+}
+
 // --- ход подбора ---------------------------------------------------------------------------
 
 function logText(e: LogEvent, labels: ReturnType<typeof useLabels>): string {
@@ -243,6 +267,7 @@ function ResultCard({ session }: { session: Session }) {
       <CardHeader>
         <CardTitle>{t("autotune.result.title")}</CardTitle>
         <CardDescription data-testid="autotune-summary">
+          {session.trigger === "watch" && <span className="block">{t("autotune.result.byWatch")}</span>}
           {t("autotune.result.summary", { open, total: rows.length, fixed })}
         </CardDescription>
       </CardHeader>
@@ -394,6 +419,7 @@ export function AutotunePage() {
   useEffect(() => {
     void loadCatalog()
     void loadNames()
+    void refreshConfig()
   }, [])
 
   // закончилась сессия — её итог становится диагнозом: список сервисов показывает новое положение дел
@@ -404,6 +430,7 @@ export function AutotunePage() {
       {recoverable && active && <SessionAlert session={active} recoverable />}
       {running && active ? <RunningCard session={active} /> : <StartCard busy={recoverable} />}
       {active?.phase === "done" && <ResultCard session={active} />}
+      <WatchCard />
       {!active && last && ["cancelled", "failed", "reverted", "interrupted"].includes(last.phase) && (
         <SessionAlert session={last} recoverable={false} />
       )}

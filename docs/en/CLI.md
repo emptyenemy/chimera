@@ -375,7 +375,7 @@ chimera config get update_channel
 
 #### `chimera config set <key> <value>`
 
-Change a setting. Available are the ones the window changes: ui_backend, auto_elevate, close_to_tray, update_channel, update_check, theme (system, light or dark), lang (auto, ru or en). Anything else means editing config.json by hand. Level: changes the app. Works without a running Chimera.
+Change a setting. Available are the ones the window changes: ui_backend, auto_elevate, close_to_tray, update_channel, update_check, autotune_watch, theme (system, light or dark), lang (auto, ru or en). Anything else means editing config.json by hand. Level: changes the app. Works without a running Chimera.
 
 - `key` — setting name
 - `value` — true/false, a number or a string

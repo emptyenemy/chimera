@@ -896,3 +896,9 @@ def test_fix_cancel_revert_and_keep_reach_the_app(capsys, running):
     for action, method in (("cancel", "autotune_cancel"), ("revert", "autotune_revert"), ("keep", "autotune_keep")):
         assert run(capsys, "fix", action)[0] == 0
         assert api.called(method) == [[]]
+
+
+def test_fix_automatically_is_a_regular_setting(capsys, running):
+    api, _ = running
+    assert run(capsys, "config", "set", "autotune_watch", "true")[0] == 0
+    assert api.called("config_set") == [["autotune_watch", True]]
