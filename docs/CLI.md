@@ -94,6 +94,10 @@
 | Прокси / Обзор → «Остановить» | `chimera proxy stop` | system |
 | Прокси → режим | `chimera proxy mode <pac|split|tun>` | system |
 | Прокси → поле ссылки | `chimera proxy link [ссылка] [--clear]` | app |
+| Прокси → Серверы подписки | `chimera proxy servers` | read |
+| Прокси → Серверы подписки → Выбрать | `chimera proxy server <номер>` | app |
+| Прокси → Серверы подписки → Выбрать быстрее | `chimera proxy fastest` | app |
+| Прокси → Обновить подписку | `chimera proxy subscription` | app |
 | Прокси → выбор списков | `chimera proxy lists [списки…]` | app |
 | Прокси → приложения | `chimera proxy apps [приложения…]` | app |
 | Прокси → «Запущенные программы» | `chimera proxy apps-running` | read |
@@ -718,6 +722,41 @@ chimera proxy mode pac
 chimera proxy link vless://...
 echo vless://... | chimera proxy link -
 chimera proxy link --clear
+```
+
+#### `chimera proxy servers`
+
+Серверы подписки с задержкой TCP-подключения, замеренной сейчас. Ссылки серверов не показываются. Уровень: чтение.
+
+```
+chimera proxy servers
+chimera proxy servers --json
+```
+
+#### `chimera proxy server <номер>`
+
+Выбрать сервер подписки по номеру из `proxy servers`. Работающий прокси перезапускается. Уровень: изменение приложения.
+
+- `номер` — номер сервера из proxy servers
+
+```
+chimera proxy server 3
+```
+
+#### `chimera proxy fastest`
+
+Замерить серверы подписки и выбрать самый быстрый. Уровень: изменение приложения.
+
+```
+chimera proxy fastest
+```
+
+#### `chimera proxy subscription`
+
+Скачать подписку заново и выбрать самый быстрый сервер. Адрес подписки задаётся командой proxy link. Уровень: изменение приложения.
+
+```
+chimera proxy subscription
 ```
 
 #### `chimera proxy lists [списки…]`

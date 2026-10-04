@@ -33,7 +33,7 @@ ARG_SLUGS = {
     "привязки": "bindings", "серверы": "servers", "адаптер": "adapter", "провайдер": "provider",
     "файл": "file", "домены": "domains", "старое": "old", "новое": "new", "домен": "domain",
     "список": "list", "модуль": "module", "команда": "command", "параметры": "params", "тема": "topic",
-    "ключ": "key", "язык": "language", "сервисы": "services",
+    "ключ": "key", "язык": "language", "сервисы": "services", "номер": "number",
 }
 
 
@@ -240,6 +240,11 @@ ACTIONS: tuple[Action, ...] = (
        methods=("proxy_set_link",), level=APP,
        args=(Arg("ссылка", "str", optional=True), Arg("clear", "switch", flag=True)),
        examples=("chimera proxy link vless://...", "echo vless://... | chimera proxy link -", "chimera proxy link --clear")),
+    _a("proxy", "servers", handler="proxy_servers", methods=("proxy_ping_servers",),
+       examples=("chimera proxy servers", "chimera proxy servers --json")),
+    _a("proxy", "server", "proxy_select_server", (Arg("номер", "int"),), APP, ("chimera proxy server 3",)),
+    _a("proxy", "fastest", "proxy_fastest_server", level=APP, examples=("chimera proxy fastest",)),
+    _a("proxy", "subscription", "proxy_refresh_subscription", level=APP, examples=("chimera proxy subscription",)),
     _a("proxy", "lists", "proxy_set_lists", (Arg("списки", "names", optional=True),), APP,
        ("chimera proxy lists youtube telegram",)),
     _a("proxy", "apps", "proxy_set_apps", (Arg("приложения", "names", optional=True),), APP,

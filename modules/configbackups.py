@@ -208,6 +208,9 @@ def normalize(sid, raw):
                 _bad()
             if full["link"]:
                 parser.parse_link(full["link"])
+            if (not isinstance(full["subscription"], str) or not isinstance(full["servers"], list)
+                    or not all(isinstance(s, str) for s in full["servers"])):
+                _bad()
             _port(full["socks_port"])
             portable = {k: full[k] for k in ("mode", "lists", "apps")}
         elif sid == "telegram":

@@ -749,7 +749,8 @@ class Api:
     _READ_NAMES = frozenset({"tg_check_update", "upstream_check_updates", "doctor_run", "doctor_report", "providers_list",
                              "config_export", "config_import_preview", "config_backups", "config_backup_preview", "config_backup_compare", "config_verified",
                               "appearance_preview", "route_explain", "lists_validate", "lists_index",
-                              "autotune_catalog", "autotune_diagnose", "data_check"})
+                              "autotune_catalog", "autotune_diagnose", "data_check",
+                              "proxy_ping_servers"})
 
     @classmethod
     def is_read(cls, method: str) -> bool:
@@ -1597,6 +1598,36 @@ class Api:
     def proxy_set_link(self, link):
         try:
             return _ok(self.proxy.set_link(link))
+        except Exception as e:
+            return _err(e)
+
+    # подписка: proxy_set_link принимает и её адрес, а это — обновление и выбор сервера
+
+    @_auto_snapshot(('proxy',))
+    def proxy_refresh_subscription(self):
+        try:
+            return _ok(self.proxy.refresh_subscription())
+        except Exception as e:
+            return _err(e)
+
+    def proxy_ping_servers(self):
+        """Серверы подписки с задержкой TCP-подключения — сейчас, а не из прошлого замера."""
+        try:
+            return _ok(self.proxy.ping_servers())
+        except Exception as e:
+            return _err(e)
+
+    @_auto_snapshot(('proxy',))
+    def proxy_select_server(self, index):
+        try:
+            return _ok(self.proxy.select_server(index))
+        except Exception as e:
+            return _err(e)
+
+    @_auto_snapshot(('proxy',))
+    def proxy_fastest_server(self):
+        try:
+            return _ok(self.proxy.select_fastest())
         except Exception as e:
             return _err(e)
 

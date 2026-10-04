@@ -889,6 +889,14 @@ def h_data_update(ctx, act, ns):
     return Result(res, lines, exit_code=1 if res.get("apply_errors") or res.get("restart_error") else 0)
 
 
+def h_proxy_servers(ctx, act, ns):
+    rows = ctx.call("proxy_ping_servers")
+    lines = [t("cli.proxy.server_row", n=r["index"], label=r["label"], server=r["server"], protocol=r["protocol"],
+               ping=t("cli.proxy.ping_ms", ms=r["ms"]) if r.get("ms") is not None else t("cli.proxy.ping_none"))
+             + (" " + t("cli.proxy.current") if r.get("current") else "") for r in rows]
+    return Result(rows, lines or [t("cli.proxy.no_servers")])
+
+
 def h_trial_start(ctx, act, ns):
     kind, target, seconds, domains = arg_values(act, ns)
     checks = [name.strip() for name in domains.split(",")] if domains is not None else None
@@ -897,7 +905,7 @@ def h_trial_start(ctx, act, ns):
 
 HANDLERS = {
     "trial_start": h_trial_start, "explain": h_explain, "fix_run": h_fix_run, "fix_check": h_fix_check,
-    "data_check": h_data_check, "data_update": h_data_update,
+    "data_check": h_data_check, "data_update": h_data_update, "proxy_servers": h_proxy_servers,
     "status": h_status, "version": h_version, "start": h_start, "tui": h_tui, "stop": h_stop, "restart": h_restart,
     "sources_check": h_sources_check, "config_get": h_config_get, "config_set": h_config_set,
     "lang_show": h_lang_show, "lang_set": h_lang_set, "lang_catalog": h_lang_catalog,

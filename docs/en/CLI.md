@@ -94,6 +94,10 @@ Levels exist so that remote channels can be restricted. The proxy link is hidden
 | Proxy / Overview → “Stop” | `chimera proxy stop` | system |
 | Proxy → mode | `chimera proxy mode <pac|split|tun>` | system |
 | Proxy → link field | `chimera proxy link [link] [--clear]` | app |
+| Proxy → Subscription servers | `chimera proxy servers` | read |
+| Proxy → Subscription servers → Use | `chimera proxy server <number>` | app |
+| Proxy → Subscription servers → Pick the fastest | `chimera proxy fastest` | app |
+| Proxy → Refresh subscription | `chimera proxy subscription` | app |
 | Proxy → list selection | `chimera proxy lists [lists…]` | app |
 | Proxy → apps | `chimera proxy apps [apps…]` | app |
 | Proxy → “Running programs” | `chimera proxy apps-running` | read |
@@ -718,6 +722,41 @@ Set the proxy link (vless://, trojan://, ss://, vmess://). `-` reads it from std
 chimera proxy link vless://...
 echo vless://... | chimera proxy link -
 chimera proxy link --clear
+```
+
+#### `chimera proxy servers`
+
+Subscription servers with TCP connect latency measured now. Server links are not shown. Level: read-only.
+
+```
+chimera proxy servers
+chimera proxy servers --json
+```
+
+#### `chimera proxy server <number>`
+
+Pick a subscription server by its number from `proxy servers`. A running proxy restarts. Level: changes the app.
+
+- `number` — server number from proxy servers
+
+```
+chimera proxy server 3
+```
+
+#### `chimera proxy fastest`
+
+Measure the subscription servers and pick the fastest. Level: changes the app.
+
+```
+chimera proxy fastest
+```
+
+#### `chimera proxy subscription`
+
+Download the subscription again and pick the fastest server. The subscription address is set with proxy link. Level: changes the app.
+
+```
+chimera proxy subscription
 ```
 
 #### `chimera proxy lists [lists…]`

@@ -52,7 +52,8 @@ CONFIG_KEYS_WRITABLE = frozenset({
 MAX_BODY = 1 << 20  # запросы CLI — доли килобайта; больше мегабайта — не наш клиент
 # Скрываем только ссылку прокси: это доступ к чужому серверу. Ссылку и секрет Telegram-прокси
 # спрашивают ровно затем, чтобы вставить в Telegram, — это ключ к своему локальному прокси.
-SECRET_KEYS = frozenset({"link"})
+# адрес подписки несёт ключ доступа к серверам провайдера — секрет, как и ссылка
+SECRET_KEYS = frozenset({"link", "subscription"})
 OPEN_SCHEMES = ("tg://",)
 CONTROL_ACTIONS = frozenset({"quit", "restart"})
 

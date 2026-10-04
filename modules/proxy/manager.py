@@ -16,7 +16,7 @@ sing-box.exe тянется одним пиннутым релизом в bin/si
 
 from modules.i18n import t as _tr
 
-from modules.errors import ChimeraFileNotFoundError, ChimeraRuntimeError, ChimeraValueError
+from modules.errors import ChimeraError, ChimeraFileNotFoundError, ChimeraRuntimeError, ChimeraValueError
 from modules.fileutil import atomic_write_text
 
 import ctypes
@@ -34,7 +34,7 @@ import zipfile
 from pathlib import Path
 
 from modules import domains, paths, winproc
-from . import parser
+from . import parser, subscription
 
 ROOT = Path(__file__).parent.parent.parent
 SINGBOX_DIR = ROOT / "bin" / "sing-box"
@@ -78,7 +78,10 @@ SINGBOX_URL = (
 SINGBOX_SHA256 = "c2d8bfff918755808781dfdeeb8581b6c91eb3a243d9a7b55483cfc0c0684d32"
 
 # mode: "pac" | "split" | "tun" — см. докстринг модуля; apps — имена процессов для split.
-DEFAULTS = {"link": "", "lists": [], "apps": [], "autostart": False, "mode": "pac", "socks_port": 2080}
+# subscription — адрес подписки провайдера (секрет, как и link), servers — её серверы ссылками;
+# link — выбранный из них или вставленный вручную (тогда подписки нет)
+DEFAULTS = {"link": "", "lists": [], "apps": [], "autostart": False, "mode": "pac", "socks_port": 2080,
+            "subscription": "", "servers": []}
 MODES = ("pac", "split", "tun")
 
 # Общий TUN-адаптер выборочного и полного режимов.
@@ -131,6 +134,8 @@ class ProxyManager:
         self.config = self._load()
         self._core_version_cache: str | None = None  # версия бинаря меняется только при download_core
         self._core_version_cached = False
+        self._pings: dict[str, int | None] = {}   # последний замер серверов подписки
+        self._summaries: tuple = ((), [])        # (servers, подписи) — разбор ссылок на каждый опрос не нужен
         _cleanup_old_exe()  # подчистить sing-box.exe.old, если он остался с прошлого обновления
 
     # --- конфиг (state.json) -------------------------------------------------
@@ -167,12 +172,78 @@ class ProxyManager:
 
     def set_link(self, raw: str) -> dict:
         raw = (raw or "").strip()
+        if subscription.is_subscription_url(raw):
+            return self.set_subscription(raw)
+        many = subscription.links(raw) if raw.count("://") > 1 or "://" not in raw else []
+        if len(many) > 1:
+            # вставили содержимое подписки: серверы есть, обновлять их по адресу нельзя
+            return self._use_servers("", many)
         if raw:
             parser.parse_link(raw)  # валидация: бросит ValueError, если кривая
-        self._save({**self.config, "link": raw})
+        # ручная ссылка заменяет подписку
+        self._save({**self.config, "link": raw, "subscription": "", "servers": []})
         if self.running:
             self.restart()
         return self.state()
+
+    # --- подписка ------------------------------------------------------------
+
+    def set_subscription(self, url: str, opener=None) -> dict:
+        text = subscription.fetch(url, opener) if opener else subscription.fetch(url)
+        servers = subscription.links(text)
+        if not servers:
+            raise ChimeraError("err.proxy.subscription.empty")
+        return self._use_servers(url, servers)
+
+    def _use_servers(self, url: str, servers: list[str]) -> dict:
+        pings = subscription.ping_all(servers)
+        self._pings = dict(zip(servers, pings, strict=True))
+        best = subscription.choose(servers, pings)
+        self._save({**self.config, "link": servers[best], "subscription": url, "servers": servers})
+        if self.running:
+            self.restart()
+        return self.state()
+
+    def refresh_subscription(self) -> dict:
+        url = self.config.get("subscription") or ""
+        if not url:
+            raise ChimeraError("err.proxy.subscription.none")
+        return self.set_subscription(url)
+
+    def ping_servers(self) -> list[dict]:
+        servers = list(self.config.get("servers") or [])
+        self._pings = dict(zip(servers, subscription.ping_all(servers), strict=True))
+        return self._server_rows()
+
+    def select_server(self, index: int) -> dict:
+        servers = list(self.config.get("servers") or [])
+        if isinstance(index, bool) or not isinstance(index, int) or not 0 <= index < len(servers):
+            raise ChimeraError("err.proxy.subscription.no_server")
+        self._save({**self.config, "link": servers[index]})
+        if self.running:
+            self.restart()
+        return self.state()
+
+    def select_fastest(self) -> dict:
+        servers = list(self.config.get("servers") or [])
+        if not servers:
+            raise ChimeraError("err.proxy.subscription.none")
+        self.ping_servers()
+        return self.select_server(subscription.choose(servers, [self._pings.get(s) for s in servers]))
+
+    def _server_rows(self) -> list[dict]:
+        servers = tuple(self.config.get("servers") or [])
+        if self._summaries[0] != servers:
+            rows = []
+            for link in servers:
+                try:
+                    rows.append(subscription.summary(link))
+                except ValueError:
+                    rows.append({"label": "?", "server": "?", "protocol": "?"})
+            self._summaries = (servers, rows)
+        current = self.config["link"]
+        return [{"index": i, **row, "ms": self._pings.get(link), "current": link == current}
+                for i, (link, row) in enumerate(zip(servers, self._summaries[1], strict=True))]
 
     def set_lists(self, names) -> dict:
         valid = {i["name"] for i in domains.list_info()}
@@ -699,6 +770,8 @@ class ProxyManager:
             "external": running and not ours,
             "link": self.config["link"],
             "parsed": parsed,
+            "subscription": self.config.get("subscription") or "",
+            "servers": self._server_rows(),
             "lists": self.config["lists"],
             "apps": list(self.config.get("apps") or []),
             "domains": len(_dom),
