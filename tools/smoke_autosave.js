@@ -189,6 +189,14 @@
     await wait(() => !el('nav-dot-dns'), 'DNS dot stayed lit after DNS was reset');
     steps.push({ name: 'Sidebar DNS dot follows the DNS set by the program', ok: true });
 
+    await go('settings', 'settings-tab-updates'); await click('settings-tab-updates');
+    await click('settings-data-check');
+    await wait(() => el('settings-data-plan')?.textContent.includes('Добавится: 1'), 'Data release preview missing');
+    need(el('settings-data-kept')?.textContent.includes('lists/youtube.txt'), 'Own list edits are not shown as kept');
+    await click('settings-data-install');
+    await wait(() => el('settings-data-status')?.textContent.includes('Установлены последние'), 'Data update did not finish');
+    steps.push({ name: 'Strategies and lists: preview keeps own edits, update installs the release', ok: true });
+
     await go('lists', 'lists-new');
     await wait(() => el('list-row-sample'), 'Sample list missing');
     el('lists-new').click(); el('lists-new').click();

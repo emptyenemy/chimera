@@ -44,6 +44,7 @@ def main(*, layout=False, screenshot=None, filters_only=False):
         probe = {"bypass": ["old.example"], "ad": "ad.example"}
         probe_failures, probe_reads = [], []
         dns_active = []  # адаптеры, где «стоит DNS программы»: питает точку у DNS в сайдбаре
+        data_installed = []  # выпуск стратегий и списков поставлен
         sources = [{"name": name, "kind": "tag", "current": "1", "latest": "2", "update": True, "updatable": True}
                    for name in ("Source A", "Source B")]
         source_checks, source_updates = [], []
@@ -68,6 +69,20 @@ def main(*, layout=False, screenshot=None, filters_only=False):
 
             def dns_status(self):
                 return api_mod._ok({"active": list(dns_active)})
+
+            def data_check(self):
+                if data_installed:
+                    return api_mod._ok({"current": "2026.10.05.1", "latest": "2026.10.05.1", "update": False,
+                                        "installable": False, "plan": None, "min_app": "1.1.0", "error": None})
+                return api_mod._ok({"current": "2026.10.01", "latest": "2026.10.05.1", "update": True, "installable": True,
+                                    "plan": {"add": ["lists/new.txt"], "update": ["strategies/alt.txt"],
+                                             "keep": ["lists/youtube.txt"], "same": 68},
+                                    "min_app": "1.1.0", "error": None})
+
+            def data_update(self):
+                data_installed.append(True)
+                return api_mod._ok({"version": "2026.10.05.1", "added": ["lists/new.txt"], "updated": ["strategies/alt.txt"],
+                                    "kept": ["lists/youtube.txt"], "restarted": True, "apply_errors": []})
 
             def dns_probe_config(self):
                 probe_reads.append(True)
@@ -171,7 +186,8 @@ def main(*, layout=False, screenshot=None, filters_only=False):
                 if self.is_read(method) or method in {"hub_snapshot", "hub_watch", "hub_refresh", "config_set",
                                                        "tg_set_config", "tg_set_advanced", "lists_save", "lists_create",
                                                        "lists_rename", "lists_delete", "proxy_set_lists", "winws_set_lists", "proxy_set_link",
-                                                       "dns_set_probe_config", "upstream_update", "hosts_set_background", "game_filter_set"}:
+                                                       "dns_set_probe_config", "upstream_update", "hosts_set_background", "game_filter_set",
+                                                       "data_update"}:
                     return super().dispatch(method, args_json)
                 return json.dumps({"ok": False, "error": "Operation outside autosave check"})
 

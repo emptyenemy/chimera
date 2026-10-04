@@ -8,6 +8,7 @@ import { Page } from "@/components/app/page"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { t } from "@/lib/i18n"
 import { BackupsCard } from "@/pages/settings/backups"
+import { DataCard } from "@/pages/settings/data"
 import { DoctorCard } from "@/pages/settings/doctor"
 import { GeneralCard, MaintenanceCard, ThemeCard, LanguageCard } from "@/pages/settings/general"
 import { WhatsNewCard } from "@/pages/settings/notes"
@@ -67,6 +68,7 @@ export function SettingsPage() {
         </TabsContent>
         <TabsContent value="updates" className="flex flex-col gap-4">
           <AppUpdateCard onNotes={() => pick("notes")} />
+          <DataCard />
           <SourcesCard />
         </TabsContent>
         <TabsContent value="notes"><WhatsNewCard /></TabsContent>
