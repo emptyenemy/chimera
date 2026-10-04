@@ -43,11 +43,11 @@ function Hero() {
   const { guard, count } = useStatus()
   return (
     <Card data-testid="dashboard-hero" data-state={guard ? "on" : "off"} className={cn(guard && "ring-primary/40")}>
-      <CardContent className="flex-row items-center gap-4">
+      <CardContent className="flex-row flex-wrap items-center gap-4">
         <IconTile on={guard} className="size-12 [&_svg]:size-6">
           {guard ? <ShieldCheckIcon /> : <ShieldOffIcon />}
         </IconTile>
-        <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+        <div className="flex min-w-0 flex-1 basis-48 flex-col gap-0.5">
           <div className="text-lg leading-6 font-semibold tracking-tight">
             {guard ? t("dashboard.hero.on") : t("dashboard.hero.off")}
           </div>
