@@ -1,7 +1,7 @@
 ---
 name: chimera
 description: Управление Chimera — обходом блокировок на Windows (стратегии zapret2, прокси sing-box, Telegram-прокси, hosts, DNS). Использовать, когда пользователь просит починить заблокированный сервис (Discord, YouTube, Telegram и другие), проверить, что открывается, поменять списки доменов, включить или выключить обход, обновить программу.
-version: 1.6.0
+version: 1.5.0
 requires_protocol: 1
 ---
 
