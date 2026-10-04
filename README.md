@@ -25,11 +25,18 @@
 
 **Chimera** — одно окно вместо набора скриптов для обхода блокировок в России (ТСПУ Роскомнадзора). Стратегии, прокси, Telegram, hosts и DNS собраны в одном приложении для Windows, а общий список сайтов работает сразу во всех способах. Исходный код открыт, лицензия MIT.
 
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/screens/autotune-ru-dark.png">
+    <img src="assets/screens/autotune-ru-light.png" alt="Автонастройка: Chimera сама подобрала стратегию для YouTube и hosts для ChatGPT" width="100%">
+  </picture>
+</p>
+
 ## Быстрый старт
 
 1. Скачайте `Chimera-<версия>-win64.zip` со страницы [Releases](https://github.com/emptyenemy/chimera/releases/latest).
 2. Распакуйте архив и запустите `Chimera.exe`.
-3. Включите нужный способ обхода. Python и git не нужны, обновляется программа сама, по кнопке.
+3. Нажмите «Настроить автоматически» на обзоре: Chimera проверит сервисы и сама подберёт способ обхода. Python и git не нужны, обновляется программа сама, по кнопке.
 
 ## Возможности
 

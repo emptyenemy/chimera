@@ -13,6 +13,13 @@
 
 **Chimera** brings tools for accessing blocked services in Russia into one Windows application. Strategies, proxies, Telegram proxy, hosts overrides and DNS share domain lists. The source code is available under the MIT license.
 
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/screens/autotune-en-dark.png">
+    <img src="assets/screens/autotune-en-light.png" alt="Auto-setup: Chimera picked a strategy for YouTube and hosts for ChatGPT on its own" width="100%">
+  </picture>
+</p>
+
 ## Quick start
 
 The following editions are being prepared for the next update; available archives are listed on Releases.
@@ -22,7 +29,7 @@ The following editions are being prepared for the next update; available archive
    - `Chimera-<version>-win64-webview.zip`: system WebView2, with a native Windows tray;
    - `Chimera-<version>-win64-lite.zip`: service, CLI and TUI; use `--browser` for the web interface.
 2. Extract the archive and run `Chimera.exe`. For Lite, use commands from a terminal.
-3. Enable a tool appropriate for your connection. Python, git and Node are not required for the packaged application.
+3. Press “Set up automatically” on the overview: Chimera checks the services and picks a working method on its own. Python, git and Node are not required for the packaged application.
 
 Updates install only when requested in Settings. The updater keeps your build variant.
 

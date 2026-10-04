@@ -6,6 +6,7 @@ ChatGPT отказывает по стране и открывается чер�
 Система не меняется: ни winws, ни hosts, ни DNS не трогаются."""
 
 import argparse
+import contextlib
 import json
 import os
 import subprocess
@@ -19,16 +20,23 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 
-def main(screenshot=None):
+BROWSER = Path(os.environ.get("ProgramFiles(x86)", "C:/Program Files (x86)")) / "Microsoft/Edge/Application/msedge.exe"
+
+
+@contextlib.contextmanager
+def stand(lang="ru", theme="dark"):
+    """Поднимает интерфейс с настоящим Api и смоделированной сетью; отдаёт адрес страницы.
+    Тем же стендом снимаются картинки для README (tools/readme_shots.py)."""
     with tempfile.TemporaryDirectory(prefix="chimera-autotune-ui-") as temporary:
         work = Path(temporary)
-        os.environ.update(CHIMERA_DATA=str(work / "data"), CHIMERA_SMOKE="1", CHIMERA_LANG="ru")
+        os.environ.update(CHIMERA_DATA=str(work / "data"), CHIMERA_SMOKE="1", CHIMERA_LANG=lang)
         from modules import paths
         paths.migrate = lambda *args: None
-        from modules import appconfig, domains
+        from modules import appconfig, domains, i18n
+        i18n.set_lang(lang)
         appconfig.CONFIG_PATH = work / "config.json"
-        appconfig.CONFIG_PATH.write_text(json.dumps({"auto_elevate": False, "lang": "ru", "update_check": False,
-                                                    "theme": "dark"}), encoding="utf-8")
+        appconfig.CONFIG_PATH.write_text(json.dumps({"auto_elevate": False, "lang": lang, "update_check": False,
+                                                    "theme": theme}), encoding="utf-8")
         domains.LISTS_DIR = work / "lists"
         domains.LISTS_DIR.mkdir()
         for name, text in (("youtube", "youtube.com\ni.ytimg.com\n"), ("openai", "chatgpt.com\n"), ("discord", "discord.com\n")):
@@ -81,22 +89,29 @@ def main(screenshot=None):
         server.web_dir, server.missing_next, server.daemon_threads = ROOT / "ui/web-next", False, True
         threading.Thread(target=server.serve_forever, daemon=True).start()
         try:
-            browser = Path(os.environ.get("ProgramFiles(x86)", "C:/Program Files (x86)")) / "Microsoft/Edge/Application/msedge.exe"
-            args = ["node", str(ROOT / "tools/smoke_http.mjs"), str(browser),
-                    f"http://127.0.0.1:{server.server_address[1]}/?t=autotune-test", str(ROOT / "tools/smoke_autotune.js"),
-                    "autotune"]
-            if screenshot:
-                args.append(str(Path(screenshot).resolve()))
-            result = subprocess.run(args, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=180)
-            print(result.stdout)
-            assert result.returncode == 0, result.stderr
-            checks = json.loads(result.stdout.strip().splitlines()[-1])
-            assert not checks["pageErrors"] and all(step["ok"] for step in checks["steps"]), checks
+            yield f"http://127.0.0.1:{server.server_address[1]}/?t=autotune-test"
         finally:
             gate.set()
             server.shutdown()
             server.server_close()
             api.shutdown()
+
+
+def run_script(url, script, screenshot=None):
+    """Выполняет сценарий в headless Edge; падает, если шаг не прошёл или страница бросила ошибку."""
+    args = ["node", str(ROOT / "tools/smoke_http.mjs"), str(BROWSER), url, str(script), "autotune"]
+    if screenshot:
+        args.append(str(Path(screenshot).resolve()))
+    result = subprocess.run(args, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=180)
+    print(result.stdout)
+    assert result.returncode == 0, result.stderr
+    checks = json.loads(result.stdout.strip().splitlines()[-1])
+    assert not checks["pageErrors"] and all(step["ok"] for step in checks["steps"]), checks
+
+
+def main(screenshot=None):
+    with stand() as url:
+        run_script(url, ROOT / "tools/smoke_autotune.js", screenshot)
 
 
 if __name__ == "__main__":
