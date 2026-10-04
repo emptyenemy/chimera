@@ -9,6 +9,7 @@ from modules.i18n import t as _tr
 
 from modules.errors import ChimeraValueError
 
+import ipaddress
 import json
 import re
 import subprocess
@@ -242,16 +243,21 @@ class DnsJumper:
                 if not t:
                     continue
                 t["timer"].cancel()
-                prev = t["previous"]
-                if prev.get("static") and prev.get("dns"):
-                    servers = ",".join(f"'{ip}'" for ip in prev["dns"])
-                    _ps(f"Set-DnsClientServerAddress -InterfaceIndex {idx} -ServerAddresses {servers}; "
-                        f"Clear-DnsClientCache")
-                    self._remember(idx, t["was_ours"])
-                else:
-                    self.reset_dns(idx)   # DHCP, а если статус неизвестен — тоже DHCP: безопаснее всего
+                self.restore_adapter(idx, t["previous"], t["was_ours"])
                 reverted.append(idx)
         return {"reverted": reverted}
+
+    def restore_adapter(self, adapter_index: int, previous: dict, was_ours: bool) -> None:
+        """Вернуть адаптеру снимок _snapshot(): прежние статические серверы или DHCP.
+        Снимок мог полежать на диске (автонастройка), поэтому адреса проверяются до PowerShell."""
+        idx = int(adapter_index)
+        servers = [str(ipaddress.ip_address(ip)) for ip in (previous.get("dns") or [])]
+        if previous.get("static") and servers:
+            quoted = ",".join(f"'{ip}'" for ip in servers)
+            _ps(f"Set-DnsClientServerAddress -InterfaceIndex {idx} -ServerAddresses {quoted}; Clear-DnsClientCache")
+            self._remember(idx, bool(was_ours))
+        else:
+            self.reset_dns(idx)   # DHCP, а если статус неизвестен — тоже DHCP: безопаснее всего
 
     # --- адаптеры, где DNS поставили мы ---------------------------------------
 
