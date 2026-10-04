@@ -53,6 +53,8 @@ from ui.hub import StateHub
 from ui.shareops import ShareOps
 from ui.updater import Updater
 from ui.trials import TrialOps
+from ui.autotune import AutotuneOps
+from modules.autotune.manager import AutotuneManager
 
 WEB_DIR = Path(__file__).parent / "web-next"
 
@@ -120,9 +122,13 @@ class Api:
         self.proxy = ProxyManager()
         self._trial = trials.TrialManager(TrialOps(self), paths.data_path("trial.json"), self._mutation_lock,
                                           changed=self._trial_changed, load_pending=service_owned or not service.is_running())
-        self.hosts.background.can_mutate = lambda: self._trial.active is None
-        if service_owned or not service.is_running():
+        owner = service_owned or not service.is_running()
+        self._autotune = AutotuneManager(AutotuneOps(self), paths.data_path("autotune.json"), self._mutation_lock,
+                                         changed=self._autotune_changed, load_pending=owner)
+        self.hosts.background.can_mutate = lambda: self._trial.active is None and not self._autotune.blocks_changes()
+        if owner:
             self._trial.recover()
+            self._autotune.recover()
         if not self._smoke and self._trial.active is None and (service_owned or not service.is_running()):
             self.hosts.start_background()
         # Автозапуски — в фоне: tg/winws/proxy поднимаются секундами (subprocess,
@@ -156,6 +162,7 @@ class Api:
             ("dnsStatus", self.dns_status, 5.0, False),
             ("selfupdate", self.selfupdate_state, 5.0, False),
             ("trial", self.trial_state, 1.0, False),
+            ("autotune", self.autotune_state, 1.0, False),
         ])
         self.hub.start()
         if not self._smoke:
@@ -174,6 +181,11 @@ class Api:
             if trial is not None and trial.active is not None:
                 self._trial_list_events = [*getattr(self, "_trial_list_events", []), (kind, name)]
                 return [{"module": "trial", "error": str(ChimeraError("err.trial.busy"))}]
+            autotune = getattr(self, "_autotune", None)
+            if autotune is not None and autotune.busy():
+                # подбор сам переписывает списки модулей; правку применим, когда он закончится
+                self._trial_list_events = [*getattr(self, "_trial_list_events", []), (kind, name)]
+                return [{"module": "autotune", "error": str(ChimeraError("err.autotune.busy"))}]
             errors = liveapply.apply_event(kind, name, self.winws, self.proxy, self.hosts)
         hub = getattr(self, "hub", None)
         if hub is not None:
@@ -202,7 +214,7 @@ class Api:
     def _autostart_all(self) -> None:
         # общая с service-режимом логика (modules/service.py) — ошибки одного
         # модуля не мешают остальным и уедут в UI через *_state, как и раньше.
-        if self._trial.active is None:
+        if self._trial.active is None and not self._autotune.blocks_changes():
             service.autostart_modules(self.tg, self.winws, self.proxy)
 
     @staticmethod
@@ -237,6 +249,9 @@ class Api:
         trial = getattr(self, '_trial', None)
         if trial is not None and (getattr(self, '_service_owned', False) or not service.is_running()):
             trial.recover()
+        autotune = getattr(self, '_autotune', None)
+        if autotune is not None and (getattr(self, '_service_owned', False) or not service.is_running()):
+            autotune.recover()
         if getattr(self, "_smoke", False):
             self.tg.stop()
             return
@@ -263,10 +278,15 @@ class Api:
         по шагу на строку: {step, ok, error?}. Модули и настройки остаются как были, поэтому
         включить всё обратно можно обычными переключателями."""
         trial = getattr(self, '_trial', None)
+        autotune = getattr(self, '_autotune', None)
 
         def trial_step():
             if trial is not None:
                 trial.abandon()
+
+        def autotune_step():
+            if autotune is not None:
+                autotune.abandon()
 
         def service_step():
             if service.is_running():
@@ -300,6 +320,8 @@ class Api:
                  ("tg", self.tg.stop), ("hosts", hosts_step), ("dns", dns_step))
         if trial is not None and trial.active is not None:
             steps = (("trial", trial_step), *steps)
+        if autotune is not None and autotune.active is not None:
+            steps = (("autotune", autotune_step), *steps)
         report = []
         for name, fn in steps:
             try:
@@ -405,7 +427,8 @@ class Api:
             result = client.connect().api(method, *args)
             refresh = method in ("config_backup_restore", "config_import_apply", "config_set", "tg_regen_secret",
                                  "winws_start", "game_filter_set", "ipset_set", "ipset_update", "appearance_apply",
-                                 "trial_start", "trial_confirm", "trial_revert")
+                                 "trial_start", "trial_confirm", "trial_revert",
+                                 "autotune_start", "autotune_cancel", "autotune_revert", "autotune_keep")
             refresh |= method.startswith(("proxy_set_", "tg_set_", "winws_set_", "lists_", "hosts_", "dns_")) and not self.is_read(method)
             if refresh:
                 self.proxy.config = self.proxy._load()
@@ -658,6 +681,7 @@ class Api:
         (("lists_",), ("proxy", "hosts", "winws")),  # счётчики доменов в выбранных списках
         (("selfupdate_",), ("selfupdate",)),
         (("trial_",), ("trial", "winws", "proxy", "hosts")),
+        (("autotune_",), ("autotune", "winws", "proxy", "hosts", "dnsStatus")),
         (("panic_", "config_import_", "config_backup_restore"), ("winws", "proxy", "tg", "hosts", "dns", "dnsStatus", "filters")),
     )
     # чтения ничего не меняют — после них хаб не дёргаем
@@ -673,7 +697,8 @@ class Api:
     # сверка с апстримом — только сеть, хотя в имени и есть «update»
     _READ_NAMES = frozenset({"tg_check_update", "upstream_check_updates", "doctor_run", "doctor_report", "providers_list",
                              "config_export", "config_import_preview", "config_backups", "config_backup_preview", "config_backup_compare", "config_verified",
-                              "appearance_preview", "route_explain", "lists_validate", "lists_index"})
+                              "appearance_preview", "route_explain", "lists_validate", "lists_index",
+                              "autotune_catalog", "autotune_diagnose"})
 
     @classmethod
     def is_read(cls, method: str) -> bool:
@@ -709,6 +734,7 @@ class Api:
                     applog.write("Не удалось применить отложенную правку списка после пробы")
 
     def _trial_guard(self, method):
+        self._autotune_guard(method)
         trial = getattr(self, "_trial", None)
         if getattr(self, "_trial_restoring", False):
             return
@@ -722,6 +748,85 @@ class Api:
             return
         if active is not None:
             raise ChimeraError("err.trial.busy")
+
+    # --- автонастройка (docs/AUTOTUNE.md) ---------------------------------------------
+
+    # autotune_start сам отказывает, если подбор уже идёт или прошлая сессия не закрыта
+    _AUTOTUNE_FREE = ("autotune_start", "autotune_cancel", "autotune_revert", "panic_all")
+
+    def _autotune_changed(self):
+        hub = getattr(self, "hub", None)
+        if hub is not None:
+            hub.poke("autotune", "winws", "proxy", "hosts", "dnsStatus")
+        autotune = getattr(self, "_autotune", None)
+        if autotune is not None and not autotune.busy() and getattr(self, "_trial_list_events", None):
+            self._trial_changed()   # отложенные во время подбора правки списков
+
+    def _autotune_guard(self, method):
+        autotune = getattr(self, "_autotune", None)
+        if autotune is None or method in self._AUTOTUNE_FREE or self.is_read(method):
+            return
+        if getattr(self, "_service_owned", False) or not service.is_running():
+            blocked = autotune.blocks_changes()
+        else:
+            state = self.autotune_state()
+            if not state.get("ok"):
+                raise ChimeraError("err.autotune.owner")
+            active = state["data"].get("active")
+            blocked = active is not None and active["phase"] in ("running", "interrupted", "invalid", "rollback_failed")
+        if blocked:
+            raise ChimeraError("err.autotune.busy")
+
+    def autotune_state(self):
+        try:
+            remote = self._backup_owner("autotune_state")
+            return remote if remote is not None else _ok(self._autotune.state())
+        except Exception as e:
+            return _err(e)
+
+    def autotune_catalog(self):
+        """Сервисы (списки) и адреса, по которым автонастройка их проверяет."""
+        try:
+            return _ok(self._autotune.catalog())
+        except Exception as e:
+            return _err(e)
+
+    def autotune_diagnose(self, services=None):
+        """Проверить сервисы при текущих настройках, ничего не меняя."""
+        try:
+            remote = self._backup_owner("autotune_diagnose", services)
+            return remote if remote is not None else _ok(self._autotune.diagnose(services))
+        except Exception as e:
+            return _err(e)
+
+    def autotune_start(self, services=None, mode="fast"):
+        try:
+            with self._mutation_lock:
+                remote = self._backup_owner("autotune_start", services, mode)
+                return remote if remote is not None else _ok(self._autotune.start(services, mode))
+        except Exception as e:
+            return _err(e)
+
+    def autotune_cancel(self):
+        try:
+            remote = self._backup_owner("autotune_cancel")
+            return remote if remote is not None else _ok(self._autotune.cancel())
+        except Exception as e:
+            return _err(e)
+
+    def autotune_revert(self):
+        try:
+            remote = self._backup_owner("autotune_revert")
+            return remote if remote is not None else _ok(self._autotune.revert())
+        except Exception as e:
+            return _err(e)
+
+    def autotune_keep(self):
+        try:
+            remote = self._backup_owner("autotune_keep")
+            return remote if remote is not None else _ok(self._autotune.keep())
+        except Exception as e:
+            return _err(e)
 
     def trial_state(self):
         try:

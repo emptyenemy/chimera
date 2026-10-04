@@ -846,3 +846,53 @@ def test_secrets_are_not_written_to_the_log(capsys, running):
     text = commands.CHANGES_LOG.read_text(encoding="utf-8")
     assert "secret-uuid" not in text and "0123456789abcdef" not in text and "example.com" not in text
     assert "proxy link" in text and "tg config" in text
+
+
+# --- автонастройка -----------------------------------------------------------------------------
+
+def _fix_session(phase="done"):
+    report = {"fixes": {"youtube": {"kind": "strategy", "id": "alt"}}, "offline": False, "services": [
+        {"name": "youtube", "after": {"ok": True}, "fix": {"kind": "strategy", "id": "alt"}},
+        {"name": "openai", "after": {"ok": False, "reasons": ["geo"]}, "fix": None, "hint": "need_proxy"},
+    ]}
+    return {"phase": phase, "report": report}
+
+
+def test_fix_without_arguments_runs_fast_mode_for_everything_and_waits(capsys, running, monkeypatch):
+    api, _ = running
+    monkeypatch.setattr(commands, "FIX_POLL", 0)
+    api.extra["autotune_start"] = {"active": {"phase": "running", "current": {"step": "strategy", "candidate": "alt",
+                                                                             "index": 1, "total": 23}}}
+    api.extra["autotune_state"] = {"active": _fix_session()}
+    code, out, _ = run(capsys, "fix")
+    assert api.called("autotune_start") == [[None, "fast"]]
+    assert "Пробую стратегию alt — 2 из 23" in out
+    assert "youtube: открывается — стратегия alt" in out and "нужен прокси" in out
+    assert code == 1   # openai так и не открылся
+
+
+def test_fix_for_chosen_services_in_smart_mode(capsys, running, monkeypatch):
+    api, _ = running
+    api.extra["autotune_start"] = {"active": {"phase": "done", "report": {"fixes": {}, "services": [
+        {"name": "youtube", "after": {"ok": True}, "fix": None}]}}}
+    code, data, _ = run_json(capsys, "fix", "youtube", "--smart")
+    assert api.called("autotune_start") == [[["youtube"], "smart"]] and code == 0
+    assert data["data"]["active"]["phase"] == "done"
+
+
+def test_fix_check_names_the_reason_and_changes_nothing(capsys, running):
+    api, _ = running
+    api.extra["autotune_diagnose"] = {"offline": False, "services": [
+        {"name": "youtube", "ok": False, "reasons": ["dpi"], "covered": 1, "total": 3},
+        {"name": "discord", "ok": True}]}
+    code, out, _ = run(capsys, "fix", "check")
+    assert api.called("autotune_diagnose") == [[None]] and api.called("autotune_start") == []
+    assert "youtube: не открывается (блокировка DPI), открылось адресов: 1 из 3" in out
+    assert "discord: открывается" in out and code == 1
+
+
+def test_fix_cancel_revert_and_keep_reach_the_app(capsys, running):
+    api, _ = running
+    for action, method in (("cancel", "autotune_cancel"), ("revert", "autotune_revert"), ("keep", "autotune_keep")):
+        assert run(capsys, "fix", action)[0] == 0
+        assert api.called(method) == [[]]

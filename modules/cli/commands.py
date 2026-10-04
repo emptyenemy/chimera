@@ -785,6 +785,78 @@ def h_config_restore(ctx, act, ns):
     return Result(res, lines, exit_code=1 if res["errors"] or res["rollback_errors"] else 0)
 
 
+# --- автонастройка ----------------------------------------------------------------------------------------
+
+FIX_POLL = 1.0
+# семейства строк: ключ собирается из значения (причина, фаза, способ...)
+FIX_REASON, FIX_PHASE, FIX_VIA, FIX_HINT, FIX_STEP = (
+    "cli.fix.reason", "cli.fix.phase", "cli.fix.via", "cli.fix.hint", "cli.fix.step")
+
+
+def _fix_reason(row) -> str:
+    reasons = row.get("reasons") or []
+    return ", ".join(t(f"{FIX_REASON}.{r}") for r in reasons) or t("cli.fix.reason.error")
+
+
+def _fix_session_lines(session) -> list[str]:
+    if session is None:
+        return [t("cli.fix.none")]
+    phase = session.get("phase")
+    report = session.get("report") or {}
+    lines = [t(f"{FIX_PHASE}.{phase}")]
+    if report.get("offline"):
+        lines.append(t("cli.fix.offline"))
+    for row in report.get("services") or []:
+        name, after = row["name"], row.get("after") or {}
+        if row.get("skipped"):
+            lines.append(t("cli.fix.row.skipped", name=name))
+        elif after.get("ok") and row.get("fix"):
+            fix = row["fix"]
+            lines.append(t("cli.fix.row.fixed", name=name, via=t(f"{FIX_VIA}.{fix['kind']}", id=fix["id"])))
+        elif after.get("ok"):
+            lines.append(t("cli.fix.row.ok", name=name))
+        else:
+            lines.append(t("cli.fix.row.broken", name=name, reason=_fix_reason(after),
+                           hint=t(f"{FIX_HINT}.{row.get('hint') or 'nothing_helped'}")))
+    return lines
+
+
+def h_fix_run(ctx, act, ns):
+    services, smart = arg_values(act, ns)
+    state = ctx.call("autotune_start", services or None, "smart" if smart else "fast")
+    shown = None
+    while (state.get("active") or {}).get("phase") == "running":
+        current = state["active"].get("current")
+        if not ctx.json and current and current != shown:
+            print(t("cli.fix.progress", step=t(f"{FIX_STEP}.{current['step']}"), candidate=current["candidate"],
+                    n=current["index"] + 1, total=current["total"]), flush=True)
+            shown = current
+        time.sleep(FIX_POLL)
+        state = ctx.call("autotune_state")
+    session = state.get("active") or state.get("last")
+    report = (session or {}).get("report") or {}
+    broken = [r for r in report.get("services") or [] if not r.get("skipped") and not (r.get("after") or {}).get("ok")]
+    done = (session or {}).get("phase") == "done"
+    lines = _fix_session_lines(session) + ([t("cli.fix.revert_hint")] if done and report.get("fixes") else [])
+    return Result(state, lines, exit_code=0 if done and not broken else 1)
+
+
+def h_fix_check(ctx, act, ns):
+    (services,) = arg_values(act, ns)
+    data = ctx.call("autotune_diagnose", services or None)
+    lines = [t("cli.fix.offline")] if data.get("offline") else []
+    for row in data.get("services") or []:
+        if row.get("skipped"):
+            lines.append(t("cli.fix.row.skipped", name=row["name"]))
+        elif row.get("ok"):
+            lines.append(t("cli.fix.row.ok", name=row["name"]))
+        else:
+            lines.append(t("cli.fix.row.check", name=row["name"], reason=_fix_reason(row),
+                           covered=row.get("covered", 0), total=row.get("total", 0)))
+    broken = [r for r in data.get("services") or [] if r.get("ok") is False]
+    return Result(data, lines, exit_code=1 if broken or data.get("offline") else 0)
+
+
 def h_trial_start(ctx, act, ns):
     kind, target, seconds, domains = arg_values(act, ns)
     checks = [name.strip() for name in domains.split(",")] if domains is not None else None
@@ -792,7 +864,7 @@ def h_trial_start(ctx, act, ns):
 
 
 HANDLERS = {
-    "trial_start": h_trial_start, "explain": h_explain,
+    "trial_start": h_trial_start, "explain": h_explain, "fix_run": h_fix_run, "fix_check": h_fix_check,
     "status": h_status, "version": h_version, "start": h_start, "tui": h_tui, "stop": h_stop, "restart": h_restart,
     "sources_check": h_sources_check, "config_get": h_config_get, "config_set": h_config_set,
     "lang_show": h_lang_show, "lang_set": h_lang_set, "lang_catalog": h_lang_catalog,

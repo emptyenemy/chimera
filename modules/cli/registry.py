@@ -33,7 +33,7 @@ ARG_SLUGS = {
     "привязки": "bindings", "серверы": "servers", "адаптер": "adapter", "провайдер": "provider",
     "файл": "file", "домены": "domains", "старое": "old", "новое": "new", "домен": "domain",
     "список": "list", "модуль": "module", "команда": "command", "параметры": "params", "тема": "topic",
-    "ключ": "key", "язык": "language",
+    "ключ": "key", "язык": "language", "сервисы": "services",
 }
 
 
@@ -100,7 +100,7 @@ class Action:
 GROUPS = LazyMap((
     "status", "start", "tui", "stop", "restart", "version", "update", "autostart", "discord", "sources", "config",
     "lang", "winws", "proxy", "tg", "hosts", "dns", "panic", "doctor", "lists", "check", "logs", "service",
-    "path", "docs", "agent-info", "trial", "explain", "providers"), "cli.group")
+    "path", "docs", "agent-info", "trial", "explain", "providers", "fix"), "cli.group")
 
 # Что не превращается в команду и почему. Тест паритета падает на любом публичном методе
 # Api, которого нет ни в таблице действий, ни здесь.
@@ -179,6 +179,19 @@ ACTIONS: tuple[Action, ...] = (
        examples=("chimera trial confirm 0123456789abcdef",)),
     _a("trial", "revert", "trial_revert", args=(Arg("id", "str"),), level=SYSTEM,
        examples=("chimera trial revert 0123456789abcdef",)),
+
+    # --- автонастройка ----------------------------------------------------------------
+    _a("fix", "run", handler="fix_run", methods=("autotune_start", "autotune_state"), level=SYSTEM,
+       args=(Arg("сервисы", "names", optional=True), Arg("smart", "switch", flag=True, default=False)),
+       examples=("chimera fix", "chimera fix youtube discord", "chimera fix openai --smart --json")),
+    _a("fix", "check", handler="fix_check", methods=("autotune_diagnose",),
+       args=(Arg("сервисы", "names", optional=True),),
+       examples=("chimera fix check", "chimera fix check youtube --json")),
+    _a("fix", "status", "autotune_state", examples=("chimera fix status --json",)),
+    _a("fix", "services", "autotune_catalog", examples=("chimera fix services",)),
+    _a("fix", "cancel", "autotune_cancel", level=SYSTEM, examples=("chimera fix cancel",)),
+    _a("fix", "revert", "autotune_revert", level=SYSTEM, examples=("chimera fix revert",)),
+    _a("fix", "keep", "autotune_keep", level=APP, examples=("chimera fix keep",)),
 
     # --- обход DPI ------------------------------------------------------------------
     _a("winws", "state", "winws_state", examples=("chimera winws state",)),
@@ -457,7 +470,9 @@ for _act in ACTIONS:
 
 # Для этих групп первое слово, не похожее на действие, считается параметром действия по умолчанию
 # (`chimera check discord.com` = `chimera check site discord.com`).
-DEFAULT_ACTION = {"check": "site"}
+DEFAULT_ACTION = {"check": "site", "fix": "run"}
+# группы, где действие по умолчанию запускается и без аргументов или с одними флагами: `chimera fix --smart`
+DEFAULT_WITHOUT_ARGS = frozenset({"fix"})
 
 
 def allowed_methods() -> frozenset:

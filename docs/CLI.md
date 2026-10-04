@@ -69,6 +69,13 @@
 | Стратегии / Hosts / Прокси: Попробовать | `chimera trial start <strategy|hosts|tun> <target> [--seconds <seconds>] [--domains <domains>]` | system |
 | Проба: Оставить | `chimera trial confirm <id>` | app |
 | Проба: Вернуть | `chimera trial revert <id>` | system |
+| Автонастройка → Настроить всё / Починить | `chimera fix run [сервисы…] [--smart]` | system |
+| Автонастройка → Проверить | `chimera fix check [сервисы…]` | read |
+| Страница «Автонастройка» | `chimera fix status` | read |
+| Автонастройка → список сервисов | `chimera fix services` | read |
+| Автонастройка → Отменить | `chimera fix cancel` | system |
+| Автонастройка → Вернуть как было | `chimera fix revert` | system |
+| Автонастройка → Готово | `chimera fix keep` | app |
 | Стратегии: шапка, Обзор | `chimera winws state` | read |
 | Стратегии: список карточек | `chimera winws strategies` | read |
 | Стратегии → «Запустить» / Обзор → включатель | `chimera winws start [стратегия]` | system |
@@ -1458,6 +1465,74 @@ chimera providers delete my
 ```
 chimera providers hide google
 chimera providers hide google false
+```
+
+### fix
+
+Автонастройка: проверить сервисы, подобрать способ обхода и применить его..
+
+#### `chimera fix run [сервисы…] [--smart]`
+
+Подобрать способ обхода для недоступных сервисов: стратегии, hosts-провайдеры, DNS и прокси, если ссылка задана. Ждёт окончания и печатает ход подбора. При отмене или ошибке возвращает исходное состояние. Уровень: изменение системы.
+
+- `сервисы` — списки сервисов (youtube, discord…); по умолчанию — все
+- `--smart` — умный режим: сравнить все варианты и выбрать самый быстрый
+
+```
+chimera fix
+chimera fix youtube discord
+chimera fix openai --smart --json
+```
+
+#### `chimera fix check [сервисы…]`
+
+Проверить сервисы при текущих настройках и назвать причину недоступности. Ничего не меняет. Уровень: чтение.
+
+- `сервисы` — списки сервисов; по умолчанию — все
+
+```
+chimera fix check
+chimera fix check youtube --json
+```
+
+#### `chimera fix status`
+
+Ход текущей автонастройки или итог последней. Исходное состояние не выдаётся. Уровень: чтение.
+
+```
+chimera fix status --json
+```
+
+#### `chimera fix services`
+
+Сервисы и адреса, по которым автонастройка их проверяет. Уровень: чтение.
+
+```
+chimera fix services
+```
+
+#### `chimera fix cancel`
+
+Прервать подбор и вернуть исходное состояние. Уровень: изменение системы.
+
+```
+chimera fix cancel
+```
+
+#### `chimera fix revert`
+
+Вернуть состояние до последней автонастройки: стратегию, hosts, DNS и прокси. Уровень: изменение системы.
+
+```
+chimera fix revert
+```
+
+#### `chimera fix keep`
+
+Оставить результат автонастройки и забыть исходное состояние. Уровень: изменение приложения.
+
+```
+chimera fix keep
 ```
 
 ## Файлы

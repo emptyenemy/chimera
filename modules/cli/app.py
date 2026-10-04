@@ -9,7 +9,7 @@ import sys
 from modules import i18n
 from modules.cli import commands, help as helptext
 from modules.cli.client import CliError, Usage
-from modules.cli.registry import ACTIONS, BY_GROUP, DEFAULT_ACTION, Action, Arg
+from modules.cli.registry import ACTIONS, BY_GROUP, DEFAULT_ACTION, DEFAULT_WITHOUT_ARGS, Action, Arg
 from modules.i18n import t
 
 SCHEMA = 1
@@ -142,6 +142,8 @@ def _resolve(argv: list[str]) -> tuple[Action, list[str]]:
         return acts[rest[0]], rest[1:]
     default = DEFAULT_ACTION.get(group)
     if default and rest and not rest[0].startswith("-"):
+        return acts[default], rest
+    if default and group in DEFAULT_WITHOUT_ARGS:
         return acts[default], rest
     if not rest:
         raise Usage.of("cli.usage.need_action", group=group, actions=", ".join(acts))

@@ -69,6 +69,13 @@ Levels exist so that remote channels can be restricted. The proxy link is hidden
 | Strategies / Hosts / Proxy: Try | `chimera trial start <strategy|hosts|tun> <target> [--seconds <seconds>] [--domains <domains>]` | system |
 | Trial: Keep | `chimera trial confirm <id>` | app |
 | Trial: Revert | `chimera trial revert <id>` | system |
+| Auto-setup → Set up everything / Fix | `chimera fix run [services…] [--smart]` | system |
+| Auto-setup → Check | `chimera fix check [services…]` | read |
+| Auto-setup page | `chimera fix status` | read |
+| Auto-setup → service list | `chimera fix services` | read |
+| Auto-setup → Cancel | `chimera fix cancel` | system |
+| Auto-setup → Undo | `chimera fix revert` | system |
+| Auto-setup → Done | `chimera fix keep` | app |
 | Strategies: header, Overview | `chimera winws state` | read |
 | Strategies: card list | `chimera winws strategies` | read |
 | Strategies → “Start” / Overview → toggle | `chimera winws start [strategy]` | system |
@@ -1458,6 +1465,74 @@ Hide a built-in provider from every tab or bring it back. Level: changes the app
 ```
 chimera providers hide google
 chimera providers hide google false
+```
+
+### fix
+
+Auto-setup: check services, find a working bypass method and apply it..
+
+#### `chimera fix run [services…] [--smart]`
+
+Find a bypass method for unreachable services: strategies, hosts providers, DNS, and the proxy if a link is set. Waits until done and prints the progress. Cancellation or an error restores the original state. Level: changes the system.
+
+- `services` — service lists (youtube, discord…); all by default
+- `--smart` — smart mode: compare every option and pick the fastest
+
+```
+chimera fix
+chimera fix youtube discord
+chimera fix openai --smart --json
+```
+
+#### `chimera fix check [services…]`
+
+Check services with the current settings and name the reason they are unreachable. Changes nothing. Level: read-only.
+
+- `services` — service lists; all by default
+
+```
+chimera fix check
+chimera fix check youtube --json
+```
+
+#### `chimera fix status`
+
+Progress of the running auto-setup or the result of the last one. The original state is not shown. Level: read-only.
+
+```
+chimera fix status --json
+```
+
+#### `chimera fix services`
+
+Services and the addresses auto-setup checks them with. Level: read-only.
+
+```
+chimera fix services
+```
+
+#### `chimera fix cancel`
+
+Stop the search and restore the original state. Level: changes the system.
+
+```
+chimera fix cancel
+```
+
+#### `chimera fix revert`
+
+Restore the state from before the last auto-setup: strategy, hosts, DNS and proxy. Level: changes the system.
+
+```
+chimera fix revert
+```
+
+#### `chimera fix keep`
+
+Keep the auto-setup result and forget the original state. Level: changes the app.
+
+```
+chimera fix keep
 ```
 
 ## Files
