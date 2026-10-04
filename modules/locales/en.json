@@ -825,6 +825,7 @@
   "err.domains.list_already_exists": "List {p0} already exists",
   "err.domains.list_names_may_contain_only_latin_letters_digits": "List names may contain only Latin letters, digits, dots, hyphens and underscores",
   "err.domains.list_was_not_found": "List {p0} was not found",
+  "err.file.busy": "Could not write {name}: the file is held by another program or cannot be written. Try again.",
   "err.hosts.manager.administrator_rights_are_required_to_write_hosts": "Administrator rights are required to write hosts",
   "err.hosts.manager.background_options_must_be_object": "Hosts automation settings must be an object.",
   "err.hosts.manager.busy": "The hosts file is held by another program (usually the DNS service or an antivirus) and was not released within a few seconds. Try again; if that does not help, close the programs that opened it.",

@@ -5,7 +5,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from modules import configbackups as backups, domains, verifiedconfig
+from modules import configbackups as backups, domains, fileutil, verifiedconfig
 from modules.errors import ChimeraValueError
 from tests.test_configbackups import LINK, SECRET, live as live
 from ui import api as api_mod
@@ -100,17 +100,17 @@ def test_pinned_snapshot_survives_history_pruning_and_replacement(live):
 
 def test_pointer_write_failure_keeps_old_verified_snapshot(live, monkeypatch):
     previous = create(live)["backup"]
-    replace = Path.replace
-    def fail_marker(self, target):
+    replace = fileutil.os.replace
+    def fail_marker(source, target):
         if Path(target).name == verifiedconfig.MARKER:
             raise OSError(LINK)
-        return replace(self, target)
-    monkeypatch.setattr(Path, "replace", fail_marker)
+        return replace(source, target)
+    monkeypatch.setattr(fileutil.os, "replace", fail_marker)
     with pytest.raises(ChimeraValueError) as exc:
         create(live)
     assert exc.value.code == "err.verified.save" and LINK not in str(exc.value)
     assert verifiedconfig.state(live.root)["backup"] == previous
-    assert not list(live.root.glob(".verified-*"))
+    assert not list(live.root.glob(verifiedconfig.MARKER + ".*"))
 
 
 def test_modified_manifest_invalidates_verification_even_with_valid_file_hashes(live):

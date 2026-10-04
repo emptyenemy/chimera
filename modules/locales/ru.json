@@ -832,6 +832,7 @@
   "err.domains.list_already_exists": "Список {p0} уже существует",
   "err.domains.list_names_may_contain_only_latin_letters_digits": "Имя списка: только латиница, цифры, точка, дефис и подчёркивание",
   "err.domains.list_was_not_found": "Список {p0} не найден",
+  "err.file.busy": "Не удалось записать {name}: файл занят другой программой или нет прав на запись. Повторите.",
   "err.hosts.manager.administrator_rights_are_required_to_write_hosts": "Нужны права администратора для записи в hosts",
   "err.hosts.manager.background_options_must_be_object": "Настройки автоматики Hosts должны быть объектом.",
   "err.hosts.manager.busy": "Файл hosts занят другой программой (обычно служба DNS или антивирус) и не освободился за несколько секунд. Повторите; если не помогает — закройте программы, которые его открыли.",

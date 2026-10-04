@@ -28,6 +28,7 @@ from pathlib import Path
 
 from modules import paths
 from modules.cli.registry import allowed_methods
+from modules.fileutil import atomic_write_text
 from modules.version import VERSION
 
 # Версия протокола CLI <-> приложение. Растёт только при несовместимых изменениях.
@@ -114,12 +115,14 @@ def write_discovery(port: int, token: str, *, interactive_sid=None) -> Path:
     data = {"port": port, "token": token, "pid": os.getpid(), "protocol": PROTOCOL,
             "version": VERSION, "started": int(time.time())}
     path = CONTROL_PATH
-    tmp = path.with_suffix(".tmp")
-    tmp.write_text(json.dumps(data), encoding="utf-8")
-    _restrict_permissions(tmp)
-    if _current_sid() == "S-1-5-18":
-        _grant_service_user(tmp, sid=interactive_sid, force=True)
-    os.replace(tmp, path)
+
+    def prepare(tmp):
+        # токен канала: права закрываются до подмены, а служба открывает файл пользователю окна
+        _restrict_permissions(tmp)
+        if _current_sid() == "S-1-5-18":
+            _grant_service_user(tmp, sid=interactive_sid, force=True)
+    # клиенты CLI читают этот файл постоянно — подмена ждёт, пока его отпустят
+    atomic_write_text(path, json.dumps(data), prepare=prepare)
     return path
 
 

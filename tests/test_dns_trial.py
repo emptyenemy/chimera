@@ -235,3 +235,23 @@ def test_dns_status_feeds_the_menu_dot(api):
     api.dns.set_dns(7, "cloudflare")
     assert api.dns_status() == {"ok": True, "data": {"active": [7]}}
     assert api.is_read("dns_status")
+
+
+def test_dns_bookkeeping_is_whole_and_a_failed_write_is_logged_not_raised(tmp_path, monkeypatch):
+    # учёт читают окно и служба постоянно; запись — подменой целиком, а сорванная запись не
+    # должна ронять уже поставленный DNS, но и пропадать молча тоже
+    from modules.errors import ChimeraPermissionError
+    monkeypatch.setattr(dns_manager, "CHANGED_PATH", tmp_path / "dns_changed.json")
+    jumper = dns_manager.DnsJumper()
+    jumper._remember(7, True)
+    jumper._remember(3, True)
+    assert jumper.changed_adapters() == [3, 7]
+    logged = []
+    monkeypatch.setattr(dns_manager.applog, "write", logged.append)
+
+    def busy(path, text):
+        raise ChimeraPermissionError("err.file.busy", name=path.name)
+    monkeypatch.setattr(dns_manager, "atomic_write_text", busy)
+    jumper._remember(3, False)
+    assert jumper.changed_adapters() == [3, 7] and len(logged) == 1 and "3" in logged[0]
+

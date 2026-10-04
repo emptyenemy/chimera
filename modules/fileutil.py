@@ -10,7 +10,12 @@ import tempfile
 import time
 from pathlib import Path
 
-REPLACE_RETRIES = 5
+from modules.errors import ChimeraPermissionError
+
+# Пока файл открыт другим процессом (окно и служба читают состояние, winws2 и sing-box — свои
+# списки, Defender проверяет свежую запись), os.replace даёт PermissionError. Ждём с нарастающей
+# паузой — всего около трёх секунд, потом говорим понятно, а не голым «[Errno 13]».
+REPLACE_RETRIES = 12
 REPLACE_PAUSE = 0.05
 
 
@@ -21,21 +26,22 @@ def _drop(path) -> None:
         pass
 
 
-def atomic_write_text(path: Path, text: str, encoding: str = "utf-8") -> None:
+def atomic_write_text(path: Path, text: str, encoding: str = "utf-8", *, prepare=None) -> None:
     """Пишет text во временный файл рядом и подменяет им path. Переводы строк — как у write_text.
 
     Имя временного файла уникальное: две записи одного файла (окно и командная строка) не
     затрут друг другу заготовку. На Windows os.replace даёт PermissionError, пока кто-то держит
     целевой файл открытым (антивирус, редактор, чтение соседнего потока): это длится доли
-    секунды, поэтому пробуем ещё."""
-    _atomic_write(path, text, binary=False, encoding=encoding)
+    секунды, поэтому пробуем ещё. prepare(tmp) — до подмены, например закрыть права на файл
+    с секретами: подменённый файл уже не бывает открытым для всех."""
+    _atomic_write(path, text, binary=False, encoding=encoding, prepare=prepare)
 
 
-def atomic_write_bytes(path: Path, data: bytes) -> None:
-    _atomic_write(path, data, binary=True)
+def atomic_write_bytes(path: Path, data: bytes, *, prepare=None) -> None:
+    _atomic_write(path, data, binary=True, prepare=prepare)
 
 
-def _atomic_write(path: Path, data: str | bytes, *, binary: bool, encoding: str = "utf-8") -> None:
+def _atomic_write(path: Path, data: str | bytes, *, binary: bool, encoding: str = "utf-8", prepare=None) -> None:
     path = Path(path)
     fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=path.name + ".", suffix=".tmp")
     try:
@@ -49,13 +55,15 @@ def _atomic_write(path: Path, data: str | bytes, *, binary: bool, encoding: str 
             raise
         with stream:
             stream.write(data)
+        if prepare is not None:
+            prepare(Path(tmp))
         for attempt in range(REPLACE_RETRIES):
             try:
                 os.replace(tmp, path)
                 return
             except PermissionError:
                 if attempt == REPLACE_RETRIES - 1:
-                    raise
+                    raise ChimeraPermissionError("err.file.busy", name=path.name) from None
                 time.sleep(REPLACE_PAUSE * (attempt + 1))
     except BaseException:
         _drop(tmp)

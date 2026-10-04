@@ -11,6 +11,7 @@ from copy import deepcopy
 
 from modules import control
 from modules.errors import ChimeraError
+from modules.fileutil import atomic_write_text
 
 KINDS = ("strategy", "hosts", "tun")
 DEFAULT_DOMAINS = ("example.com", "cloudflare.com")
@@ -60,13 +61,7 @@ class TrialManager:
 
     def _save(self):
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        temp = self.path.with_suffix(".tmp")
-        try:
-            temp.write_text(json.dumps(self.active, ensure_ascii=False), encoding="utf-8")
-            control._restrict_permissions(temp)
-            temp.replace(self.path)
-        finally:
-            temp.unlink(missing_ok=True)
+        atomic_write_text(self.path, json.dumps(self.active, ensure_ascii=False), prepare=control._restrict_permissions)
 
     def _public(self, record):
         if record is None:

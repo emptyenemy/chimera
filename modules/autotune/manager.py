@@ -23,6 +23,7 @@ from modules.autotune import provider as provider_mod
 from modules.autotune import report as report_mod
 from modules.autotune.engine import MODES, Cancelled, Engine
 from modules.errors import ChimeraError
+from modules.fileutil import atomic_write_text
 
 ID_RE = re.compile(r"[a-f0-9]{16}")
 RUNNING = "running"
@@ -91,14 +92,9 @@ class AutotuneManager:
         self.active = value
 
     def _save(self):
+        # в записи исходное состояние со ссылкой прокси: права закрываются до подмены файла
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        temp = self.path.with_suffix(".tmp")
-        try:
-            temp.write_text(json.dumps(self.active, ensure_ascii=False), encoding="utf-8")
-            control._restrict_permissions(temp)
-            temp.replace(self.path)
-        finally:
-            temp.unlink(missing_ok=True)
+        atomic_write_text(self.path, json.dumps(self.active, ensure_ascii=False), prepare=control._restrict_permissions)
 
     def _close(self, phase, reason=None):
         """Сессия закончилась: исходное состояние больше не нужно."""

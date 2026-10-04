@@ -3,13 +3,12 @@
 import hashlib
 import json
 import re
-import tempfile
 from concurrent.futures import ThreadPoolExecutor, wait
 from datetime import UTC, datetime
-from pathlib import Path
 
 from modules import configbackups as backups, control, domains, trials
 from modules.errors import ChimeraValueError
+from modules.fileutil import atomic_write_text
 from modules.i18n import t
 
 MAX_SECONDS = 8
@@ -131,14 +130,8 @@ def create(ops, selected, check, context, root=None):
                      "checked_at": datetime.now(UTC).isoformat(timespec="seconds").replace("+00:00", "Z"),
                      "manifest_sha256": hashlib.sha256((base / backup_id / "manifest.json").read_bytes()).hexdigest()}
             # A unique temp file and replace preserve the previous pointer on failure.
-            with tempfile.NamedTemporaryFile(dir=base, prefix=".verified-", delete=False) as stream:
-                pending = Path(stream.name)
-            try:
-                pending.write_text(json.dumps(value, ensure_ascii=False) + "\n", encoding="utf-8")
-                control._restrict_permissions(pending)
-                pending.replace(base / MARKER)
-            finally:
-                pending.unlink(missing_ok=True)
+            atomic_write_text(base / MARKER, json.dumps(value, ensure_ascii=False) + "\n",
+                              prepare=control._restrict_permissions)
         except Exception:
             # Keep an unpinned snapshot on failure: the previous verified pointer is untouched.
             raise ChimeraValueError("err.verified.save") from None

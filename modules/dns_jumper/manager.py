@@ -8,6 +8,7 @@ PowerShell-командлеты DnsClient (нужны права админис�
 from modules.i18n import t as _tr
 
 from modules.errors import ChimeraValueError
+from modules.fileutil import atomic_write_text
 
 import ipaddress
 import json
@@ -281,10 +282,13 @@ class DnsJumper:
     def _remember(self, idx: int, changed: bool) -> None:
         current = set(self.changed_adapters())
         current.add(idx) if changed else current.discard(idx)
+        # окно и служба читают учёт постоянно (точка DNS): подмена целиком и с ожиданием, иначе
+        # читатель застанет полфайла, а сорванная запись оставит поставленный DNS без учёта —
+        # и «Выключить всё» его не сбросит
         try:
-            CHANGED_PATH.write_text(json.dumps(sorted(current)), encoding="utf-8")
-        except OSError:
-            pass  # учёт вспомогательный: не удалось записать — DNS всё равно уже применён
+            atomic_write_text(CHANGED_PATH, json.dumps(sorted(current)))
+        except OSError as e:
+            applog.write(f"DNS: не удалось записать учёт адаптеров ({e}); «Выключить всё» может не сбросить адаптер {idx}")
 
     def ping_all(self) -> list[dict]:
         """Пингует все серверы всех провайдеров параллельно."""

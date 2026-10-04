@@ -1,6 +1,7 @@
 """modules/fileutil.py — атомарная запись: читатель не видит половину файла, tmp не остаётся."""
 
 import os
+import sys
 
 import pytest
 
@@ -130,3 +131,52 @@ def test_unknown_encoding_closes_descriptor_and_removes_staging_file(tmp_path, m
     assert len(descriptors) == 1
     with pytest.raises(OSError):
         os.fstat(descriptors[0])
+
+
+def _hold(path, seconds):
+    """Держит файл открытым без права удаления — так его открывает Python в соседнем процессе:
+    os.replace на него падает, пока держат."""
+    import ctypes
+    import threading
+    from ctypes import wintypes as w
+    k = ctypes.WinDLL("kernel32", use_last_error=True)
+    k.CreateFileW.restype = w.HANDLE
+    k.CreateFileW.argtypes = [w.LPCWSTR, w.DWORD, w.DWORD, ctypes.c_void_p, w.DWORD, w.DWORD, w.HANDLE]
+    handle = k.CreateFileW(str(path), 0x80000000, 1 | 2, None, 3, 0, None)
+    timer = threading.Timer(seconds, lambda: k.CloseHandle(handle))
+    timer.start()
+    return timer
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="блокировка файла — Windows")
+def test_a_target_held_by_another_reader_is_replaced_once_released(tmp_path):
+    target = tmp_path / "state.json"
+    target.write_text("old", encoding="utf-8")
+    timer = _hold(target, 0.3)
+    fileutil.atomic_write_text(target, "new")
+    timer.join()
+    assert target.read_text(encoding="utf-8") == "new"
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="блокировка файла — Windows")
+def test_a_target_held_too_long_says_which_file_and_stays_intact(tmp_path, monkeypatch):
+    from modules.errors import ChimeraPermissionError
+    monkeypatch.setattr(fileutil.time, "sleep", lambda s: None)
+    target = tmp_path / "state.json"
+    target.write_text("old", encoding="utf-8")
+    timer = _hold(target, 0.5)
+    with pytest.raises(ChimeraPermissionError) as error:
+        fileutil.atomic_write_text(target, "new")
+    timer.join()
+    assert error.value.code == "err.file.busy" and error.value.params == {"name": "state.json"}
+    assert target.read_text(encoding="utf-8") == "old" and sorted(p.name for p in tmp_path.iterdir()) == ["state.json"]
+
+
+def test_prepare_sees_the_new_file_before_it_takes_the_place_of_the_old(tmp_path):
+    target = tmp_path / "secret.json"
+    target.write_text("old", encoding="utf-8")
+    seen = []
+    fileutil.atomic_write_text(target, "new", prepare=lambda tmp: seen.append((tmp.read_text(encoding="utf-8"),
+                                                                                target.read_text(encoding="utf-8"))))
+    assert seen == [("new", "old")] and target.read_text(encoding="utf-8") == "new"
+
