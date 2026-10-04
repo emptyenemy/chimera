@@ -182,7 +182,12 @@ def main(*, layout=False, screenshot=None, filters_only=False):
                 if method == "__smoke_failures":
                     return json.dumps(api_mod._ok(len(failures)))
                 if method == "__smoke_record":
-                    return json.dumps(api_mod._ok({"domains": [{"domain": "recorded.example", "hosts": []}], "seconds": 1}))
+                    return json.dumps(api_mod._ok({"domains": [{"domain": "recorded.example", "hosts": []},
+                                                               {"domain": "open.example", "hosts": ["www.open.example"]}],
+                                                   "seconds": 1}))
+                if method == "block_check_one":   # проверка найденных доменов — без сети
+                    name = json.loads(args_json)[0]
+                    return json.dumps(api_mod._ok({"target": name, "status": "blocked" if "recorded" in name else "ok"}))
                 if method == "dns_record_start":
                     return json.dumps(api_mod._ok({}))
                 if method == "dns_record_stop":

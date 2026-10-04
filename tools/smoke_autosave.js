@@ -225,6 +225,10 @@
     input('lists-textarea', 'draft.example\n'); await sleep(20);
     await click('lists-record'); await click('rec-start'); await click('rec-stop');
     await wait(() => el('rec-add'), 'Recorded result missing');
+    await wait(() => el('rec-reach-recorded.example')?.dataset.tone === 'err' && el('rec-reach-open.example')?.dataset.tone === 'ok',
+      'Recorded domains were not checked');
+    await wait(() => el('rec-domain-recorded.example').getAttribute('aria-checked') === 'true'
+      && el('rec-domain-open.example').getAttribute('aria-checked') === 'false', 'Blocked domain was not picked alone');
     await click('rec-target');
     const option = [...document.querySelectorAll('[role="option"]')].find(node => node.textContent.trim() === 'queue-b');
     need(option, 'Target list missing'); option.click(); await sleep(30);
@@ -232,7 +236,8 @@
     await wait(() => !el('rec-dialog'), 'Recording dialog not closed');
     const text = await api('lists_read', 'queue-b');
     need(text.includes('draft.example') && text.includes('recorded.example'), 'Appending recorded domains lost open draft');
-    steps.push({ name: 'Recorded domains merge with unsaved editor text', ok: true });
+    need(!text.includes('open.example'), 'A domain that opens was added without being picked');
+    steps.push({ name: 'Recorded domains are checked, blocked ones picked, and merge with unsaved editor text', ok: true });
     Bridge.call = async (method, args) => {
       if (method === 'proxy_set_lists' || method === 'winws_set_lists') await sleep(200);
       return realCall(method, args);

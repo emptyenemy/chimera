@@ -1,11 +1,13 @@
 /* «Записать домены сайта»: открываешь сайт, пока идёт запись, — Chimera показывает, какие
-   домены ему понадобились (разница кэша DNS Windows), и добавляет выбранные в список. */
+   домены ему понадобились (разница кэша DNS Windows), проверяет каждый и добавляет выбранные
+   в список. Заблокированные отмечаются сами: ради них запись обычно и затевают. */
 
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { PlayIcon, SquareIcon } from "lucide-react"
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { StatusDot } from "@/components/app/status-dot"
 import { Checkbox } from "@/components/ui/checkbox"
 import {
   Dialog,
@@ -22,12 +24,7 @@ import { api } from "@/lib/bridge"
 import { t } from "@/lib/i18n"
 import { notify } from "@/lib/notify"
 import { applyErrors, patchList, withSavedList, type ListInfo, type SaveInfo } from "@/pages/lists-data"
-
-interface RecDomain {
-  domain: string
-  hosts: string[]
-  tracker?: boolean
-}
+import { checkDomains, isBlocked, preselect, reachLabel, type Reach, type RecDomain } from "@/pages/lists-record-data"
 
 interface RecResult {
   domains?: RecDomain[]
@@ -53,7 +50,11 @@ export function RecordDialog({
   const [seconds, setSeconds] = useState(0)
   const [result, setResult] = useState<RecResult | null>(null)
   const [chosen, setChosen] = useState<Set<string>>(new Set())
+  const [reaches, setReaches] = useState<Record<string, Reach>>({})
+  const [checking, setChecking] = useState(false)
   const [target, setTarget] = useState(lists[0]?.name ?? "")
+  const touched = useRef(false)   // человек сам менял отметки — итог проверки их не перебивает
+  const run = useRef(0)           // повторная запись: результаты прошлой проверки уже не нужны
 
   useEffect(() => {
     if (phase !== "recording") return
@@ -78,15 +79,33 @@ export function RecordDialog({
     setBusy(true)
     try {
       const res = await api<RecResult | null>("dns_record_stop")
+      const found = res?.domains ?? []
       setResult(res ?? {})
-      setChosen(new Set((res?.domains ?? []).filter((d) => !d.tracker).map((d) => d.domain)))
+      setChosen(preselect(found, {}))
+      setReaches({})
       setPhase("result")
+      void check(found)
     } catch (e) {
       notify.error(t("lists.record.stopFailed"), msg(e))
       setPhase("intro")
     } finally {
       setBusy(false)
     }
+  }
+
+  const check = async (found: RecDomain[]) => {
+    const id = ++run.current
+    touched.current = false
+    setChecking(true)
+    const local: Record<string, Reach> = {}
+    await checkDomains(found, (domain, reach) => {
+      if (run.current !== id) return
+      local[domain] = reach
+      setReaches({ ...local })
+    })
+    if (run.current !== id) return
+    setChecking(false)
+    if (!touched.current) setChosen(preselect(found, local))
   }
 
   const add = async () => {
@@ -119,6 +138,7 @@ export function RecordDialog({
   }
 
   const domains = result?.domains ?? []
+  const blocked = domains.filter((d) => !d.tracker && isBlocked(reaches[d.domain])).length
   const items = lists.map((f) => ({ label: f.name, value: f.name }))
 
   let body
@@ -164,7 +184,10 @@ export function RecordDialog({
   } else {
     body = (
       <FieldGroup data-testid="rec-result">
-        <p className="text-muted-foreground">{t("lists.record.result", { n: result?.seconds ?? 0 })}</p>
+        <p className="text-muted-foreground" data-testid="rec-summary">
+          {t("lists.record.result", { n: result?.seconds ?? 0 })}{" "}
+          {checking ? t("lists.record.checking") : blocked ? t("lists.record.blockedPicked", { n: blocked }) : t("lists.record.allOpen")}
+        </p>
         <FieldGroup className="max-h-72 gap-3 overflow-y-auto" data-slot="checkbox-group">
           {domains.map((d, i) => (
             <Field key={d.domain} orientation="horizontal">
@@ -172,19 +195,21 @@ export function RecordDialog({
                 id={`rec-domain-${i}`}
                 data-testid={`rec-domain-${d.domain}`}
                 checked={chosen.has(d.domain)}
-                onCheckedChange={(on) =>
+                onCheckedChange={(on) => {
+                  touched.current = true
                   setChosen((prev) => {
                     const next = new Set(prev)
                     if (on) next.add(d.domain)
                     else next.delete(d.domain)
                     return next
                   })
-                }
+                }}
               />
               <FieldContent>
                 <FieldLabel htmlFor={`rec-domain-${i}`} className="font-medium">
                   {d.domain}
                   {d.tracker && <Badge variant="outline">{t("lists.record.tracker")}</Badge>}
+                  <ReachBadge reach={reaches[d.domain]} domain={d.domain} />
                 </FieldLabel>
                 <FieldDescription>
                   {d.hosts.slice(0, 3).join(", ")}
@@ -237,6 +262,17 @@ export function RecordDialog({
         <DialogFooter>{footer}</DialogFooter>
       </DialogContent>
     </Dialog>
+  )
+}
+
+function ReachBadge({ reach, domain }: { reach: Reach | undefined; domain: string }) {
+  const { key, tone } = reachLabel(reach)
+  return (
+    <span className="ms-auto inline-flex items-center gap-1.5 text-xs font-normal text-muted-foreground"
+      data-testid={`rec-reach-${domain}`} data-tone={tone}>
+      <StatusDot tone={tone} />
+      {t(key)}
+    </span>
   )
 }
 
