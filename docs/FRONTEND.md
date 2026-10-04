@@ -1,6 +1,6 @@
 # Новый фронт (`frontend/`)
 
-Интерфейс на настоящем [shadcn/ui](https://ui.shadcn.com) (база Base UI): Vite, React 19, TypeScript, Tailwind v4, иконки lucide. Все девять страниц перенесены. Исходники — `frontend/`, готовый интерфейс — `ui/web-next/`. Прежний `ui/web/` удалён; старое значение `frontend` в конфиге игнорируется.
+Интерфейс на настоящем [shadcn/ui](https://ui.shadcn.com) (база Base UI): Vite, React 19, TypeScript, Tailwind v4, иконки lucide. Все страницы перенесены. Исходники — `frontend/`, готовый интерфейс — `ui/web-next/`. Прежний `ui/web/` удалён; старое значение `frontend` в конфиге игнорируется.
 
 Для программы Node не нужен. Он нужен, чтобы собрать и править интерфейс: Node 22+, пакетный менеджер npm.
 

@@ -36,6 +36,7 @@ The tools work independently and share domain lists:
 - **Hosts**: override system hosts entries using alternative DNS providers such as xbox, comss and malw.
 - **DNS**: select system DNS, measure server response times and try changes with automatic rollback.
 - **Checks**: RKN registry checks through [cheburcheck](https://github.com/LowderPlay/cheburcheck), plus domain reachability from your computer.
+- **Auto-setup**: one button. Chimera checks services from your computer, tries strategies, hosts providers, DNS and the proxy on its own, and keeps what makes the sites open. Fast and smart modes, Fix for a single service, one-click undo, and the working option is remembered per network ([details](docs/AUTOTUNE.md)).
 - **Agent setup**: bundled skill, instructions, versioned docs and JSON commands let your agent diagnose and configure Chimera at your request.
 - **Share configurations**: export selected sections to a `.chimera` file; preview the contents before importing.
 - **Import backups**: preview and restore through the window or CLI; save the current state before restoring and roll back on failure ([details, in Russian](docs/BACKUPS.md)).
