@@ -66,6 +66,7 @@ interface ProxyView {
   error?: string
   subscription?: string
   servers?: ServerRow[]
+  last_switch?: { from: string; to: string; at: number } | null
 }
 
 interface ServerRow {
@@ -401,7 +402,12 @@ function SubscriptionCard({ st }: { st: ProxyView }) {
           </Button>
         </CardAction>
       </CardHeader>
-      <CardContent>
+      <CardContent className="flex flex-col gap-2">
+        {st.last_switch && (
+          <p className="text-[13px] text-muted-foreground" data-testid="proxy-last-switch">
+            {t("proxy.servers.switched", { from: st.last_switch.from, to: st.last_switch.to })}
+          </p>
+        )}
         <Table>
           <TableBody>
             {servers.map((s) => (

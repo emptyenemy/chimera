@@ -57,6 +57,7 @@ from ui.trials import TrialOps
 from ui.autotune import AutotuneOps
 from modules.autotune.manager import AutotuneManager
 from modules.autotune.watch import AutotuneWatch
+from modules.proxy.failover import ProxyFailover
 
 WEB_DIR = Path(__file__).parent / "web-next"
 
@@ -172,6 +173,10 @@ class Api:
                                              can_run=lambda: self._trial.active is None)
         if owner and not self._smoke:
             self._autotune_watch.start_background(self._bg_stop)
+        # сервер подписки перестал отвечать — переход на следующий по скорости
+        self._proxy_failover = ProxyFailover(self.proxy)
+        if owner and not self._smoke:
+            self._proxy_failover.start_background(self._bg_stop)
         if not self._smoke:
             self._watch_lists()
 

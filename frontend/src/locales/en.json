@@ -694,6 +694,7 @@
   "proxy.servers.selected": "The fastest server is in use.",
   "proxy.servers.refreshFailed": "Could not refresh the subscription",
   "proxy.servers.selectFailed": "Could not switch the server",
+  "proxy.servers.switched": "Server “{from}” stopped answering, so Chimera switched to “{to}”.",
   "proxy.apps.title": "Applications",
   "proxy.apps.add": "Add running apps",
   "proxy.apps.remove": "Remove {name}",

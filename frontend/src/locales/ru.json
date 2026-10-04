@@ -706,6 +706,7 @@
   "proxy.servers.selected": "Выбран самый быстрый сервер.",
   "proxy.servers.refreshFailed": "Не удалось обновить подписку",
   "proxy.servers.selectFailed": "Не удалось выбрать сервер",
+  "proxy.servers.switched": "Сервер «{from}» перестал отвечать — Chimera переключилась на «{to}».",
   "proxy.apps.title": "Приложения",
   "proxy.apps.add": "Добавить из запущенных",
   "proxy.apps.remove": "Убрать {name}",

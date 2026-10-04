@@ -135,6 +135,7 @@ class ProxyManager:
         self._core_version_cache: str | None = None  # версия бинаря меняется только при download_core
         self._core_version_cached = False
         self._pings: dict[str, int | None] = {}   # последний замер серверов подписки
+        self.last_switch = None                   # последнее переключение при отказе (modules/proxy/failover.py)
         self._summaries: tuple = ((), [])        # (servers, подписи) — разбор ссылок на каждый опрос не нужен
         _cleanup_old_exe()  # подчистить sing-box.exe.old, если он остался с прошлого обновления
 
@@ -792,6 +793,7 @@ class ProxyManager:
             "parsed": parsed,
             "subscription": self.config.get("subscription") or "",
             "servers": self._server_rows(),
+            "last_switch": self.last_switch,
             "lists": self.config["lists"],
             "apps": list(self.config.get("apps") or []),
             "domains": len(_dom),
