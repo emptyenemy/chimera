@@ -229,11 +229,15 @@ def test_rulesets_do_not_overwrite_another_writers_fixed_temp_file(tmp_path, mon
     staging.write_bytes(b"other writer")
     monkeypatch.setattr(proxy, "DOMAINS_RULESET_PATH", host)
     monkeypatch.setattr(proxy, "IPS_RULESET_PATH", ips)
+    monkeypatch.setattr(proxy, "DIRECT_DOMAINS_RULESET_PATH", tmp_path / "direct-domains.json")
+    monkeypatch.setattr(proxy, "DIRECT_IPS_RULESET_PATH", tmp_path / "direct-ips.json")
     instance = proxy.ProxyManager.__new__(proxy.ProxyManager)
     monkeypatch.setattr(instance, "_split", lambda: (["new.example"], []))
+    monkeypatch.setattr(instance, "_split_direct", lambda: (["bank.example"], []))
     instance._write_rulesets()
     assert staging.read_bytes() == b"other writer"
-    assert sorted(p.name for p in tmp_path.iterdir()) == ["domains.json", "domains.json.tmp", "ips.json"]
+    assert sorted(p.name for p in tmp_path.iterdir()) == [
+        "direct-domains.json", "direct-ips.json", "domains.json", "domains.json.tmp", "ips.json"]
 
 
 def test_runtime_write_retries_a_briefly_locked_target(runtime_write, monkeypatch):

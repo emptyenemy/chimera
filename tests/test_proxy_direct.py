@@ -131,5 +131,5 @@ def test_backup_rejects_a_malformed_direct_list_value():
     from modules import configbackups as cb
     assert cb.normalize("proxy", {"direct_lists": ["banks"]})["direct_lists"] == ["banks"]
     for bad in ("banks", [1], ["../evil"]):
-        with pytest.raises(Exception):
+        with pytest.raises(ValueError):
             cb.normalize("proxy", {"direct_lists": bad})
