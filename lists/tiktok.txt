@@ -1,0 +1,40 @@
+# TikTok. С 2022 года он сам режет контент для российских адресов: новые видео не показывает.
+# Это не блокировка РКН — стратегии не помогут, нужен прокси с нероссийским адресом, и через него
+# должны идти все домены ниже, иначе часть запросов выдаст Россию. Подключите список на странице
+# «Прокси». Автонастройка такую выдачу не распознает: сайт ведь открывается.
+# Основа — v2fly/domain-list-community (tiktok) и зарубежные домены ByteDance, которые тянет TikTok.
+tiktok.com
+tiktokv.com
+tiktokv.eu
+tiktokv.us
+tiktokw.eu
+tiktokw.us
+tiktokd.net
+tiktokd.org
+tiktok-row.net
+tik-tokapi.com
+tiktok-minis.com
+tiktokminis.us
+tiktokglobalshopv.com
+musical.ly
+muscdn.com
+tiktokcdn.com
+tiktokcdn-eu.com
+tiktokcdn-us.com
+tiktokeu-cdn.com
+tiktokrow-cdn.com
+ttcdn-us.com
+ttlivecdn.com
+ttoverseaus.net
+ttwstatic.com
+bytedapm.com
+ibytedtos.com
+ibyteimg.com
+ipstatp.com
+byteoversea.com
+byteoversea.net
+bytefcdn-oversea.com
+isnssdk.com
+sgsnssdk.com
+sgpstatp.com
+tlivecdn.com
