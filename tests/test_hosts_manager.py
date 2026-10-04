@@ -49,6 +49,21 @@ def test_write_block_inserts_marked_section(hm):
     assert hm._is_applied()
 
 
+# Файл без перевода строки в конце получает его при первом блоке: после снятия блока уже
+# не отличить, был он или нет, а лишний финальный перевод строки безвреден.
+@pytest.mark.parametrize("original", [b"127.0.0.1 localhost\r\n# own line\r\n", b"127.0.0.1 localhost\n\n"])
+def test_switching_hosts_on_and_off_leaves_the_system_file_byte_for_byte(hm, monkeypatch, original):
+    monkeypatch.setattr(hosts_manager, "is_admin", lambda: True)
+    monkeypatch.setattr(hosts_manager, "resolve_domains", lambda names, *a: [{"host": n, "ip": "10.0.0.1"} for n in names])
+    hm.hosts_path.write_bytes(original)
+    for _ in range(3):
+        hm.set_assignments({"comss": ["youtube"]})
+        hm.set_enabled(False)
+        hm.set_enabled(True)
+        hm.set_assignments({})
+    assert hm.hosts_path.read_bytes() == original
+
+
 def test_write_block_replaces_previous_block_not_duplicates(hm):
     hm._write_block([("A", [{"ip": "1.1.1.1", "host": "a.example"}])])
     hm._write_block([("B", [{"ip": "2.2.2.2", "host": "b.example"}])])

@@ -36,6 +36,25 @@ BEGIN_MARK = "# >>> chimera-hosts >>>"
 END_MARK = "# <<< chimera-hosts <<<"
 BLOCK_RE = re.compile(rf"{re.escape(BEGIN_MARK)}.*?{re.escape(END_MARK)}\r?\n?", re.S)
 
+
+def replace_block(text: str, block: str | None) -> str:
+    """Поставить блок Chimera на место (block) или убрать его (None). Новый блок дописывается
+    через пустую строку — и убирается вместе с ней: иначе каждое выключение оставляло бы
+    в системном hosts лишнюю пустую строку."""
+    match = BLOCK_RE.search(text)
+    if match:
+        head, tail = text[:match.start()], text[match.end():]
+        if not block:
+            for newline in ("\r\n", "\n"):
+                if head.endswith(newline * 2):
+                    head = head[:-len(newline)]
+                    break
+        return head + (block or "") + tail
+    if not block:
+        return text
+    newline = "\r\n" if "\r\n" in text else "\n"
+    return text + ("" if text.endswith(("\n", "\r")) else newline) + newline + block
+
 # по этому домену меряем работоспособность/пинг провайдеров
 PING_TEST_DOMAIN = "chatgpt.com"
 # короткий таймаут именно для пинга: DNS, отвечающий дольше — для нас бесполезен,
@@ -261,13 +280,7 @@ class HostsManager:
             lines.append(f"# {provider_name}")
             lines += [f"{e['ip']} {e['host']}" for e in entries]
         lines.append(END_MARK)
-        block = newline.join(lines) + newline
-        match = BLOCK_RE.search(text)
-        if match:
-            text = text[:match.start()] + block + text[match.end():]
-        else:
-            text += ("" if text.endswith(("\n", "\r")) else newline) + newline + block
-        self._write_hosts(text)
+        self._write_hosts(replace_block(text, newline.join(lines) + newline))
 
     # --- синхронизация hosts с привязками -----------------------------------
 
@@ -296,7 +309,7 @@ class HostsManager:
                 if self._is_applied():
                     if not is_admin():
                         raise ChimeraPermissionError('err.hosts.manager.administrator_rights_are_required_to_write_hosts')
-                    self._write_hosts(BLOCK_RE.sub("", self._read_hosts()))
+                    self._write_hosts(replace_block(self._read_hosts(), None))
                 st = self._load_state()
                 st["entries"] = []
                 self._save_state(st)

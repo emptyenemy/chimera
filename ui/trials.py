@@ -4,7 +4,7 @@ from copy import deepcopy
 
 from modules import blockcheck, configbackups
 from modules.errors import ChimeraError
-from modules.hosts.manager import BLOCK_RE
+from modules.hosts.manager import BLOCK_RE, replace_block
 from ui.shareops import ShareOps
 
 
@@ -93,13 +93,7 @@ class TrialOps:
             if block is not None and (not isinstance(block, str) or not BLOCK_RE.fullmatch(block)):
                 raise ChimeraError("err.trial.invalid_record")
             current = api.hosts._read_hosts()
-            match = BLOCK_RE.search(current)
-            if match:
-                text = current[:match.start()] + (block or "") + current[match.end():]
-            elif block:
-                text = current + ("" if current.endswith(("\n", "\r")) else "\n") + block
-            else:
-                text = current
+            text = replace_block(current, block)
             if text != current:
                 api.hosts._write_hosts(text)
             api.hosts._save_state(before["state"])
