@@ -16,6 +16,11 @@ windivert2 здесь не нужен: драйвер требуется winws2,
 НАБЛЮДАЕМ результат. Это не ICMP-ping (он не отражает SNI-блок и часто фильтруется) —
 меряем TCP+TLS на 443 с правильным server_name, что и показывает блок/обход.
 
+Ответа с заголовками мало: ТСПУ пропускает хендшейк и первые 14–25 КБ, а потом замораживает
+соединение с «неугодным» хостингом или CDN (блокировка «16 КБ»). Браузер в таком случае
+крутит загрузку без конца. Поэтому страница дочитывается до BODY_PROBE: встала посреди
+передачи — домен считается заблокированным, а время «ok» включает загрузку этих килобайт.
+
 Выборочный прокси (modules/proxy) в режиме PAC — это особый случай: он не виден
 обычным сокетам (PAC читает только браузер), поэтому домен, реально уходящий через
 прокси у пользователя, голым сокетом отсюда выглядел бы заблокированным — наврали бы.
@@ -39,6 +44,8 @@ CONNECT_TIMEOUT = 4.0  # на каждый адрес отдельно
 OVERALL_TIMEOUT = 5.0  # потолок на весь домен (адреса идут параллельно)
 MAX_ADDRS = 6          # не плодить потоки на домены с кучей A/AAAA
 PORT = 443
+BODY_PROBE = 64 * 1024  # с запасом выше порога заморозки (у HTTP он доходит до 32 КБ)
+STALL_TIMEOUT = 2.5     # столько ждём следующую порцию тела: живой сервер шлёт его сразу
 
 # серт не валидируем: при DNS-подмене за доменом часто «чужой» серт — это норма,
 # нам важен не серт, а дошёл ли реальный HTTP-ответ.
@@ -54,7 +61,7 @@ except NotImplementedError:
 
 def _http_request(target: str) -> bytes:
     return (
-        f"HEAD / HTTP/1.1\r\nHost: {target}\r\n"
+        f"GET / HTTP/1.1\r\nHost: {target}\r\n"
         "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64)\r\n"
         "Accept: */*\r\nConnection: close\r\n\r\n"
     ).encode("ascii", "ignore")
@@ -215,7 +222,39 @@ def _classify(sock: socket.socket, target: str) -> tuple[str, str | int | None]:
         code = int(m.group(1))
         if 400 <= code < 600:
             return ("challenge" if _CF_CHALLENGE_RE.search(head) else "denied"), code
+        complete, size = _read_body(tls, head)
+        if not complete:
+            return "fail", _tr('msg.modules.blockcheck.transfer_stalled', kb=max(1, (len(head) + size) // 1024))
         return "ok", None
+
+
+_LENGTH_RE = re.compile(rb"(?im)^content-length:\s*(\d+)\s*$")
+_CHUNKED_RE = re.compile(rb"(?im)^transfer-encoding:.*chunked")
+_LAST_CHUNK = b"0\r\n\r\n"
+
+
+def _read_body(tls, head: bytes) -> tuple[bool, int]:
+    """Дочитывает тело ответа до BODY_PROBE. Возвращает (дошло ли без заминки, байт тела).
+    Конец ответа — закрытие соединения (просили Connection: close), Content-Length
+    или последний пустой кусок chunked: не всякий сервер закрывает соединение сам."""
+    headers, _, body = head.partition(b"\r\n\r\n")
+    m = _LENGTH_RE.search(headers)
+    length = int(m.group(1)) if m else None
+    chunked = bool(_CHUNKED_RE.search(headers))
+    got, tail = len(body), body[-len(_LAST_CHUNK):]
+    tls.settimeout(STALL_TIMEOUT)
+    while got < BODY_PROBE and (length is None or got < length) and not (chunked and tail == _LAST_CHUNK):
+        try:
+            chunk = tls.recv(16384)
+        except ssl.SSLEOFError:
+            return True, got  # закрыли без close_notify — обычное дело, ответ целый
+        except OSError:       # таймаут или RST посреди тела
+            return False, got
+        if not chunk:
+            return True, got
+        got += len(chunk)
+        tail = (tail + chunk)[-len(_LAST_CHUNK):]
+    return True, got
 
 
 def _try_one(ip: str, target: str) -> tuple[str, str | int | None]:

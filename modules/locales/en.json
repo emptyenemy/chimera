@@ -986,6 +986,7 @@
   "msg.modules.blockcheck.through_proxy": "Through proxy",
   "msg.modules.blockcheck.timeout": "timeout",
   "msg.modules.blockcheck.tls_connection_closed_dpi": "TLS connection closed (DPI?)",
+  "msg.modules.blockcheck.transfer_stalled": "Transfer froze at {kb} KB (DPI?)",
   "msg.modules.control.access_denied": "Access denied",
   "msg.modules.control.hidden": "…(hidden)",
   "msg.modules.control.malformed_arguments": "Malformed arguments",

@@ -994,6 +994,7 @@
   "msg.modules.blockcheck.through_proxy": "через прокси",
   "msg.modules.blockcheck.timeout": "таймаут",
   "msg.modules.blockcheck.tls_connection_closed_dpi": "TLS оборван (DPI?)",
+  "msg.modules.blockcheck.transfer_stalled": "передача встала на {kb} КБ (ТСПУ?)",
   "msg.modules.control.access_denied": "доступ запрещён",
   "msg.modules.control.hidden": "…(скрыто)",
   "msg.modules.control.malformed_arguments": "битые аргументы",
