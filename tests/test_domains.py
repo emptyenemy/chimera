@@ -215,11 +215,12 @@ def test_validate_reports_bad_entries_with_line_numbers(lists_dir):
     res = domains.validate_list("svc")
 
     assert res["ok"] is False
-    assert [e["line"] for e in res["errors"]] == [2, 3, 4, 5, 6, 7, 8]
+    assert [e["line"] for e in res["errors"]] == [4, 5, 6, 7, 8]
     assert all(e["problem"] for e in res["errors"])
-    assert "URL" in res["errors"][0]["problem"]
-    assert "*" in res["errors"][1]["problem"]
-    assert "IP" in res["errors"][4]["problem"]
+    assert "IP" in res["errors"][2]["problem"]
+    # ссылку и *. программа читает сама — это подсказка, во что превратится запись
+    assert [w["line"] for w in res["warnings"]] == [2, 3]
+    assert "bad.com" in res["warnings"][0]["problem"] and "wild.com" in res["warnings"][1]["problem"]
 
 
 def test_validate_accepts_idn_and_underscore(lists_dir):

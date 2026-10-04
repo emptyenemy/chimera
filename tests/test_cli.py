@@ -620,19 +620,20 @@ def test_lists_validate_ok_without_running_app(capsys, stopped, local_lists):
 
 
 def test_lists_validate_all_lists_and_reports_errors_with_exit_code_1(capsys, stopped, local_lists):
-    (local_lists / "bad.txt").write_text("ok.example\nhttps://bad.example/x\n", encoding="utf-8")
+    (local_lists / "bad.txt").write_text("ok.example\nbad..dots.example\n", encoding="utf-8")
     code, out, _ = run(capsys, "lists", "validate")
     assert code == 1
     assert "bad" in out and "строка 2" in out and "youtube" in out
 
 
 def test_lists_validate_json_lists_problems(capsys, stopped, local_lists):
-    (local_lists / "bad.txt").write_text("a.example\na.example\n*.b.example\n", encoding="utf-8")
+    (local_lists / "bad.txt").write_text("a.example\na.example\nhas space.example\n*.b.example\n", encoding="utf-8")
     code, data, _ = run_json(capsys, "lists", "validate", "bad")
     res = data["data"]["lists"][0]
     assert code == 1 and data["ok"] is False
     assert [e["line"] for e in res["errors"]] == [3]
-    assert [w["line"] for w in res["warnings"]] == [2]
+    # дубль и *. — предупреждения: звёздочку программа отбрасывает сама
+    assert [w["line"] for w in res["warnings"]] == [2, 4]
 
 
 def test_lists_validate_all_survives_a_file_with_invalid_name(capsys, stopped, local_lists):

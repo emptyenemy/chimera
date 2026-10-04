@@ -277,8 +277,8 @@ def normalize_entry(entry: str) -> str:
     пути, www., *. и точек по краям, кириллица — в punycode. IP и подсети не трогаем.
     Файл списка при этом не меняется: так читаются вставленные как есть адреса страниц."""
     entry = entry.strip()
-    if not entry or as_network(entry) is not None:
-        return entry
+    if not entry or as_network(entry) is not None or re.fullmatch(r"[\d.:a-fA-F]+/\d+", entry):
+        return entry  # битую подсеть (10.0.0.0/33) не принимаем за адрес с путём: это ошибка записи
     if "://" in entry:
         try:
             entry = urlsplit(entry).hostname or entry
