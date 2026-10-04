@@ -142,6 +142,10 @@ def main(*, layout=False, screenshot=None, filters_only=False):
                 return self.proxy_state()
 
             def proxy_set_link(self, value):
+                if value.startswith("https://"):   # подписка — через настоящий менеджер с подменённой сетью
+                    # заглушки fixture-* — не ссылки; снимок перед изменением отказался бы их сохранять
+                    self.proxy._save({**self.proxy.config, "link": ""})
+                    return super().proxy_set_link(value)
                 link_calls.append(value)
                 self.proxy.config["link"] = value
                 return self.proxy_state()
@@ -186,6 +190,7 @@ def main(*, layout=False, screenshot=None, filters_only=False):
                 if self.is_read(method) or method in {"hub_snapshot", "hub_watch", "hub_refresh", "config_set",
                                                        "tg_set_config", "tg_set_advanced", "lists_save", "lists_create",
                                                        "lists_rename", "lists_delete", "proxy_set_lists", "winws_set_lists", "proxy_set_link",
+                                                       "proxy_select_server", "proxy_fastest_server", "proxy_refresh_subscription",
                                                        "dns_set_probe_config", "upstream_update", "hosts_set_background", "game_filter_set",
                                                        "data_update"}:
                     return super().dispatch(method, args_json)
@@ -199,7 +204,15 @@ def main(*, layout=False, screenshot=None, filters_only=False):
         api._restart_winws_if_running = lambda: None
         api.winws.state = lambda: {**api.winws.config, "running": False, "external": False, "all_lists": domains.available_lists()}
         api.proxy.state = lambda: {**api.proxy.config, "running": False, "external": False, "all_lists": domains.available_lists(),
-                                  "parsed": {"server": "local.example", "protocol": "test", "security": "none", "label": "Fixture"}}
+                                  "parsed": {"server": "local.example", "protocol": "test", "security": "none", "label": "Fixture"},
+                                  "servers": api.proxy._server_rows()}
+        # чужой sing-box пользователя не должен считаться нашим: смена сервера перезапустила бы его
+        api.proxy._system_pids = lambda: []
+        from modules.proxy import subscription
+        sub_links = ["vless://11111111-1111-1111-1111-111111111111@slow.example:443?security=tls#Slow",
+                     "vless://22222222-2222-2222-2222-222222222222@fast.example:443?security=tls#Fast"]
+        subscription.fetch = lambda url, opener=None: "\n".join(sub_links)
+        subscription.ping_all = lambda servers, ping_fn=None: [{"Slow": 150, "Fast": 30}.get(s.rsplit("#", 1)[-1]) for s in servers]
         api.hub.poke("tg", "winws", "proxy")
         server = QuietServer(("127.0.0.1", 0), _Handler)
         server.api, server.hub, server.token = api, hub, "autosave-test"

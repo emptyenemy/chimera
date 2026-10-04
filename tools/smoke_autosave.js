@@ -259,6 +259,18 @@
     need((await api('__smoke_link_count')) === 3, 'Leaving page repeated a confirmed link save');
     steps.push({ name: 'Proxy deduplicates blur saves and preserves the latest repeated value', ok: true });
     Bridge.call = realCall;
+    await go('proxy', 'proxy-link');
+    input('proxy-link', 'https://sub.example/s/token'); await sleep(20); blurLink();
+    await wait(() => el('proxy-server-0') && el('proxy-server-1'), 'Subscription servers not listed');
+    await wait(() => el('proxy-server-1').dataset.state === 'selected', 'Fastest server was not picked');
+    need(el('proxy-link').value === 'https://sub.example/s/token', 'Link field lost the subscription address');
+    await click('proxy-server-use-0');
+    await wait(() => el('proxy-server-0').dataset.state === 'selected', 'Server choice not applied');
+    await click('proxy-fastest');
+    await wait(() => el('proxy-server-1').dataset.state === 'selected', 'Pick the fastest did not switch back');
+    await click('proxy-sub-refresh');
+    await wait(() => el('proxy-server-1')?.dataset.state === 'selected', 'Refresh lost the servers');
+    steps.push({ name: 'Proxy subscription: servers listed, fastest picked, manual choice, refresh', ok: true });
     await go('lists', 'list-row-queue-b'); await click('list-row-queue-b');
     await wait(() => el('lists-textarea'), 'Recovery editor missing');
     const recovering = (await api('lists_read', 'queue-b')) + 'recover.example\n';

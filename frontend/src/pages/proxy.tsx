@@ -13,7 +13,9 @@ import {
   ListIcon,
   NetworkIcon,
   PlusIcon,
+  RefreshCwIcon,
   XIcon,
+  ZapIcon,
   type LucideIcon,
 } from "lucide-react"
 
@@ -32,9 +34,11 @@ import { Field, FieldDescription, FieldGroup, FieldLabel, FieldLegend, FieldSet 
 import { Skeleton } from "@/components/ui/skeleton"
 import { Spinner } from "@/components/ui/spinner"
 import { Switch } from "@/components/ui/switch"
+import { Table, TableBody, TableCell, TableRow } from "@/components/ui/table"
 import { Textarea } from "@/components/ui/textarea"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import { api } from "@/lib/bridge"
+import { fmtNum } from "@/lib/format"
 import { t } from "@/lib/i18n"
 import { notify } from "@/lib/notify"
 import { router } from "@/lib/router"
@@ -60,6 +64,17 @@ interface ProxyView {
   mode?: Mode
   needs_admin?: boolean
   error?: string
+  subscription?: string
+  servers?: ServerRow[]
+}
+
+interface ServerRow {
+  index: number
+  label: string
+  server: string
+  protocol: string
+  ms: number | null
+  current: boolean
 }
 
 const msg = (e: unknown) => (e instanceof Error ? e.message : String(e))
@@ -256,7 +271,9 @@ function ServerCard({ st }: { st: ProxyView }) {
   const save = async (raw: string) => {
     if (submitted.current?.raw === raw) return
     const value = raw.trim()
-    if (!store.pending("proxy") && value === (store.get<ProxyView>("proxy")?.link ?? "")) {
+    const saved = store.get<ProxyView>("proxy")
+    // с подпиской в поле её адрес, а не ссылка выбранного из неё сервера
+    if (!store.pending("proxy") && value === (saved?.subscription || saved?.link || "")) {
       if (latest.current === raw) {
         latest.current = null
         setDraft(null)
@@ -318,7 +335,7 @@ function ServerCard({ st }: { st: ProxyView }) {
               spellCheck={false}
               aria-invalid={error ? true : undefined}
               placeholder={t("proxy.link.placeholder")}
-              value={draft ?? st.link ?? ""}
+              value={draft ?? (st.subscription || st.link || "")}
               onChange={(e) => {
                 latest.current = e.target.value
                 setDraft(e.target.value)
@@ -338,6 +355,78 @@ function ServerCard({ st }: { st: ProxyView }) {
           )}
           <FieldDescription data-testid="proxy-link-formats">{t("proxy.link.formats")}</FieldDescription>
         </FieldGroup>
+      </CardContent>
+    </Card>
+  )
+}
+
+// --- серверы подписки -----------------------------------------------------------
+
+async function serverAction(method: string, args: unknown[], failKey: string, okKey?: string) {
+  try {
+    await api(method, ...args)
+    if (okKey) notify.success(t(okKey))
+  } catch (e) {
+    notify.error(t(failKey), msg(e))
+  }
+}
+
+function SubscriptionCard({ st }: { st: ProxyView }) {
+  const [busy, setBusy] = useState<string | null>(null)
+  const servers = st.servers ?? []
+  const run = async (key: string, method: string, args: unknown[], failKey: string, okKey?: string) => {
+    setBusy(key)
+    try {
+      await serverAction(method, args, failKey, okKey)
+    } finally {
+      setBusy(null)
+    }
+  }
+  return (
+    <Card size="sm" data-testid="proxy-servers">
+      <CardHeader>
+        <CardTitle>{t("proxy.servers.title", { count: servers.length, n: servers.length })}</CardTitle>
+        <CardAction className="flex flex-wrap gap-2">
+          {st.subscription && (
+            <Button variant="outline" size="sm" data-testid="proxy-sub-refresh" disabled={!!busy}
+              onClick={() => void run("refresh", "proxy_refresh_subscription", [], "proxy.servers.refreshFailed", "proxy.servers.refreshed")}>
+              {busy === "refresh" ? <Spinner data-icon="inline-start" /> : <RefreshCwIcon data-icon="inline-start" />}
+              {t("proxy.servers.refresh")}
+            </Button>
+          )}
+          <Button size="sm" data-testid="proxy-fastest" disabled={!!busy}
+            onClick={() => void run("fastest", "proxy_fastest_server", [], "proxy.servers.selectFailed", "proxy.servers.selected")}>
+            {busy === "fastest" ? <Spinner data-icon="inline-start" /> : <ZapIcon data-icon="inline-start" />}
+            {t("proxy.servers.fastest")}
+          </Button>
+        </CardAction>
+      </CardHeader>
+      <CardContent>
+        <Table>
+          <TableBody>
+            {servers.map((s) => (
+              <TableRow key={s.index} data-testid={`proxy-server-${s.index}`} data-state={s.current ? "selected" : undefined}>
+                <TableCell className="whitespace-normal">
+                  <div className="font-medium">{s.label}</div>
+                  <div className="text-[13px] text-muted-foreground">{s.server} · {s.protocol}</div>
+                </TableCell>
+                <TableCell className="w-28 text-[13px] text-muted-foreground tabular-nums">
+                  {s.ms != null ? t("proxy.servers.ms", { ms: fmtNum(s.ms) }) : t("proxy.servers.noPing")}
+                </TableCell>
+                <TableCell className="w-px">
+                  {s.current ? (
+                    <Badge variant="secondary">{t("proxy.servers.current")}</Badge>
+                  ) : (
+                    <Button variant="outline" size="sm" data-testid={`proxy-server-use-${s.index}`} disabled={!!busy}
+                      onClick={() => void run(`use-${s.index}`, "proxy_select_server", [s.index], "proxy.servers.selectFailed")}>
+                      {t("proxy.servers.use")}
+                    </Button>
+                  )}
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
       </CardContent>
     </Card>
   )
@@ -514,6 +603,7 @@ export function ProxyPage() {
           <StatusCard st={st} />
           <ModeCard st={st} />
           <ServerCard st={st} />
+          {!!st.servers?.length && <SubscriptionCard st={st} />}
           {modeOf(st) === "split" && <AppsCard st={st} />}
           {modeOf(st) !== "tun" && <ListsCard st={st} />}
         </>
