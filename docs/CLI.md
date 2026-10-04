@@ -174,6 +174,7 @@
 - `hub_refresh` — подписка окна на push-события состояния
 - `block_check_start` — результаты приходят push-событиями окна; в CLI то же делает `chimera check list <список>`
 - `chebur_check_start` — результаты приходят push-событиями окна; в CLI то же делает `chimera check list <список>`
+- `dns_status` — питает точку у пункта DNS в меню окна; адаптеры и их DNS показывает `chimera dns state`
 
 ## Команды подробно
 

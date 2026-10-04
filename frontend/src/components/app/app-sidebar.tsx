@@ -26,10 +26,9 @@ import { t } from "@/lib/i18n"
 import { router, useCurrentPage } from "@/lib/router"
 import { MODULE_TOTAL, useStatus } from "@/lib/status"
 import { useStore, useStoreError } from "@/lib/store"
-import type { AppInfo, ModuleKey, SelfUpdateState } from "@/lib/types"
+import type { AppInfo, DotKey, SelfUpdateState } from "@/lib/types"
 import { PAGES, type PageDef } from "@/pages/registry"
 
-/** Точка у пункта меню: горит, когда модуль страницы включён, красная — при ошибке опроса. */
 function ElevateButton() {
   const [pending, setPending] = useState(false)
   return <Button variant="ghost" size="sm" data-testid="sidebar-elevate"
@@ -44,9 +43,11 @@ function ElevateButton() {
   </Button>
 }
 
-function NavDot({ module }: { module: ModuleKey }) {
+/** Точка у пункта меню: горит, когда модуль страницы включён, красная — при ошибке опроса. */
+function NavDot({ module }: { module: DotKey }) {
   const status = useStatus()
-  const error = useStoreError(module)
+  // у DNS полный источник ленивый, точку питает лёгкий dnsStatus
+  const error = useStoreError(module === "dns" ? "dnsStatus" : module)
   if (!error && !status[module]) return null
   return (
     <span

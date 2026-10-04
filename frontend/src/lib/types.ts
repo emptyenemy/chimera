@@ -45,8 +45,16 @@ export interface SelfUpdateState {
   latest?: string
 }
 
+/** Адаптеры, где стоит поставленный программой DNS (лёгкий источник хаба dnsStatus). */
+export interface DnsStatus {
+  active?: number[]
+}
+
 /** Ключи стора, которые пушит хаб. */
-export type HubKey = "winws" | "proxy" | "tg" | "hosts" | "app" | "selfupdate"
+export type HubKey = "winws" | "proxy" | "tg" | "hosts" | "dnsStatus" | "app" | "selfupdate"
 
 /** Модули с включателем: у каждого свой источник хаба и точка состояния в меню. */
 export type ModuleKey = "winws" | "proxy" | "tg" | "hosts"
+
+/** Точка у пункта меню: модули и DNS (включателя у него нет, но изменённый DNS — тоже «работает»). */
+export type DotKey = ModuleKey | "dns"

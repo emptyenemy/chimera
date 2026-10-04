@@ -262,6 +262,16 @@ class DnsJumper:
             return []
         return sorted({int(i) for i in data if isinstance(i, int)}) if isinstance(data, list) else []
 
+    def active_adapters(self) -> list[int]:
+        """Адаптеры, где DNS поставили мы и он всё ещё стоит: серверы заданы вручную.
+        Сбросили на DHCP в обход программы — адаптер выпадает. Без PowerShell (WinAPI и
+        реестр, миллисекунды): точку в меню хаб опрашивает постоянно."""
+        changed = set(self.changed_adapters())
+        if not changed:
+            return []
+        return [a["index"] for a in self.adapters()
+                if a.get("index") in changed and a.get("dns") and self._is_static(a.get("guid")) is not False]
+
     def _remember(self, idx: int, changed: bool) -> None:
         current = set(self.changed_adapters())
         current.add(idx) if changed else current.discard(idx)

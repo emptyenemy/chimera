@@ -153,6 +153,7 @@ class Api:
             ("filters", self.filters_state, 15.0, True),
             ("tgStats", self.tg_stats, 1.0, True),
             ("dns", self.dns_state, 15.0, True),
+            ("dnsStatus", self.dns_status, 5.0, False),
             ("selfupdate", self.selfupdate_state, 5.0, False),
             ("trial", self.trial_state, 1.0, False),
         ])
@@ -424,7 +425,7 @@ class Api:
                         self._push("appearanceChanged", appearance.state())
                 hub = getattr(self, "hub", None)
                 if hub is not None:
-                    hub.poke("winws", "proxy", "tg", "hosts", "dns", "filters")
+                    hub.poke("winws", "proxy", "tg", "hosts", "dns", "dnsStatus", "filters")
             return _ok(result)
         return None
 
@@ -652,12 +653,12 @@ class Api:
         (("proxy_",), ("proxy",)),
         (("tg_",), ("tg", "tgStats")),
         (("hosts_",), ("hosts",)),
-        (("dns_",), ("dns",)),
+        (("dns_",), ("dns", "dnsStatus")),
         (("providers_",), ("dns", "hosts")),
         (("lists_",), ("proxy", "hosts", "winws")),  # счётчики доменов в выбранных списках
         (("selfupdate_",), ("selfupdate",)),
         (("trial_",), ("trial", "winws", "proxy", "hosts")),
-        (("panic_", "config_import_", "config_backup_restore"), ("winws", "proxy", "tg", "hosts", "dns", "filters")),
+        (("panic_", "config_import_", "config_backup_restore"), ("winws", "proxy", "tg", "hosts", "dns", "dnsStatus", "filters")),
     )
     # чтения ничего не меняют — после них хаб не дёргаем
     _READ_SUFFIXES = ("_state", "_log", "_stats", "_overview", "_read", "_all", "_status",
@@ -838,6 +839,13 @@ class Api:
                 "trial": trials[-1] if trials else None,
                 "trials": trials,
             })
+        except Exception as e:
+            return _err(e)
+
+    def dns_status(self):
+        """Лёгкая часть dns_state для точки в меню: где стоит поставленный нами DNS."""
+        try:
+            return _ok({"active": self.dns.active_adapters()})
         except Exception as e:
             return _err(e)
 

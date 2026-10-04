@@ -218,3 +218,20 @@ def test_dns_state_carries_trial(api, monkeypatch):
 def test_old_dns_set_is_untouched(api):
     res = api.dns_set(3, "cloudflare")
     assert res["ok"] and "trial" not in res["data"]
+
+
+def test_active_adapters_are_ours_and_still_static(env):
+    j, _, _, _, adapters = env
+    assert j.active_adapters() == []
+    j.set_dns(3, "cloudflare")
+    j.set_dns(7, "cloudflare")
+    # 3 по-прежнему отдаёт DHCP (в фикстуре static=False) — сбросили в обход программы
+    assert j.active_adapters() == [7]
+    adapters[7]["dns"] = []
+    assert j.active_adapters() == []
+
+
+def test_dns_status_feeds_the_menu_dot(api):
+    api.dns.set_dns(7, "cloudflare")
+    assert api.dns_status() == {"ok": True, "data": {"active": [7]}}
+    assert api.is_read("dns_status")

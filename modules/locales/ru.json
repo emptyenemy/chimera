@@ -405,6 +405,7 @@
   "cli.excluded.block_check_start": "результаты приходят push-событиями окна; в CLI то же делает `chimera check list <список>`",
   "cli.excluded.chebur_check_start": "результаты приходят push-событиями окна; в CLI то же делает `chimera check list <список>`",
   "cli.excluded.dispatch": "внутренний вход моста окна, его роль у канала управления",
+  "cli.excluded.dns_status": "питает точку у пункта DNS в меню окна; адаптеры и их DNS показывает `chimera dns state`",
   "cli.excluded.hub_refresh": "подписка окна на push-события состояния",
   "cli.excluded.hub_snapshot": "подписка окна на push-события состояния",
   "cli.excluded.hub_watch": "подписка окна на push-события состояния",
