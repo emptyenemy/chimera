@@ -26,6 +26,7 @@ def main():
         domains.LISTS_DIR.mkdir()
         targets = [f"site-{index}.example" for index in range(1100)]
         domains.save_raw("bulk", "\n".join(targets))
+        domains.save_raw("cloudflare", "speed.cloudflare.com" + chr(10) + "104.16.0.0/13" + chr(10))
         from modules.winws import filters, manager
         filters.IPSET_FILE, filters.IPSET_BACKUP = work / "ipset.txt", work / "ipset.backup"
         manager.USER_HOSTLIST_PATH, manager.USER_IPSET_PATH = work / "user-hosts.txt", work / "user-ips.txt"
@@ -58,6 +59,8 @@ def main():
                 return api_mod._ok(self._chebur_one(target))
 
             def _block_one(self, target):
+                if target == "cf.example":   # настоящий _reach: адрес из сетей Cloudflare помечается
+                    return super()._block_one(target)
                 return {"target": target, "status": "dns" if target == "site-1.example" else "ok", "ms": 1}
 
             @staticmethod
@@ -93,7 +96,8 @@ def main():
                     return json.dumps(api_mod._ok({"finished": dict(finished), "manual": list(manual),
                                                    "block": len(checked["block"]), "rkn": len(checked["rkn"]),
                                                    "events": hub._seq}))
-                if self.is_read(method) or method in {"hub_snapshot", "hub_watch", "hub_refresh", "block_check_start", "chebur_check_start"}:
+                if self.is_read(method) or method in {"hub_snapshot", "hub_watch", "hub_refresh", "block_check_start",
+                                                       "chebur_check_start", "proxy_set_lists"}:
                     return super().dispatch(method, args_json)
                 return json.dumps({"ok": False, "error": "Operation outside checks test"})
 
@@ -101,9 +105,17 @@ def main():
             def handle_error(self, request, address):
                 pass
 
+        api_mod.blockcheck.check = lambda domain, socks_addr=None: {"target": domain, "status": "blocked",
+                                                                    "ip": "104.16.1.1", "ms": 4000, "reason": "TLS"}
+        # чужой и свой sing-box на этой машине не трогаем: прокси в проверке «не запущен»
+        from modules.proxy.manager import ProxyManager
+        ProxyManager._system_pids = staticmethod(lambda: [])
+        ProxyManager._own_pids = lambda self: []
         api = CheckApi(push=hub.push, service_owned=True)
+        api.proxy.config["mode"] = "split"
         api.winws.state = lambda: {**api.winws.config, "running": False, "external": False}
-        api.proxy.state = lambda: {**api.proxy.config, "running": False, "external": False}
+        api.proxy.state = lambda: {**api.proxy.config, "running": False, "external": False, "parsed": {"label": "fixture"},
+                                   "all_lists": [item["name"] for item in domains.list_info()]}
         server = QuietServer(("127.0.0.1", 0), _Handler)
         server.api, server.hub, server.token = api, hub, "checks-test"
         server.web_dir, server.missing_next, server.daemon_threads = ROOT / "ui/web-next", False, True

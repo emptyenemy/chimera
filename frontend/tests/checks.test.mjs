@@ -204,3 +204,16 @@ test("an old registry status cannot hide a newer unavailable status", async () =
   await old
   assert.equal(page.s.registryDown, "unavailable")
 })
+
+test("sites behind Cloudflare that fail are found by our networks or by the registry's CDN field", async () => {
+  const { page } = await setup()
+  const results = new Map([
+    ["medium.com", { rkn: null, reach: { status: "blocked", cdn: "cloudflare" } }],
+    ["patreon.com", { rkn: { blocked: false, cdn: ["Cloudflare"] }, reach: { status: "denied" } }],
+    ["npmjs.com", { rkn: null, reach: { status: "ok", cdn: "cloudflare" } }],
+    ["itch.io", { rkn: null, reach: { status: "blocked" } }],
+    ["pending.example", { rkn: { cdn: ["cloudflare"] }, reach: null }],
+  ])
+  assert.deepEqual(page.cloudflareProblems(results), ["medium.com", "patreon.com"])
+})
+

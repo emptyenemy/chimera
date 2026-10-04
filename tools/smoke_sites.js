@@ -60,6 +60,12 @@
     await click('checks-only-problems');
     need(document.querySelectorAll('[data-testid^="checks-row-"]').length === 1 && el('checks-row-site-1.example'), 'Problem filter lost the restored DNS failure');
     steps.push({ name: 'Problem filter and final summary work after recovery', ok: true });
+    input('cf.example'); await sleep(50); await click('checks-run');
+    await wait(() => el('checks-cloudflare-proxy'), 'Cloudflare hint did not appear for a blocked site behind it');
+    await click('checks-cloudflare-proxy');
+    await wait(async () => (await api('proxy_state')).lists.includes('cloudflare'), 'Cloudflare list was not routed through the proxy');
+    await wait(() => !el('checks-cloudflare'), 'Cloudflare hint stayed after the list was connected');
+    steps.push({ name: 'A blocked site behind Cloudflare offers to route all of Cloudflare through the proxy', ok: true });
   } catch (error) {
     steps.push({ name: String(error), ok: false });
   } finally {

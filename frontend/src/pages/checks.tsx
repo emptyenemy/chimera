@@ -11,12 +11,12 @@
 
 import { memo, useEffect, useMemo, useRef, useState } from "react"
 import { Autocomplete } from "@base-ui/react/autocomplete"
-import { CircleCheckIcon, GlobeIcon, ListIcon, SearchIcon, TriangleAlertIcon } from "lucide-react"
+import { CircleCheckIcon, CloudIcon, GlobeIcon, ListIcon, SearchIcon, TriangleAlertIcon } from "lucide-react"
 import { cn } from "cn"
 
 import { Page } from "@/components/app/page"
 import { StatusDot } from "@/components/app/status-dot"
-import { Alert, AlertDescription } from "@/components/ui/alert"
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardAction, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -31,6 +31,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { fmtNum } from "@/lib/format"
 import { t } from "@/lib/i18n"
+import { useStore } from "@/lib/store"
 import {
   s,
   emit,
@@ -42,6 +43,7 @@ import {
   ipInRegistry,
   verdict,
   isProblem,
+  cloudflareProblems,
   checkTyped,
   loadLists,
   pickSuggestion,
@@ -53,6 +55,7 @@ import {
   type SuggestionGroup,
   type Tone,
 } from "@/pages/checks-data"
+import { setTransport } from "@/pages/lists-data"
 
 // --- отображение -------------------------------------------------------------------------
 
@@ -137,6 +140,40 @@ function Summary({ view }: { view: View }) {
   )
 }
 
+interface ProxyBrief {
+  parsed?: unknown
+  mode?: string
+  lists?: string[]
+  all_lists?: string[]
+}
+
+// Сайты за Cloudflare не открываются — один список у прокси вместо записи каждого сайта
+function CloudflareAlert({ results }: { results: Map<string, Row> }) {
+  const proxy = useStore<ProxyBrief>("proxy")
+  const sites = cloudflareProblems(results)
+  if (!sites.length || !proxy?.all_lists?.includes("cloudflare") || proxy.lists?.includes("cloudflare")) return null
+  const ready = !!proxy.parsed
+  const tun = proxy.mode === "split" || proxy.mode === "tun"
+  const named = sites.slice(0, 3).join(", ") + (sites.length > 3 ? "…" : "")
+  return (
+    <Alert data-testid="checks-cloudflare">
+      <CloudIcon />
+      <AlertTitle>{t("checks.cf.title")}</AlertTitle>
+      <AlertDescription>
+        <p>{t("checks.cf.desc", { sites: named })}</p>
+        {!ready && <p>{t("checks.cf.noProxy")}</p>}
+        {ready && !tun && <p>{t("checks.cf.pac")}</p>}
+        {ready && tun && (
+          <Button size="sm" variant="outline" className="mt-2" data-testid="checks-cloudflare-proxy"
+            onClick={() => void setTransport("cloudflare", "proxy", true)}>
+            {t("checks.cf.action")}
+          </Button>
+        )}
+      </AlertDescription>
+    </Alert>
+  )
+}
+
 function Results({ view }: { view: View }) {
   const { results, run, onlyProblems, registryDown } = view
   const rows = [...results.entries()].filter(([, r]) => !onlyProblems || isProblem(r))
@@ -166,6 +203,7 @@ function Results({ view }: { view: View }) {
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
         {run && <Progress value={progress} data-testid="checks-progress" />}
+        <CloudflareAlert results={results} />
         <Table>
           <TableHeader>
             <TableRow>

@@ -19,6 +19,7 @@ from modules import (
     applog,
     autostart,
     blockcheck,
+    cdn,
     cheburcheck,
     control,
     configbackups,
@@ -1395,9 +1396,15 @@ class Api:
             return ("127.0.0.1", int(cfg.get("socks_port", 2080)))
         return None
 
+    def _reach(self, domain):
+        """Проверка домена тем путём, каким он идёт сейчас, и чья у адреса сеть (Cloudflare)."""
+        result = blockcheck.check(domain, socks_addr=self._proxy_socks_addr(domain))
+        owner = cdn.provider(result.get("ip"))
+        return {**result, "cdn": owner} if owner else result
+
     def block_check_one(self, domain):
         try:
-            return _ok(blockcheck.check(domain, socks_addr=self._proxy_socks_addr(domain)))
+            return _ok(self._reach(domain))
         except Exception as e:
             return _err(e)
 
@@ -1427,7 +1434,7 @@ class Api:
 
     def _block_one(self, domain):
         try:
-            return blockcheck.check(domain, socks_addr=self._proxy_socks_addr(domain))
+            return self._reach(domain)
         except Exception:
             return {"target": domain, "status": "error", "ip": None, "ms": 0, "reason": None}
 

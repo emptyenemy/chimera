@@ -28,6 +28,7 @@ export interface ReachResult {
   ip?: string | null
   ms?: number | null
   reason?: string | null
+  cdn?: string | null   // "cloudflare" — адрес из его сетей (встроенный список cloudflare)
 }
 
 export interface Row {
@@ -220,6 +221,14 @@ export function verdict(rkn: RknResult | null, reach: ReachResult | null): Verdi
 }
 
 export const isProblem = (r: Row) => verdict(r.rkn, r.reach).tone !== "success" && !!r.reach
+
+/** За Cloudflare: адрес из его сетей по нашему списку или по ответу реестра (cdn_providers). */
+export const behindCloudflare = (r: Row) =>
+  r.reach?.cdn === "cloudflare" || !!r.rkn?.cdn?.some((name) => /cloudflare/i.test(name))
+
+/** Не открывающиеся сайты за Cloudflare: их чинит один список у прокси, а не каждый отдельно. */
+export const cloudflareProblems = (results: Map<string, Row>): string[] =>
+  [...results].filter(([, r]) => isProblem(r) && behindCloudflare(r)).map(([site]) => site)
 
 // --- проверка ----------------------------------------------------------------------------
 

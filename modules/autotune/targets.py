@@ -37,6 +37,8 @@ CURATED = {
     "microsoft-copilot": ("copilot.microsoft.com",),
     "viber": ("viber.com",),
     "torrents": ("rutracker.org", "nnmclub.to"),
+    # свои сайты Cloudflare стоят на тех же сетях, что и сайты за ним: обрыв и заморозку видно по ним
+    "cloudflare": ("speed.cloudflare.com", "cloudflare.com"),
 }
 
 
