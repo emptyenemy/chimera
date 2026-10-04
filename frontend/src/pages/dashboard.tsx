@@ -2,7 +2,7 @@
    страницы: рисуется только из стора, тумблеры — optimistic(), своих опросов нет. */
 
 import { useState, type ReactNode } from "react"
-import { PowerIcon, ShieldCheckIcon, ShieldOffIcon } from "lucide-react"
+import { PowerIcon, ShieldCheckIcon, ShieldOffIcon, WandSparklesIcon } from "lucide-react"
 import { cn } from "cn"
 
 import { Page } from "@/components/app/page"
@@ -47,7 +47,7 @@ function Hero() {
         <IconTile on={guard} className="size-12 [&_svg]:size-6">
           {guard ? <ShieldCheckIcon /> : <ShieldOffIcon />}
         </IconTile>
-        <div className="flex flex-col gap-0.5">
+        <div className="flex min-w-0 flex-1 flex-col gap-0.5">
           <div className="text-lg leading-6 font-semibold tracking-tight">
             {guard ? t("dashboard.hero.on") : t("dashboard.hero.off")}
           </div>
@@ -55,6 +55,13 @@ function Hero() {
             {count ? t("dashboard.hero.count", { n: count, total: MODULE_TOTAL }) : t("dashboard.hero.hint")}
           </div>
         </div>
+        {!guard && (
+          // новичку не нужно знать, что такое стратегия: автонастройка подберёт сама
+          <Button data-testid="dashboard-autotune" className="shrink-0" onClick={() => router.go("autotune")}>
+            <WandSparklesIcon data-icon="inline-start" />
+            {t("dashboard.hero.autotune")}
+          </Button>
+        )}
       </CardContent>
     </Card>
   )
