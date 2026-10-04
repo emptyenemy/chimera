@@ -50,7 +50,7 @@ def extract(archive, destination, flavor):
     return app
 
 
-def verify(archive, flavor, version, full=False, screenshot=None):
+def verify(archive, flavor, version, full=False, screenshot=None, window=True):
     with tempfile.TemporaryDirectory(prefix="chimera-archive Кириллица ") as temporary:
         if not Path(temporary).resolve().is_relative_to(Path(tempfile.gettempdir()).resolve()):
             raise ValueError("Archive check folder outside temp")
@@ -67,8 +67,9 @@ def verify(archive, flavor, version, full=False, screenshot=None):
         shell = [sys.executable, str(ROOT / "tools/smoke_launch.py"), str(app), "--flavor", flavor]
         if screenshot is not None:
             shell.extend(["--screenshot", str(screenshot)])
-        subprocess.run(shell, cwd=ROOT, check=True)
-        if flavor == "lite":
+        if window:
+            subprocess.run(shell, cwd=ROOT, check=True)
+        if window and flavor == "lite":
             fallback = [*shell, "--no-browser"]
             if screenshot is not None:
                 fallback[fallback.index("--screenshot") + 1] = str(screenshot.with_stem(screenshot.stem + "-fallback"))
@@ -86,5 +87,7 @@ if __name__ == "__main__":
     parser.add_argument("--version", required=True)
     parser.add_argument("--full", action="store_true", help="System changes; disposable Windows runner only")
     parser.add_argument("--screenshot", type=Path)
+    parser.add_argument("--no-window", action="store_true",
+                        help="Skip the visible double-click launch; everything else stays headless")
     args = parser.parse_args()
-    verify(args.archive.resolve(), args.flavor, args.version, args.full, args.screenshot)
+    verify(args.archive.resolve(), args.flavor, args.version, args.full, args.screenshot, window=not args.no_window)
