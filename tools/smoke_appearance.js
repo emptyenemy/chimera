@@ -132,7 +132,7 @@
     }
     Pages.go('settings');
     await wait(() => el('settings-theme'), 'Settings missing after navigation');
-    steps.push({ name: 'All nine lazy routes open and return without reload', ok: true });
+    steps.push({ name: `All ${Pages.list.length} lazy routes open and return without reload`, ok: true });
     return JSON.stringify(steps);
   } catch (error) {
     return JSON.stringify([...steps, { name: 'Appearance UI failure', ok: false, detail: error.stack, body: document.body.innerText.slice(-4000) }]);

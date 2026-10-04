@@ -23,7 +23,12 @@
     need(document.querySelector('[data-testid="sidebar"]'), "нет сайдбара");
     need(document.querySelector('[data-testid="brand-logo"]'), "нет логотипа");
     need(document.querySelectorAll("svg.lucide").length > 5, "не отрисовались иконки");
-    need(Pages.list.length === 9, "нет всех страниц");
+    // новая страница тест не ломает, пропавшая — валит; каждый пункт меню ведёт на зарегистрированную страницу
+    const required = ["dashboard", "strategies", "proxy", "telegram", "hosts", "dns", "providers", "lists", "checks", "settings"];
+    const missing = required.filter(id => !Pages.list.some(page => page.id === id));
+    need(!missing.length, `нет страниц: ${missing.join(", ")}`);
+    const nav = [...document.querySelectorAll('[data-testid^="nav-"]')].map(n => n.dataset.testid.slice(4)).filter(id => !id.startsWith("dot-"));
+    need(nav.length === Pages.list.length && Pages.list.every(page => nav.includes(page.id)), "меню не совпадает со страницами");
     return "shadcn";
   });
   await step("все страницы", async () => {
