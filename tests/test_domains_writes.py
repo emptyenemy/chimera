@@ -25,6 +25,7 @@ def test_failed_operation_leaves_no_own_marker(isolated, monkeypatch, operation)
     monkeypatch.setattr(domains, "atomic_write_text", fail)
     monkeypatch.setattr(Path, "unlink", fail)
     monkeypatch.setattr(Path, "rename", fail)
+    monkeypatch.setattr(domains, "replace_file", fail)
     actions = {
         "save": lambda: domains.save_raw("sample", "new.example\n"),
         "create": lambda: domains.create_list("sample"),

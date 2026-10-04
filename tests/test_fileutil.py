@@ -180,3 +180,19 @@ def test_prepare_sees_the_new_file_before_it_takes_the_place_of_the_old(tmp_path
                                                                                 target.read_text(encoding="utf-8"))))
     assert seen == [("new", "old")] and target.read_text(encoding="utf-8") == "new"
 
+
+def test_replace_file_waits_until_the_target_is_free(tmp_path, monkeypatch):
+    monkeypatch.setattr(fileutil.time, "sleep", lambda s: None)
+    source, target = tmp_path / "a.txt", tmp_path / "b.txt"
+    source.write_text("new", encoding="utf-8")
+    real, attempts = fileutil.os.replace, []
+
+    def flaky(src, dst):
+        attempts.append(1)
+        if len(attempts) < 3:
+            raise PermissionError(13, "Permission denied")
+        return real(src, dst)
+    monkeypatch.setattr(fileutil.os, "replace", flaky)
+    fileutil.replace_file(source, target)
+    assert target.read_text(encoding="utf-8") == "new" and len(attempts) == 3
+

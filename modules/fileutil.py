@@ -41,6 +41,20 @@ def atomic_write_bytes(path: Path, data: bytes, *, prepare=None) -> None:
     _atomic_write(path, data, binary=True, prepare=prepare)
 
 
+def replace_file(source, target) -> None:
+    """os.replace, который ждёт, пока целевой файл отпустят (переименование списка, подмена
+    готового файла). Не дождался — понятная ошибка с именем файла."""
+    target = Path(target)
+    for attempt in range(REPLACE_RETRIES):
+        try:
+            os.replace(source, target)
+            return
+        except PermissionError:
+            if attempt == REPLACE_RETRIES - 1:
+                raise ChimeraPermissionError("err.file.busy", name=target.name) from None
+            time.sleep(REPLACE_PAUSE * (attempt + 1))
+
+
 def _atomic_write(path: Path, data: str | bytes, *, binary: bool, encoding: str = "utf-8", prepare=None) -> None:
     path = Path(path)
     fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=path.name + ".", suffix=".tmp")
@@ -57,14 +71,7 @@ def _atomic_write(path: Path, data: str | bytes, *, binary: bool, encoding: str 
             stream.write(data)
         if prepare is not None:
             prepare(Path(tmp))
-        for attempt in range(REPLACE_RETRIES):
-            try:
-                os.replace(tmp, path)
-                return
-            except PermissionError:
-                if attempt == REPLACE_RETRIES - 1:
-                    raise ChimeraPermissionError("err.file.busy", name=path.name) from None
-                time.sleep(REPLACE_PAUSE * (attempt + 1))
+        replace_file(tmp, path)
     except BaseException:
         _drop(tmp)
         raise

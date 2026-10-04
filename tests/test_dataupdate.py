@@ -178,3 +178,25 @@ def test_collect_and_shipped_manifest_cover_only_data(tmp_path):
     manifest = dataupdate.write_shipped(root, "2026.10.01")
     assert manifest["files"] == {"strategies/general.txt": h(b"--a\n")}
     assert json.loads((root / "data-manifest.json").read_text(encoding="utf-8"))["version"] == "2026.10.01"
+
+
+def test_a_file_that_stays_busy_rolls_the_whole_release_back(env, monkeypatch):
+    # хостлист держит winws2: половина нового выпуска хуже старого целиком
+    from modules.errors import ChimeraPermissionError
+    root, gh, updater = env
+    gh.publish("2026.10.05", {"strategies/general.txt": b"--d\n", "lists/new.txt": b"new.example\n",
+                              "strategies/hostlists/list-general.txt": b"x.example\n"})
+    real = dataupdate.atomic_write_bytes
+
+    def busy(path, data, **kwargs):
+        if path.name == "list-general.txt":
+            raise ChimeraPermissionError("err.file.busy", name=path.name)
+        return real(path, data, **kwargs)
+    monkeypatch.setattr(dataupdate, "atomic_write_bytes", busy)
+    with pytest.raises(ChimeraPermissionError):
+        updater.install()
+    assert (root / "strategies" / "general.txt").read_bytes() == b"--a\n"
+    assert (root / "strategies" / "hostlists" / "list-general.txt").read_bytes() == b"discord.com\n"
+    assert not (root / "lists" / "new.txt").exists()
+    assert updater.installed() == "2026.10.01"
+

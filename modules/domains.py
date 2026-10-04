@@ -9,6 +9,7 @@
 from modules.i18n import t as _tr
 
 from modules.errors import ChimeraFileNotFoundError, ChimeraValueError
+from modules.fileutil import replace_file
 
 import hashlib
 import ipaddress
@@ -148,7 +149,7 @@ def rename_list(old: str, new: str) -> dict:
         raise ChimeraValueError('err.domains.list_already_exists', p0=f'{new!r}')
     digest = content_hash(old_path.read_bytes())
     with _own_change([(old, None), (new, digest)]):
-        old_path.rename(new_path)
+        replace_file(old_path, new_path)   # список читают окно, служба и наблюдатель — ждём, пока отпустят
     return {"name": new, "count": len(load_list(new))}
 
 

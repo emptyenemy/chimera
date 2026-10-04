@@ -25,7 +25,7 @@ from pathlib import Path
 
 from modules import paths
 from modules.errors import ChimeraError
-from modules.fileutil import atomic_write_text
+from modules.fileutil import atomic_write_bytes, atomic_write_text
 from modules.version import VERSION, is_newer, parse
 
 RELEASES_API = "https://api.github.com/repos/emptyenemy/chimera/releases?per_page=30"
@@ -118,6 +118,29 @@ class DataUpdater:
         if version_key(data.get("version")) is None or not isinstance(data.get("pristine"), dict):
             return {}
         return data
+
+    def _write_all(self, files: dict) -> None:
+        """Всё или ничего: файл, который не дождался записи (хостлист читает winws2), возвращает
+        уже подменённые как были — иначе стратегия получила бы половину нового выпуска, а учёт
+        версий остался бы старым."""
+        originals = {}
+        try:
+            for rel, data in files.items():
+                target = self.root / rel
+                target.parent.mkdir(parents=True, exist_ok=True)
+                originals[rel] = target.read_bytes() if target.exists() else None
+                atomic_write_bytes(target, data)
+        except Exception:
+            for rel, data in originals.items():
+                target = self.root / rel
+                try:
+                    if data is None:
+                        target.unlink(missing_ok=True)
+                    else:
+                        atomic_write_bytes(target, data)
+                except OSError:
+                    pass   # вернуть не вышло — снимок списков в истории бэкапов остаётся
+            raise
 
     def installed(self) -> str | None:
         """Версия данных: последнее обновление, если оно новее того, что пришло в сборке."""
@@ -268,12 +291,7 @@ class DataUpdater:
         changed = plan["add"] + plan["update"]
         if before is not None:
             before(changed)
-        for rel in changed:
-            target = self.root / rel
-            target.parent.mkdir(parents=True, exist_ok=True)
-            temp = target.with_name(target.name + ".data-new")
-            temp.write_bytes(files[rel])
-            temp.replace(target)
+        self._write_all({rel: files[rel] for rel in changed})
         state = self._state()
         pristine = {rel: list(digests) for rel, digests in state.get("pristine", {}).items() if isinstance(digests, list)}
         # «нетронутые» — все версии, которые публиковала Chimera: пользователь мог и сам

@@ -35,6 +35,7 @@ from pathlib import Path
 from xml.sax.saxutils import escape
 
 from modules import paths
+from modules.fileutil import atomic_write_text
 from modules.hosts.manager import is_admin
 
 ROOT = Path(__file__).parent.parent
@@ -127,7 +128,7 @@ def send_stop() -> bool:
 # --- pid-файл (только для status(), не для проверки живости) ------------------
 
 def _write_pid() -> None:
-    PID_PATH.write_text(str(os.getpid()), encoding="utf-8")
+    atomic_write_text(PID_PATH, str(os.getpid()))   # окно читает PID постоянно — без полфайла
 
 
 def _read_pid() -> int | None:
