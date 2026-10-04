@@ -4,7 +4,9 @@
   const el = id => document.querySelector(`[data-testid="${id}"]`);
   const need = (value, message) => { if (!value) throw new Error(message); };
   const wait = async (fn, message) => { for (let i = 0; i < 150; i++) { if (await fn()) return; await sleep(75); } throw new Error(message); };
-  const click = async id => { await wait(() => el(id) && !el(id).disabled, `${id} not ready`); el(id).click(); await sleep(60); };
+  // Switch и Checkbox из Base UI — span: заблокированность у них в data-disabled, а не в .disabled
+  const ready = id => el(id) && !el(id).matches(':disabled, [data-disabled], [aria-disabled=true]');
+  const click = async id => { await wait(() => ready(id), `${id} not ready`); el(id).click(); await sleep(60); };
   const input = value => {
     const node = el('checks-input');
     Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(node, value);

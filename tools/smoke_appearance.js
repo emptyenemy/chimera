@@ -4,7 +4,9 @@
   const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
   const el = id => document.querySelector(`[data-testid="${id}"]`);
   const wait = async (fn, message) => { for (let i = 0; i < 100; i++) { if (await fn()) return; await sleep(100); } throw new Error(message); };
-  const click = async id => { await wait(() => el(id) && !el(id).disabled, `${id} not ready`); el(id).click(); await sleep(150); };
+  // Switch и Checkbox из Base UI — span: заблокированность у них в data-disabled, а не в .disabled
+  const ready = id => el(id) && !el(id).matches(':disabled, [data-disabled], [aria-disabled=true]');
+  const click = async id => { await wait(() => ready(id), `${id} not ready`); el(id).click(); await sleep(150); };
   const input = (id, value) => { const node = el(id); Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(node, value); node.dispatchEvent(new Event('input', { bubbles: true })); };
   const style = key => document.documentElement.style.getPropertyValue(key);
   const palette = async id => { await click('appearance-palette'); await click(`appearance-palette-${id}`); await wait(() => document.documentElement.dataset.palette === id, `Palette ${id} not applied`); };
@@ -51,8 +53,12 @@
     await api("__smoke_system_theme", "dark"); window.__smokeSystemMode('dark');
     await wait(() => document.documentElement.dataset.theme === 'dark', 'System dark mode not followed');
     await click('appearance-windows');
-    await wait(() => el('appearance-color').disabled, 'Windows accent control did not apply');
+    // .disabled поля цвета наступает уже от ожидания ответа — ждём, пока сохранение закончится
+    await wait(() => el('appearance-windows').getAttribute('aria-checked') === 'true' && ready('appearance-windows')
+      && el('appearance-color').disabled, 'Windows accent control did not apply');
     await click('appearance-windows');
+    await wait(() => el('appearance-windows').getAttribute('aria-checked') === 'false' && ready('appearance-color'),
+      'Windows accent control did not turn off');
     steps.push({ name: 'System light/dark and Windows accent follow without reload', ok: true });
     await click('appearance-refresh');
     await click('appearance-palette');
