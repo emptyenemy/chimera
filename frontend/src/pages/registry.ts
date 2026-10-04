@@ -14,11 +14,13 @@ import {
   SettingsIcon,
   ShieldIcon,
   SlidersHorizontalIcon,
+  WandSparklesIcon,
   type LucideIcon,
 } from "lucide-react"
 
 import type { DotKey } from "@/lib/types"
 import { DashboardPage } from "@/pages/dashboard"
+const AutotunePage = lazy(() => import("@/pages/autotune").then((module) => ({ default: module.AutotunePage })))
 const SettingsPage = lazy(() => import("@/pages/settings").then((module) => ({ default: module.SettingsPage })))
 const HostsPage = lazy(() => import("@/pages/hosts").then((module) => ({ default: module.HostsPage })))
 const ListsPage = lazy(() => import("@/pages/lists").then((module) => ({ default: module.ListsPage })))
@@ -43,6 +45,7 @@ export interface PageDef {
 
 export const PAGES: PageDef[] = [
   { id: "dashboard", titleKey: "nav.dashboard", icon: LayoutDashboardIcon, groupKey: "", component: DashboardPage },
+  { id: "autotune", titleKey: "nav.autotune", icon: WandSparklesIcon, groupKey: "", dot: "autotune", component: AutotunePage },
   { id: "strategies", titleKey: "nav.strategies", icon: ShieldIcon, groupKey: "nav.group.bypass", dot: "winws", component: StrategiesPage },
   { id: "proxy", titleKey: "nav.proxy", icon: GlobeIcon, groupKey: "nav.group.bypass", dot: "proxy", component: ProxyPage },
   { id: "telegram", titleKey: "nav.telegram", icon: SendIcon, groupKey: "nav.group.bypass", dot: "tg", component: TelegramPage },

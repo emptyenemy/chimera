@@ -91,6 +91,9 @@ jobs:
       - name: Проверки сайтов — живой интерфейс
         run: python tools/smoke_checks.py
 
+      - name: Автонастройка — живой интерфейс
+        run: python tools/smoke_autotune.py --screenshot autotune.png
+
       - name: Пробы настроек — живой интерфейс
         run: python tools/smoke_trials.py --screenshot trial.png
 
@@ -112,4 +115,5 @@ jobs:
             layout.png
             trial.png
             verified.png
+            autotune.png
           if-no-files-found: ignore

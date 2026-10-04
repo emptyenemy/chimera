@@ -11,6 +11,8 @@ export interface Status {
   hosts: boolean
   /** Программа сменила системный DNS, и он всё ещё стоит. В счёт модулей не входит. */
   dns: boolean
+  /** Идёт автонастройка. */
+  autotune: boolean
   /** Любой способ обхода, который реально трогает трафик. */
   guard: boolean
   /** Сколько из четырёх модулей включено. */
@@ -25,12 +27,14 @@ export function useStatus(): Status {
   const tg = !!useStore<TgState>("tg")?.running
   const hosts = !!useStore<HostsState>("hosts")?.applied
   const dns = !!useStore<DnsStatus>("dnsStatus")?.active?.length
+  const autotune = useStore<{ active?: { phase?: string } | null }>("autotune")?.active?.phase === "running"
   return {
     winws,
     proxy,
     tg,
     hosts,
     dns,
+    autotune,
     guard: winws || proxy || hosts,
     count: [winws, proxy, tg, hosts].filter(Boolean).length,
   }

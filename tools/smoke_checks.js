@@ -24,7 +24,7 @@
     need(document.querySelector('[data-testid="brand-logo"]'), "нет логотипа");
     need(document.querySelectorAll("svg.lucide").length > 5, "не отрисовались иконки");
     // новая страница тест не ломает, пропавшая — валит; каждый пункт меню ведёт на зарегистрированную страницу
-    const required = ["dashboard", "strategies", "proxy", "telegram", "hosts", "dns", "providers", "lists", "checks", "settings"];
+    const required = ["dashboard", "autotune", "strategies", "proxy", "telegram", "hosts", "dns", "providers", "lists", "checks", "settings"];
     const missing = required.filter(id => !Pages.list.some(page => page.id === id));
     need(!missing.length, `нет страниц: ${missing.join(", ")}`);
     const nav = [...document.querySelectorAll('[data-testid^="nav-"]')].map(n => n.dataset.testid.slice(4)).filter(id => !id.startsWith("dot-"));
@@ -140,6 +140,23 @@
   // проверки доступности
   await step("проверка домена", async () => { await api("block_check_one", "example.com"); }, { network: true });
   await step("реестр РКН", async () => { await api("chebur_status"); }, { network: true });
+
+  // автонастройка: каталог читается из списков, диагноз ничего не меняет
+  let tuneService = "";
+  await step("автонастройка: сервисы", async () => {
+    const items = await api("autotune_catalog");
+    const usable = items.filter(i => i.targets.length);
+    need(usable.length > 0, "нет сервисов с адресами для проверки");
+    tuneService = usable[0].name;
+    return `${items.length} шт.`;
+  });
+  await step("автонастройка: проверка без изменений", async () => {
+    need(tuneService, "сервис не выбран");
+    const res = await api("autotune_diagnose", [tuneService]);
+    need(res.services.length === 1 && res.services[0].name === tuneService, "диагноз не того сервиса");
+    need((await api("autotune_state")).active === null, "проверка начала подбор");
+    return `${tuneService}: ${res.services[0].ok ? "открывается" : (res.services[0].reasons || []).join(",")}`;
+  }, { network: true });
 
   // страница «Проверка» целиком: поиск -> подсказка списка -> две потоковые проверки на
   // бэкенде -> пуши -> сведённая таблица; самый короткий список, чтобы не ждать

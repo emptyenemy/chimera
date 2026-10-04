@@ -38,7 +38,7 @@ FLAVORS = {"qt": ("Chimera", ""), "webview": ("Chimera-webview", "-webview"), "l
 FRONTEND = ROOT / "frontend"
 # живой интерфейс в headless Edge, без окна на экране; smoke_native_appearance открывает окно — не здесь
 UI_SMOKES = ("smoke_appearance.py", "smoke_layout.py", "smoke_autosave.py", "smoke_filters.py",
-             "smoke_checks.py", "smoke_trials.py", "smoke_verified_config.py")
+             "smoke_checks.py", "smoke_trials.py", "smoke_verified_config.py", "smoke_autotune.py")
 
 
 def run(*argv, cwd=ROOT, **kwargs):

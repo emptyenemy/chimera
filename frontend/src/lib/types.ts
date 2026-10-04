@@ -56,5 +56,5 @@ export type HubKey = "winws" | "proxy" | "tg" | "hosts" | "dnsStatus" | "app" | 
 /** Модули с включателем: у каждого свой источник хаба и точка состояния в меню. */
 export type ModuleKey = "winws" | "proxy" | "tg" | "hosts"
 
-/** Точка у пункта меню: модули и DNS (включателя у него нет, но изменённый DNS — тоже «работает»). */
-export type DotKey = ModuleKey | "dns"
+/** Точка у пункта меню: модули, DNS (включателя нет, но изменённый DNS — тоже «работает») и идущая автонастройка. */
+export type DotKey = ModuleKey | "dns" | "autotune"
