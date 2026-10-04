@@ -3,10 +3,9 @@ import { readFileSync } from "node:fs"
 import test from "node:test"
 import ts from "typescript"
 
-const source = readFileSync(new URL("../src/pages/checks.tsx", import.meta.url), "utf8")
-  .split("// --- отображение")[0].replace(/^import .*$/gm, "")
+const source = readFileSync(new URL("../src/pages/checks-data.ts", import.meta.url), "utf8").replace(/^import .*$/gm, "")
 const js = ts.transpileModule(
-  `const { api, onPush, notify, t } = globalThis.__checksHarness;\n${source}\nexport { checkList, checkTyped, parseTargets, loadLists, loadRegistryStatus, suggest, pickSuggestion, s };`,
+  `const { api, onPush, notify, t, useSyncExternalStore } = globalThis.__checksHarness;\n${source}`,
   { compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 } }
 ).outputText
 let instance = 0
@@ -16,7 +15,7 @@ async function setup() {
   globalThis.__checksHarness = {
     api: (method, ...args) => new Promise((resolve, reject) => calls.push({ method, args, resolve, reject })),
     onPush: (name, fn) => pushes.set(name, fn),
-    notify: { error: (...args) => errors.push(args) }, t: key => key,
+    notify: { error: (...args) => errors.push(args) }, t: key => key, useSyncExternalStore: () => null,
   }
   const page = await import(`data:text/javascript;base64,${Buffer.from(js).toString("base64")}#${++instance}`)
   return { page, calls, errors, push: (name, data = {}) => pushes.get(name)({ _request_id: calls.findLast(c => c.method === "block_check_start")?.args[1], ...data }), settle: () => new Promise(resolve => setImmediate(resolve)) }
