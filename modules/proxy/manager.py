@@ -91,7 +91,8 @@ SINGBOX_SHA256 = "c2d8bfff918755808781dfdeeb8581b6c91eb3a243d9a7b55483cfc0c0684d
 # link — выбранный из них или вставленный вручную (тогда подписки нет);
 # direct_lists — «всегда напрямую»: банки и госсервисы не пускают зарубежные IP прокси
 DEFAULTS = {"link": "", "lists": [], "apps": [], "autostart": False, "mode": "pac", "socks_port": 2080,
-            "subscription": "", "servers": [], "direct_lists": ["russia-direct"]}
+            "subscription": "", "servers": [], "direct_lists": []}
+RUSSIA_DIRECT = "russia-direct"
 MODES = ("pac", "split", "tun")
 
 # Общий TUN-адаптер выборочного и полного режимов.
@@ -421,6 +422,24 @@ class ProxyManager:
     def _split_direct(self) -> tuple[list[str], list[str]]:
         names = [n for n in (self.config.get("direct_lists") or []) if n in domains.available_lists()]
         return domains.split_lists(names) if names else ([], [])
+
+    def direct_decided(self) -> bool:
+        """Выбирали ли уже «всегда напрямую» — руками или по стране провайдера."""
+        try:
+            saved = json.loads(STATE_PATH.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return False
+        return isinstance(saved, dict) and "direct_lists" in saved
+
+    def settle_direct_default(self, country: str | None) -> bool:
+        """Один раз, по стране провайдера: российские сервисы мимо прокси — только в России.
+        В Украине VK и Яндекс заблокированы, прямой маршрут их бы сломал. Страна неизвестна —
+        решим в другой раз; выбор пользователя не трогаем."""
+        if not country or self.direct_decided():
+            return False
+        russia = country.upper() == "RU" and RUSSIA_DIRECT in domains.available_lists()
+        self._change({**self.config, "direct_lists": [RUSSIA_DIRECT] if russia else []}, self.reload_lists)
+        return True
 
     def set_direct_lists(self, names) -> dict:
         """Списки «всегда напрямую»: их домены и подсети идут мимо прокси, в том числе в TUN."""

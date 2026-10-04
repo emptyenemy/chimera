@@ -77,12 +77,34 @@ def test_set_direct_lists_keeps_known_names_and_applies_them(pm, monkeypatch):
     assert pm.set_direct_lists(None)["direct_lists"] == []
 
 
-def test_old_settings_get_the_shipped_list(monkeypatch, tmp_path, lists_dir):
+@pytest.fixture
+def fresh(monkeypatch, tmp_path, lists_dir):
+    """Настройки до «всегда напрямую»: выбора ещё не было."""
     state = tmp_path / "proxy.json"
     state.write_text(json.dumps({"link": "", "lists": ["youtube"]}), encoding="utf-8")
     monkeypatch.setattr(proxy_manager, "STATE_PATH", state)
     monkeypatch.setattr(ProxyManager, "_system_pids", staticmethod(lambda: []))
-    assert ProxyManager().config["direct_lists"] == ["russia-direct"]
+    monkeypatch.setattr(ProxyManager, "running", property(lambda self: False))
+    domains.save_raw("russia-direct", "sberbank.ru\n")
+    return state
+
+
+@pytest.mark.parametrize("country,expected", [("RU", ["russia-direct"]), ("ru", ["russia-direct"]), ("UA", []), ("DE", [])])
+def test_the_provider_country_decides_once_whether_russian_services_bypass_the_proxy(fresh, country, expected):
+    manager = ProxyManager()
+    assert manager.config["direct_lists"] == [] and not manager.direct_decided()
+    assert manager.settle_direct_default(country) is True
+    assert manager.config["direct_lists"] == expected and manager.direct_decided()
+    # решено — страна другой сети уже ничего не меняет
+    assert manager.settle_direct_default("RU" if country != "RU" else "UA") is False
+    assert ProxyManager().config["direct_lists"] == expected
+
+
+def test_an_unknown_country_or_a_users_choice_is_left_alone(fresh):
+    manager = ProxyManager()
+    assert manager.settle_direct_default(None) is False and not manager.direct_decided()
+    manager.set_direct_lists([])
+    assert manager.settle_direct_default("RU") is False and manager.config["direct_lists"] == []
 
 
 def test_shipped_list_is_valid_and_not_offered_to_autotune():

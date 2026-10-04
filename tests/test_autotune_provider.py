@@ -14,7 +14,7 @@ from modules.errors import ChimeraError
 from tests.autotune_net import FakeOps, blocked_unless
 from tools import provider_map
 
-MGTS = {"asn": 25513, "name": "MGTS"}
+MGTS = {"asn": 25513, "name": "MGTS", "country": "RU"}
 MAP = {"25513": {"name": "MGTS", "services": {"youtube": [
     {"kind": "strategy", "id": "alt", "n": 1}, {"kind": "strategy", "id": "alt2", "n": 4},
     {"kind": "proxy", "id": "proxy", "n": 9}, {"kind": "dns"}]}}}
@@ -32,11 +32,19 @@ def ripestat(replies):
     return fetch, calls
 
 
-def test_lookup_asks_ripestat_for_the_address_network_and_holder():
+def test_lookup_asks_ripestat_for_the_address_network_holder_and_country():
     fetch, calls = ripestat({"whats-my-ip": {"ip": "203.0.113.7"}, "network-info": {"asns": ["25513"]},
-                             "as-overview": {"holder": "MGTS"}})
+                             "as-overview": {"holder": "MGTS"},
+                             "rir-stats-country": {"located_resources": [{"location": "ru"}]}})
     assert provider.lookup(fetch) == MGTS
-    assert calls == [("whats-my-ip", ""), ("network-info", "203.0.113.7"), ("as-overview", "AS25513")]
+    assert calls == [("whats-my-ip", ""), ("network-info", "203.0.113.7"), ("as-overview", "AS25513"),
+                     ("rir-stats-country", "203.0.113.7")]
+
+
+def test_an_unknown_country_keeps_the_rest_of_the_answer():
+    fetch, _ = ripestat({"whats-my-ip": {"ip": "203.0.113.7"}, "network-info": {"asns": ["25513"]},
+                         "as-overview": {"holder": "MGTS"}, "rir-stats-country": OSError("timeout")})
+    assert provider.lookup(fetch) == {**MGTS, "country": None}
 
 
 @pytest.mark.parametrize("replies", [

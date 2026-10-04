@@ -190,13 +190,17 @@ class AutotuneManager:
     def _provider(self, key):
         """Провайдер сети: из памяти, а если не узнавали — у RIPEstat (сеть, вне блокировок)."""
         found = memory_mod.provider(key, self.memory_path)
-        if found is None:
+        if found is None or found["country"] is None:   # страну раньше не запоминали — спросим заново
             try:
                 found = self.ops.lookup_provider()
             except Exception:
                 found = None
             memory_mod.remember_provider(key, found, self.memory_path)
         return found
+
+    def provider(self):
+        """Провайдер текущей сети (с номером сети и страной) или None — тот же, что у отчёта."""
+        return self._provider(self._network_key())
 
     def _hints(self, key):
         """Подсказки карты провайдеров; пока карта пуста, RIPEstat не спрашиваем вовсе."""

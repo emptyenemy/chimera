@@ -7,6 +7,7 @@ import pytest
 
 from modules.autotune import memory
 from modules.autotune.manager import AutotuneManager
+from modules.autotune.targets import CANARY
 from modules.autotune.watch import AutotuneWatch
 from tests.autotune_net import FakeOps, blocked_unless
 
@@ -52,7 +53,7 @@ def test_without_internet_nothing_is_counted_and_the_count_starts_over(env):
     ops, _, watch, mem, _ = env
     memory.remember("net", {"youtube": {"kind": "strategy", "id": "alt"}}, mem)
     watch.run_once()                                   # одна неудача при живом интернете
-    ops.canary = {"ya.ru": lambda s: ("blocked", None), "example.com": lambda s: ("blocked", None)}
+    ops.canary = {d: lambda s: ("blocked", None) for d in CANARY}
     for _ in range(3):
         assert watch.run_once()["offline"] is True
     ops.canary = {}

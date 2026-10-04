@@ -30,7 +30,8 @@ def _fetch(endpoint: str, resource: str = "") -> dict:
 
 
 def lookup(fetch=_fetch) -> dict | None:
-    """{"asn": 25513, "name": "владелец сети"} или None, если RIPEstat не ответил."""
+    """{"asn": 25513, "name": "владелец сети", "country": "RU"} или None, если RIPEstat не ответил.
+    Страна — где зарегистрирована сеть провайдера; не узнали её — None, остальное остаётся."""
     try:
         ip = fetch("whats-my-ip")["data"]["ip"]
         asn = int(fetch("network-info", ip)["data"]["asns"][0])
@@ -39,7 +40,12 @@ def lookup(fetch=_fetch) -> dict | None:
         return None
     if asn <= 0:
         return None
-    return {"asn": asn, "name": str(holder)[:80]}
+    try:
+        located = fetch("rir-stats-country", ip)["data"]["located_resources"]
+        country = str(located[0]["location"]).upper()[:2] or None
+    except (OSError, ValueError, KeyError, IndexError, TypeError, AttributeError):
+        country = None
+    return {"asn": asn, "name": str(holder)[:80], "country": country}
 
 
 def load_map(path=MAP_PATH) -> dict:

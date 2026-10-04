@@ -173,6 +173,9 @@ class Api:
                                              can_run=lambda: self._trial.active is None)
         if owner and not self._smoke:
             self._autotune_watch.start_background(self._bg_stop)
+        # «всегда напрямую» по стране провайдера — один раз и в фоне: сеть не тормозит запуск
+        if owner and not self._smoke and not self.proxy.direct_decided():
+            threading.Thread(target=self._settle_direct, daemon=True, name="direct-default").start()
         # сервер подписки перестал отвечать — переход на следующий по скорости
         self._proxy_failover = ProxyFailover(self.proxy)
         if owner and not self._smoke:
@@ -834,6 +837,16 @@ class Api:
             blocked = active is not None and active["phase"] in ("running", "interrupted", "invalid", "rollback_failed")
         if blocked:
             raise ChimeraError("err.autotune.busy")
+
+    def _settle_direct(self, delay=30):
+        if self._bg_stop.wait(delay):   # сначала пусть поднимутся автозапуски
+            return
+        try:
+            found = self._autotune.provider()
+            if self.proxy.settle_direct_default((found or {}).get("country")):
+                self.hub.poke("proxy")
+        except Exception as e:   # фоновое удобство: не вышло — решим при следующем запуске
+            applog.write(f"Прокси: страну провайдера для «всегда напрямую» узнать не удалось: {e}")
 
     def autotune_state(self):
         try:

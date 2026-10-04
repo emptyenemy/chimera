@@ -12,6 +12,7 @@ from modules import blockcheck, configbackups, dataupdate, domains
 from modules.autotune import memory, provider as provider_mod, targets as targets_mod
 from modules.errors import ChimeraError
 from modules.hosts.manager import BLOCK_RE, replace_block
+from modules.proxy.manager import RUSSIA_DIRECT
 from ui.shareops import ShareOps
 
 # Сколько дать изменению вступить в силу перед проверкой. winws.start() сам ждёт секунду,
@@ -31,10 +32,12 @@ class AutotuneOps:
     # --- каталог и проверка -------------------------------------------------------------
 
     def services(self):
-        # «всегда напрямую» — банки и госсервисы: их не разблокируют, им нужен российский IP
-        direct = set(self.api.proxy.config.get("direct_lists") or [])
-        return [{"name": i["name"], "targets": targets_mod.targets(i["name"], i["entries"])}
+        # «всегда напрямую» — банки и госсервисы: их не разблокируют, им нужен российский IP;
+        # список из одних подсетей (cloudflare) проверять нечем — в каталог не идёт
+        direct = {RUSSIA_DIRECT, *(self.api.proxy.config.get("direct_lists") or [])}
+        rows = [{"name": i["name"], "targets": targets_mod.targets(i["name"], i["entries"])}
                 for i in domains.list_index() if i["name"] not in direct]
+        return [row for row in rows if row["targets"]]
 
     def targets(self, name):
         return targets_mod.targets(name, domains.load_list(name))

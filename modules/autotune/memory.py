@@ -49,7 +49,8 @@ def provider(key, path=PATH) -> dict | None:
     network = _read(path).get(key) if key else None
     found = network.get("provider") if isinstance(network, dict) else None
     if isinstance(found, dict) and type(found.get("asn")) is int and isinstance(found.get("name"), str):
-        return {"asn": found["asn"], "name": found["name"]}
+        country = found.get("country")
+        return {"asn": found["asn"], "name": found["name"], "country": country if isinstance(country, str) else None}
     return None
 
 
@@ -66,7 +67,8 @@ def remember(key, fixes, path=PATH, now=time.time) -> None:
 
 def remember_provider(key, found, path=PATH, now=time.time) -> None:
     if key and found:
-        _update(key, lambda network: network.update(provider={"asn": found["asn"], "name": found["name"]}), path, now)
+        _update(key, lambda network: network.update(
+            provider={"asn": found["asn"], "name": found["name"], "country": found.get("country")}), path, now)
 
 
 def _update(key, change, path, now) -> None:

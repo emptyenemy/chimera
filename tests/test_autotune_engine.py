@@ -5,6 +5,7 @@ import threading
 import pytest
 
 from modules.autotune.engine import Cancelled, Engine
+from modules.autotune.targets import CANARY
 from tests.autotune_net import FakeOps, blocked_unless, opens
 
 YT = {"youtube": ["youtube.com", "i.ytimg.com"]}
@@ -127,7 +128,8 @@ def test_proxy_is_the_last_resort_when_a_link_exists():
 
 def test_no_network_stops_before_any_change():
     ops = FakeOps(YT, {"youtube.com": lambda s: ("blocked", None), "i.ytimg.com": lambda s: ("blocked", None)},
-                  canary={"ya.ru": lambda s: ("blocked", None), "example.com": lambda s: ("dns", None)})
+                  canary={d: (lambda s: ("dns", None)) if d == "example.com" else (lambda s: ("blocked", None))
+                          for d in CANARY})
     report = run(ops)
     assert report["offline"] is True and ops.calls == [] and row(report, "youtube")["hint"] == "offline"
 
