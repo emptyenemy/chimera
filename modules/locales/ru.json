@@ -834,6 +834,7 @@
   "err.domains.list_was_not_found": "Список {p0} не найден",
   "err.hosts.manager.administrator_rights_are_required_to_write_hosts": "Нужны права администратора для записи в hosts",
   "err.hosts.manager.background_options_must_be_object": "Настройки автоматики Hosts должны быть объектом.",
+  "err.hosts.manager.busy": "Файл hosts занят другой программой (обычно служба DNS или антивирус) и не освободился за несколько секунд. Повторите; если не помогает — закройте программы, которые его открыли.",
   "err.hosts.manager.invalid_background_option": "Неверное значение настройки автоматики Hosts: {p0}. Интервалы — целое число секунд больше нуля, переключатели — true/false, порядок провайдеров — список идентификаторов.",
   "err.hosts.manager.no_addresses_resolved_are_the_providers_unavaila": "Ничего не разрезолвилось — провайдеры недоступны?",
   "err.hosts.manager.unassign_before_hiding": "Сначала отвяжите от провайдера списки: иначе его записи останутся в hosts, а сам он пропадёт из списка.",

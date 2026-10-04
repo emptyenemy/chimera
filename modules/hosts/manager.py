@@ -19,6 +19,7 @@ from contextlib import nullcontext
 import os
 import re
 import subprocess
+import time
 from pathlib import Path
 
 from .. import dns_providers, paths
@@ -54,6 +55,12 @@ def replace_block(text: str, block: str | None) -> str:
         return text
     newline = "\r\n" if "\r\n" in text else "\n"
     return text + ("" if text.endswith(("\n", "\r")) else newline) + newline + block
+
+# Служба DNS-клиента перечитывает hosts сразу после правки, Defender его проверяет: в эти доли
+# секунды файл открыт без права записи, и open('w') даёт «Permission denied» даже администратору.
+# Ждём с нарастающей паузой — всего около трёх секунд.
+WRITE_RETRIES = 12
+WRITE_PAUSE = 0.05
 
 # по этому домену меряем работоспособность/пинг провайдеров
 PING_TEST_DOMAIN = "chatgpt.com"
@@ -188,24 +195,33 @@ class HostsManager:
     def assignments(self) -> dict:
         return self._load_state().get("assignments", {})
 
+    def _apply(self, **changes) -> dict:
+        """Меняет состояние и сразу приводит к нему hosts. Не вышло (файл занят, провайдер не
+        ответил) — изменённые ключи возвращаются: иначе программа считала бы hosts выключенным,
+        а блок оставался бы в файле."""
+        before = self._load_state()
+        self._save_state({**before, **changes})
+        try:
+            return self._sync()
+        except Exception:
+            current = self._load_state()   # фоновый поток мог записать своё — его не трогаем
+            for key in changes:
+                if key in before:
+                    current[key] = before[key]
+                else:
+                    current.pop(key, None)
+            self._save_state(current)
+            raise
+
     def restore_config(self, config: dict) -> dict:
         from modules.configbackups import normalize
-        target = normalize("hosts", config)
-        state = self._load_state()
-        state.update(target)
-        self._save_state(state)
-        return self._sync()
+        return self._apply(**normalize("hosts", config))
 
     def set_assignments(self, mapping: dict) -> dict:
-        """Сохраняет привязку списков к провайдерам (без записи в hosts).
-
-        Эксклюзивность (один список — один провайдер) обеспечивает фронт;
-        тут просто отбрасываем пустые наборы.
-        """
-        st = self._load_state()
-        st["assignments"] = {pid: lists for pid, lists in mapping.items() if lists}
-        self._save_state(st)
-        return self._sync()  # сразу применяем: галочка = работает, снял = выключилось
+        """Привязка списков к провайдерам — и сразу запись в hosts: галочка = работает,
+        снял = выключилось. Эксклюзивность (один список — один провайдер) обеспечивает фронт;
+        тут просто отбрасываем пустые наборы."""
+        return self._apply(assignments={pid: lists for pid, lists in mapping.items() if lists})
 
     def state(self) -> dict:
         """Текущее состояние: привязки, число применённых записей, флаги applied/enabled,
@@ -225,10 +241,7 @@ class HostsManager:
     def set_enabled(self, value: bool) -> dict:
         """Общий выключатель hosts-разблокировки. OFF снимает блок из hosts, но
         привязки (какой список через кого) сохраняет — ON переприменяет их разом."""
-        st = self._load_state()
-        st["enabled"] = bool(value)
-        self._save_state(st)
-        return self._sync()
+        return self._apply(enabled=bool(value))
 
     # --- настройки фонового потока (data/hosts.json, ключ "background") ------
 
@@ -263,8 +276,17 @@ class HostsManager:
             return file.read()
 
     def _write_hosts(self, text: str) -> None:
-        with open(self.hosts_path, "w", encoding="utf-8", newline="") as file:
-            file.write(text)
+        # на месте, а не подменой файла: у системного hosts свои права, новый файл их бы не унаследовал.
+        # Занятый файл не открывается вовсе — содержимое не обрезается, пока ждём.
+        for attempt in range(WRITE_RETRIES):
+            try:
+                with open(self.hosts_path, "w", encoding="utf-8", newline="") as file:
+                    file.write(text)
+                break
+            except PermissionError:
+                if attempt == WRITE_RETRIES - 1:
+                    raise ChimeraPermissionError("err.hosts.manager.busy") from None
+                time.sleep(WRITE_PAUSE * (attempt + 1))
         subprocess.run(["ipconfig", "/flushdns"], capture_output=True,
                        creationflags=subprocess.CREATE_NO_WINDOW)
 

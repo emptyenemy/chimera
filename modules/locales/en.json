@@ -827,6 +827,7 @@
   "err.domains.list_was_not_found": "List {p0} was not found",
   "err.hosts.manager.administrator_rights_are_required_to_write_hosts": "Administrator rights are required to write hosts",
   "err.hosts.manager.background_options_must_be_object": "Hosts automation settings must be an object.",
+  "err.hosts.manager.busy": "The hosts file is held by another program (usually the DNS service or an antivirus) and was not released within a few seconds. Try again; if that does not help, close the programs that opened it.",
   "err.hosts.manager.invalid_background_option": "Invalid Hosts automation setting: {p0}. Intervals must be positive integer seconds, switches must be true/false, and provider order must be a list of IDs.",
   "err.hosts.manager.no_addresses_resolved_are_the_providers_unavaila": "No addresses resolved — are the providers unavailable?",
   "err.hosts.manager.unassign_before_hiding": "Unassign the lists from this provider first: otherwise its entries stay in hosts while the provider disappears from the list.",
