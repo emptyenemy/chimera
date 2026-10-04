@@ -106,6 +106,8 @@
 | Hosts → привязка списков | `chimera hosts assign [привязки…] [--replace]` | system |
 | Hosts → «Добавить провайдера» | `chimera hosts provider-add <имя> <doh> <серверы…>` | app |
 | Hosts → провайдер → «Удалить» | `chimera hosts provider-delete <id>` | app |
+| Hosts → провайдер → «Пинг» | `chimera hosts ping <id>` | read |
+| Hosts → фоновые опции | `chimera hosts background [настройки…]` | app |
 | DNS: вся вкладка | `chimera dns state` | read |
 | DNS → «Проверить скорость» | `chimera dns ping [id]` | read |
 | DNS → «Проба» у провайдера | `chimera dns probe <id>` | read |
@@ -908,6 +910,28 @@ chimera hosts provider-add my https://dns.example/dns-query 1.2.3.4
 chimera hosts provider-delete my
 ```
 
+#### `chimera hosts ping <id>`
+
+Проверить доступность hosts-провайдера. Уровень: чтение.
+
+- `id` — id провайдера
+
+```
+chimera hosts ping comss
+```
+
+#### `chimera hosts background [настройки…]`
+
+Настройки фонового потока hosts: ключ=значение (значение — JSON). refresh_interval и check_interval — целое число секунд больше нуля, refresh_enabled/check_enabled/autoswitch_enabled — true/false, provider_order — массив идентификаторов. Уровень: изменение приложения.
+
+- `настройки` — ключ=значение …
+
+```
+chimera hosts background
+chimera hosts background refresh_enabled=true refresh_interval=21600
+chimera hosts background check_enabled=true check_interval=900
+```
+
 ### dns
 
 Системный DNS и DNS-провайдеры.
@@ -1392,7 +1416,7 @@ chimera providers list --json
 
 ```
 chimera providers add Quad9 9.9.9.9 149.112.112.112 --doh https://dns.quad9.net/dns-query
-chimera providers add Мой --doh https://dns.example/dns-query --unblock
+chimera providers add Home --doh https://dns.example/dns-query --unblock
 ```
 
 #### `chimera providers edit <id> <имя> [серверы…] [--ipv6 <ipv6>] [--doh <doh>] [--dot <dot>] [--unblock] [--filtering]`

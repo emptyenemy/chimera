@@ -106,6 +106,8 @@ Levels exist so that remote channels can be restricted. The proxy link is hidden
 | Hosts → list bindings | `chimera hosts assign [bindings…] [--replace]` | system |
 | Hosts → “Add provider” | `chimera hosts provider-add <name> <doh> <servers…>` | app |
 | Hosts → provider → “Delete” | `chimera hosts provider-delete <id>` | app |
+| Hosts → provider → “Ping” | `chimera hosts ping <id>` | read |
+| Hosts → background options | `chimera hosts background [settings…]` | app |
 | DNS: the whole tab | `chimera dns state` | read |
 | DNS → “Test speed” | `chimera dns ping [id]` | read |
 | DNS → provider “Probe” | `chimera dns probe <id>` | read |
@@ -908,6 +910,28 @@ Delete a hosts provider. Level: changes the app.
 chimera hosts provider-delete my
 ```
 
+#### `chimera hosts ping <id>`
+
+Check that a hosts provider is reachable. Level: read-only.
+
+- `id` — provider id
+
+```
+chimera hosts ping comss
+```
+
+#### `chimera hosts background [settings…]`
+
+Hosts background settings: key=value (JSON values). refresh_interval and check_interval are positive integer seconds; refresh_enabled/check_enabled/autoswitch_enabled are true/false; provider_order is an array of IDs. Level: changes the app.
+
+- `settings` — key=value …
+
+```
+chimera hosts background
+chimera hosts background refresh_enabled=true refresh_interval=21600
+chimera hosts background check_enabled=true check_interval=900
+```
+
 ### dns
 
 System DNS and DNS providers.
@@ -1392,7 +1416,7 @@ Add a provider. Level: changes the app.
 
 ```
 chimera providers add Quad9 9.9.9.9 149.112.112.112 --doh https://dns.quad9.net/dns-query
-chimera providers add Мой --doh https://dns.example/dns-query --unblock
+chimera providers add Home --doh https://dns.example/dns-query --unblock
 ```
 
 #### `chimera providers edit <id> <name> [servers…] [--ipv6 <ipv6>] [--doh <doh>] [--dot <dot>] [--unblock] [--filtering]`
