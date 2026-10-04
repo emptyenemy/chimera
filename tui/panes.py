@@ -109,6 +109,7 @@ class OverviewPane(Pane):
             status = _tr('tui.classic.enabled') if active else _tr('tui.classic.disabled')
             label = f"{title}: {status if key == 'hosts_state' else tag(active)}" + (f' · {detail}' if detail else '')
             entries.append((key, label, lambda key=key: self.toggle(key)))
+        entries.append(('autotune', _tr('tui.autotune.open'), self.app.action_autotune))
         entries.append(('panic', _tr('tui.panes.turn_everything_off'), self.panic))
         entries.append(('explain', _tr('tui.route.title'), self.app.action_explain))
         self.menu(entries)

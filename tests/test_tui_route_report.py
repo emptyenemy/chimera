@@ -46,7 +46,7 @@ def test_ctrl_e_opens_a_plain_keyboard_report_and_escape_returns_to_the_same_sec
 def test_overview_explain_row_and_cancel_do_not_change_modules(rules):
     async def scenario(app, pilot, remote):
         await online(pilot, app)
-        await pilot.press('1', '6')
+        await pilot.press('1', '7')
         assert isinstance(app.screen, PromptScreen)
         await pilot.press(*'example.com', 'escape')
         assert app.active_section == 'overview'

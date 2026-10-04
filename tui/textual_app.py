@@ -32,9 +32,11 @@ from tui import panes
 from tui.remote import Offline, RemoteError
 from tui.screens import ConfirmScreen, HelpScreen, PromptScreen
 from tui.route_report import RouteReportScreen
+from tui.autotune import AutotuneScreen
 
 BASE_SOURCES = (("app", "app_info"), ("winws", "winws_state"), ("proxy", "proxy_state"),
-                ("tg", "tg_state"), ("hosts_state", "hosts_state"), ("trial", "trial_state"))
+                ("tg", "tg_state"), ("hosts_state", "hosts_state"), ("trial", "trial_state"),
+                ("autotune", "autotune_state"))
 
 SECTIONS = (("overview", _tr('tui.textual_app.overview'), panes.OverviewPane), ("strategies", _tr('tui.textual_app.strategies'), panes.StrategiesPane),
         ("lists", _tr('tui.textual_app.lists'), panes.ListsPane), ("proxy", _tr('tui.textual_app.proxy'), panes.ProxyPane),
@@ -87,6 +89,10 @@ ListEditorScreen Static { height: auto; }
 #route-title { height: auto; color: $primary; text-style: bold; }
 #route-report { height: 1fr; margin-top: 1; }
 #route-text { height: auto; }
+#autotune-title { height: auto; color: $primary; text-style: bold; }
+#autotune-report { height: auto; max-height: 60%; margin-top: 1; }
+#autotune-text { height: auto; }
+#autotune-actions { height: auto; max-height: 12; margin-top: 1; }
 ConsoleScreen { padding: 1 2; }
 ConsoleScreen Static { height: auto; }
 #console-title { color: $primary; text-style: bold; margin-bottom: 1; }
@@ -109,6 +115,7 @@ class ChimeraTui(App):
         Binding("ctrl+c", "quit", _tr('tui.textual_app.quit'), show=False, priority=True),
         Binding("colon", "console", "", show=False),
         Binding("ctrl+e", "explain", "", show=False),
+        Binding("ctrl+f", "autotune", "", show=False),
         Binding("ctrl+t", "try_settings", _tr("tui.trial.try"), show=False),
         Binding("ctrl+k", "keep_trial", _tr("tui.trial.keep"), show=False),
         Binding("ctrl+r", "revert_trial", _tr("tui.trial.revert"), show=False),
@@ -240,7 +247,7 @@ class ChimeraTui(App):
             return False
         if action == "console":
             return not self._blocked() and not editing(self.screen.focused)
-        if action == "explain":
+        if action in ("explain", "autotune"):
             return not self._blocked() and not editing(self.screen.focused)
         if action == "navigate":
             return not editing(self.screen.focused)
@@ -346,6 +353,10 @@ class ChimeraTui(App):
             if value is not None and value.strip():
                 self.push_screen(RouteReportScreen(value))
         self.push_screen(PromptScreen(_tr('tui.route.prompt')), entered)
+
+    def action_autotune(self) -> None:
+        if not self._blocked():
+            self.push_screen(AutotuneScreen())
 
     def action_help(self) -> None:
         if not self._blocked():

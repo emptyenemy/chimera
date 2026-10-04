@@ -60,7 +60,8 @@ class FakeRemote:
                     "providers": [{"id": "cf", "name": "Cloudflare", "servers": ["1.1.1.1"]}], "trial": None, "trials": []}
         self.config = {"interface": "ui", "ui_backend": "pyside6"}
         self.trial = {"active": None, "last": None}
-        self.log = "строка лога 1\nстрока лога 2\n"
+        self.autotune = {"active": None, "last": None}
+        self.log ="строка лога 1\nстрока лога 2\n"
 
     # --- Remote -------------------------------------------------------------------------------
 
@@ -215,6 +216,39 @@ class FakeRemote:
         self.trial = {"active": None, "last": {"id": trial_id, "phase": "reverted"}}
         return self.trial
 
+    def m_autotune_state(self):
+        return self.autotune
+
+    def m_autotune_catalog(self):
+        return [{"name": "youtube", "targets": ["youtube.com"]}, {"name": "discord", "targets": ["discord.com"]}]
+
+    def m_autotune_diagnose(self, services=None):
+        return {"offline": False, "services": [{"name": "youtube", "ok": False, "reasons": ["dpi"], "covered": 0, "total": 1},
+                                               {"name": "discord", "ok": True}]}
+
+    def m_autotune_start(self, services=None, mode="fast"):
+        names = services or ["youtube", "discord"]
+        rows = [{"name": n, "before": {"ok": n != "youtube", "reasons": ["dpi"] if n == "youtube" else []},
+                 "after": {"ok": True}, "fix": {"kind": "strategy", "id": "alt"} if n == "youtube" else None} for n in names]
+        self.autotune = {"active": {"id": "s1", "phase": "done", "mode": mode, "trigger": "user", "services": names,
+                                    "report": {"services": rows, "fixes": {}}}, "last": None}
+        return self.autotune
+
+    def m_autotune_keep(self):
+        self.autotune = {"active": None, "last": {**self.autotune["active"], "phase": "kept"}}
+        return self.autotune
+
+    def m_autotune_revert(self):
+        self.autotune = {"active": None, "last": {**self.autotune["active"], "phase": "reverted"}}
+        return self.autotune
+
+    def m_autotune_cancel(self):
+        self.autotune["active"]["cancelling"] = True
+        return self.autotune
+
+    def m_autotune_share(self):
+        return {"title": "t", "text": "отчёт", "url": "https://github.com/emptyenemy/chimera/issues/new?x", "form": "f"}
+
     def m_config_verified(self):
         return {"backup": None, "error": None}
 
@@ -327,12 +361,12 @@ def test_overview_hosts_row_and_panic_use_keyboard_confirmation():
         await online(pilot, app)
         await pilot.press("1", "4")
         await until(pilot, lambda: ("hosts_set_enabled", (False,)) in remote.calls)
-        await pilot.press("5")
+        await pilot.press("6")
         assert isinstance(app.screen, ConfirmScreen)
         assert not list(app.screen.query(Button))
         await pilot.press("enter")
         assert "panic_all" not in remote.methods()
-        await pilot.press("5", "y")
+        await pilot.press("6", "y")
         await until(pilot, lambda: "panic_all" in remote.methods())
         await until(pilot, lambda: "hosts (нужны права)" in app.status_text)
     drive(scenario)
@@ -630,3 +664,62 @@ def test_list_refresh_preserves_the_selected_item_in_a_long_menu():
         assert pane.selected() == 'list-30'
         assert pane.query_one(OptionList).scroll_y > 0
     drive(scenario, remote)
+
+
+# --- автонастройка --------------------------------------------------------------------------------
+
+def shown(app):
+    return str(app.screen.query_one("#autotune-text", Static).render())
+
+
+def test_autotune_screen_runs_keeps_checks_and_shares_from_the_keyboard(monkeypatch):
+    from tui import autotune as tui_autotune
+    opened = []
+    monkeypatch.setattr(tui_autotune.webbrowser, "open", lambda url: opened.append(url) or True)
+
+    async def scenario(app, pilot, remote):
+        await online(pilot, app)
+        await pilot.press("1", "5")                 # «Обзор» → «Автонастройка»
+        assert isinstance(app.screen, tui_autotune.AutotuneScreen)
+        await until(pilot, lambda: "Chimera" in shown(app))
+        await pilot.press("4")                      # проверить, ничего не меняя
+        await until(pilot, lambda: "youtube" in shown(app))
+        assert "autotune_start" not in remote.methods()
+        await pilot.press("1")                      # настроить всё — быстро
+        await until(pilot, lambda: ("autotune_start", (None, "fast")) in remote.calls)
+        await until(pilot, lambda: "стратегия alt" in shown(app))
+        await pilot.press("7")                      # поделиться
+        await until(pilot, lambda: opened == ["https://github.com/emptyenemy/chimera/issues/new?x"])
+        await pilot.press("1")                      # готово — оставить
+        await until(pilot, lambda: "autotune_keep" in remote.methods())
+        await pilot.press("escape")
+        assert not isinstance(app.screen, tui_autotune.AutotuneScreen)
+    remote = drive(scenario)
+    assert ("fix fast", True) in remote.journal and ("fix keep", True) in remote.journal
+
+
+def test_autotune_running_shows_progress_on_home_and_only_cancel(monkeypatch):
+    async def scenario(app, pilot, remote):
+        remote.autotune = {"active": {"id": "s2", "phase": "running", "trigger": "user", "report": None,
+                                      "current": {"step": "strategy", "candidate": "alt", "index": 1, "total": 5}},
+                           "last": None}
+        await online(pilot, app)
+        await until(pilot, lambda: "alt" in text(app, "#home-summary"))
+        await pilot.press("ctrl+f")
+        await until(pilot, lambda: "2 из 5" in shown(app))
+        menu = app.screen.query_one(OptionList)
+        assert menu.option_count == 1
+        await pilot.press("1")
+        await until(pilot, lambda: "autotune_cancel" in remote.methods())
+    drive(scenario)
+
+
+def test_fix_one_service_picks_from_the_catalog():
+    async def scenario(app, pilot, remote):
+        await online(pilot, app)
+        await pilot.press("ctrl+f", "3")
+        await until(pilot, lambda: isinstance(app.screen, MenuScreen))
+        await pilot.press("2")
+        await until(pilot, lambda: ("autotune_start", (["discord"], "fast")) in remote.calls)
+    drive(scenario)
+

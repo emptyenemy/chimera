@@ -6,6 +6,7 @@ from textual.widgets import Input, OptionList, RichLog, Static, TextArea
 from textual.widgets.option_list import Option
 
 from modules.i18n import t
+from tui.autotune import progress_line
 
 LOGO = r"""          .---.
    .--.  / .-. \     ____   _  _   ___  __   __  ____   ____      _
@@ -73,4 +74,5 @@ class HomeMenu(VerticalScroll):
             if state.get("running") or (key == "hosts_state" and state.get("applied")):
                 active.append(title)
         summary = t("tui.menu.active", modules=" · ".join(active)) if active else t("tui.menu.idle")
-        self.query_one("#home-summary", Static).update(summary)
+        progress = progress_line(self.app.data("autotune"))
+        self.query_one("#home-summary", Static).update(summary + (f"\n{progress}" if progress else ""))
