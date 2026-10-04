@@ -210,3 +210,16 @@ export function candidateText(step: FixKind, candidate: string, strategies: { id
   if (step === "proxy") return t("autotune.via.proxy")
   return names[candidate] ?? candidate
 }
+
+/** Строка хода: что пробуется сейчас. У прокси вариант один — ни шага, ни имени. */
+export function currentText(cur: Current, strategies: { id: string; name?: string }[],
+                            names: Record<string, string>): string {
+  const n = cur.index + 1
+  if (cur.step === "proxy") return t("autotune.running.proxy", { n, total: cur.total })
+  return t("autotune.running.current", {
+    step: t(`autotune.step.${cur.step}`),
+    who: candidateText(cur.step, cur.candidate, strategies, names),
+    n,
+    total: cur.total,
+  })
+}

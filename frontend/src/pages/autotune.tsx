@@ -47,6 +47,7 @@ import {
   DIAGNOSIS_KEY,
   NAMES_KEY,
   candidateText,
+  currentText,
   diagnose,
   fixText,
   loadCatalog,
@@ -344,12 +345,7 @@ function RunningCard({ session }: { session: Session }) {
         <Progress value={percent} data-testid="autotune-progress" />
         <p data-testid="autotune-current" className="text-sm">
           {cur
-            ? t("autotune.running.current", {
-                step: t(`autotune.step.${cur.step}`),
-                who: candidateText(cur.step, cur.candidate, labels.strategies, labels.names),
-                n: cur.index + 1,
-                total: cur.total,
-              })
+            ? currentText(cur, labels.strategies, labels.names)
             : t(`autotune.stage.${session.stage ?? "diagnose"}`)}
         </p>
         {results.length > 0 && (

@@ -74,3 +74,13 @@ test("methods are named with strategy and provider names", async () => {
   assert.equal(fixText({ kind: "proxy", id: "proxy" }, strategies, names), "autotune.via.proxy")
   assert.equal(candidateText("strategy", "zzz", strategies, names), "zzz")
 })
+
+test("the progress line names the variant; the proxy has a line of its own", async () => {
+  const { currentText } = await setup()
+  const strategies = [{ id: "alt", name: "ALT" }]
+  assert.equal(currentText({ step: "strategy", candidate: "alt", index: 2, total: 9 }, strategies, {}),
+    'autotune.running.current {"step":"autotune.step.strategy","who":"ALT","n":3,"total":9}')
+  // у прокси нет шага и имени варианта: иначе в строке «Пробую  Через прокси» — двойной пробел и регистр
+  assert.equal(currentText({ step: "proxy", candidate: "proxy", index: 0, total: 1 }, strategies, {}),
+    'autotune.running.proxy {"n":1,"total":1}')
+})
