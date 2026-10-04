@@ -14,9 +14,9 @@
 1. Заметки `release-notes/<версия>.ru.md` и `.en.md` готовы, всё закоммичено и запушено в `main`.
 2. Собрать и проверить, ничего не публикуя (около часа на три варианта):
    ```powershell
-   build\build-env313\Scripts\python.exe tools/release_local.py 1.0.3
+   build\build-clean313\Scripts\python.exe tools/release_local.py 1.0.3
    ```
-   Нужны Python 3.13 с Nuitka 4.2.2 (окружение `build\build-env313` или `.venv`, см. ниже), Node 22+ и `gh` с входом.
+   Нужны Python 3.13 с Nuitka 4.2.2 в чистом venv без системных пакетов (`build\build-clean313` или `.venv`, см. ниже), Node 22+ и `gh` с входом. Сначала скрипт гоняет все тесты из CI (правила — [TESTING.md](TESTING.md)) и на красном останавливается до сборки.
 3. Если всё прошло — то же с `--publish` и `--skip-build`: архивы пересобираются из готовых папок и проверяются ещё раз, на HEAD ставится тег `v<версия>`, тег пушится, `gh release create` выкладывает три архива. Бета — версия с дефисом (`1.1.0-beta.1`), она публикуется пре-релизом.
 4. На странице Releases появятся три архива: `Chimera-1.0.1-win64.zip`, `Chimera-1.0.1-win64-webview.zip` и `Chimera-1.0.1-win64-lite.zip`. Текст релиза берётся из `release-notes/<версия>.ru.md` и `.en.md`; те же заметки доступны в приложении и на лендинге.
 

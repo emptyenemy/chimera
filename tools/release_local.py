@@ -1,12 +1,14 @@
 """Выпуск без GitHub Actions: три сборки, проверки, архивы, SHA256 и релиз на GitHub.
 
-    build\\build-env313\\Scripts\\python.exe tools/release_local.py 1.0.3             собрать и проверить
-    build\\build-env313\\Scripts\\python.exe tools/release_local.py 1.0.3 --publish   и выложить
+    build\\build-clean313\\Scripts\\python.exe tools/release_local.py 1.0.3             собрать и проверить
+    build\\build-clean313\\Scripts\\python.exe tools/release_local.py 1.0.3 --publish   и выложить
 
-Нужны Python 3.13 и Nuitka 4.2.2 (build.bat проверит сам), Node 22+ и gh с входом.
+Нужны Python 3.13 и Nuitka 4.2.2 в чистом venv (build.bat проверит версии), Node 22+ и gh с входом.
 Версия пишется в modules/version.py только на время сборки и возвращается назад.
 
-Проверки те же, что в release.yml, кроме системных (--full меняет систему — только для
+Сначала — всё, что гоняет CI: ruff, pytest, lint, typecheck и тесты фронта, живой интерфейс
+в headless Edge (tools/smoke_*.py). Красный тест останавливает выпуск до сборки.
+Потом проверки release.yml, кроме системных (--full меняет систему — только для
 одноразовой машины): дымовой тест сборки, проверка распакованного архива и настоящее
 обновление прошлого релиза до нового Qt-архива. Окно программы на экране проверки не
 открывают; запуск двойным кликом — с --window.
@@ -33,9 +35,15 @@ REPO = "emptyenemy/chimera"
 FLAVORS = {"qt": ("Chimera", ""), "webview": ("Chimera-webview", "-webview"), "lite": ("Chimera-lite", "-lite")}
 
 
-def run(*argv, **kwargs):
+FRONTEND = ROOT / "frontend"
+# живой интерфейс в headless Edge, без окна на экране; smoke_native_appearance открывает окно — не здесь
+UI_SMOKES = ("smoke_appearance.py", "smoke_layout.py", "smoke_autosave.py", "smoke_filters.py",
+             "smoke_checks.py", "smoke_trials.py", "smoke_verified_config.py")
+
+
+def run(*argv, cwd=ROOT, **kwargs):
     print("$", " ".join(str(a) for a in argv), flush=True)
-    return subprocess.run([str(a) for a in argv], cwd=ROOT, check=True, **kwargs)
+    return subprocess.run([str(a) for a in argv], cwd=cwd, check=True, **kwargs)
 
 
 def out(*argv):
@@ -58,6 +66,16 @@ def check_tree(publish):
         run("git", "fetch", "origin", "main", "--tags", "--force")
         if subprocess.run(["git", "merge-base", "--is-ancestor", "HEAD", "origin/main"], cwd=ROOT).returncode:
             sys.exit("[!] HEAD ещё не в origin/main: сначала git push.")
+
+
+def test_all(env):
+    """Всё, что гоняет CI, кроме окна на экране: красный тест останавливает выпуск до сборки."""
+    run(sys.executable, "-m", "ruff", "check", ".", env=env)
+    run(sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider", env=env)
+    for script in ("ci", "run lint", "run typecheck", "test", "run build"):
+        run("cmd", "/c", "npm", *script.split(), cwd=FRONTEND, env=env)
+    for smoke in UI_SMOKES:
+        run(sys.executable, ROOT / "tools" / smoke, env=env)
 
 
 def build(flavor, version, env):
@@ -109,6 +127,7 @@ def main():
     parser.add_argument("--flavors", default="qt,webview,lite")
     parser.add_argument("--publish", action="store_true", help="Поставить тег и создать релиз на GitHub")
     parser.add_argument("--skip-build", action="store_true", help="Взять готовые папки build/ (той же версии)")
+    parser.add_argument("--skip-tests", action="store_true", help="Не гонять тесты исходников (уже прошли на этом коммите)")
     parser.add_argument("--window", action="store_true", help="Проверить и запуск двойным кликом (откроет окно)")
     args = parser.parse_args()
 
@@ -130,6 +149,8 @@ def main():
     scripts = Path(sys.executable).parent
     env = {**os.environ, "PATH": os.pathsep.join([str(scripts), os.environ.get("PATH", "")]),
            "PYTHONUTF8": "1", "PYTHONIOENCODING": "utf-8"}
+    if not args.skip_tests:
+        test_all(env)
     if not args.skip_build:
         run(sys.executable, "tools/fetch_bins.py", env=env)  # уже скачанное не трогает
     try:
