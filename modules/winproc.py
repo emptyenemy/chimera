@@ -71,6 +71,30 @@ _kernel32.ProcessIdToSessionId.restype = wintypes.BOOL
 _kernel32.GetCurrentProcessId.restype = wintypes.DWORD
 
 
+_PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+_kernel32.OpenProcess.argtypes = (wintypes.DWORD, wintypes.BOOL, wintypes.DWORD)
+_kernel32.OpenProcess.restype = wintypes.HANDLE
+_kernel32.QueryFullProcessImageNameW.argtypes = (wintypes.HANDLE, wintypes.DWORD, wintypes.LPWSTR,
+                                                 ctypes.POINTER(wintypes.DWORD))
+_kernel32.QueryFullProcessImageNameW.restype = wintypes.BOOL
+
+
+def image_path(pid: int) -> str | None:
+    """Полный путь к exe процесса; None — процесса нет или прав не хватает (служба, другой
+    пользователь). По пути отличают свой sing-box от sing-box другой программы."""
+    handle = _kernel32.OpenProcess(_PROCESS_QUERY_LIMITED_INFORMATION, False, int(pid))
+    if not handle:
+        return None
+    try:
+        size = wintypes.DWORD(32768)
+        buf = ctypes.create_unicode_buffer(size.value)
+        if not _kernel32.QueryFullProcessImageNameW(handle, 0, buf, ctypes.byref(size)):
+            return None
+        return buf.value
+    finally:
+        _kernel32.CloseHandle(handle)
+
+
 def user_apps() -> list[dict]:
     """Запущенные программы текущей сессии пользователя: [{name, count}] по имени
     образа, без учёта регистра, отсортировано по имени.

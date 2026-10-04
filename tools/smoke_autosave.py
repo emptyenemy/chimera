@@ -206,8 +206,10 @@ def main(*, layout=False, screenshot=None, filters_only=False):
         api.proxy.state = lambda: {**api.proxy.config, "running": False, "external": False, "all_lists": domains.available_lists(),
                                   "parsed": {"server": "local.example", "protocol": "test", "security": "none", "label": "Fixture"},
                                   "servers": api.proxy._server_rows()}
-        # чужой sing-box пользователя не должен считаться нашим: смена сервера перезапустила бы его
-        api.proxy._system_pids = lambda: []
+        # sing-box пользователя (даже запущенный из этой же папки) не должен считаться нашим:
+        # смена сервера перезапустила бы его. Подмена на классе — _own_pids смотрит туда
+        type(api.proxy)._system_pids = staticmethod(lambda: [])
+        type(api.proxy)._own_pids = staticmethod(lambda: [])
         from modules.proxy import subscription
         sub_links = ["vless://11111111-1111-1111-1111-111111111111@slow.example:443?security=tls#Slow",
                      "vless://22222222-2222-2222-2222-222222222222@fast.example:443?security=tls#Fast"]

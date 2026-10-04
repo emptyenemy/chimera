@@ -182,7 +182,7 @@ class ProxyManager:
             parser.parse_link(raw)  # валидация: бросит ValueError, если кривая
         # ручная ссылка заменяет подписку
         self._save({**self.config, "link": raw, "subscription": "", "servers": []})
-        if self.running:
+        if self._restartable:
             self.restart()
         return self.state()
 
@@ -200,7 +200,7 @@ class ProxyManager:
         self._pings = dict(zip(servers, pings, strict=True))
         best = subscription.choose(servers, pings)
         self._save({**self.config, "link": servers[best], "subscription": url, "servers": servers})
-        if self.running:
+        if self._restartable:
             self.restart()
         return self.state()
 
@@ -220,7 +220,7 @@ class ProxyManager:
         if isinstance(index, bool) or not isinstance(index, int) or not 0 <= index < len(servers):
             raise ChimeraError("err.proxy.subscription.no_server")
         self._save({**self.config, "link": servers[index]})
-        if self.running:
+        if self._restartable:
             self.restart()
         return self.state()
 
@@ -299,7 +299,7 @@ class ProxyManager:
                 seen.add(name.lower())
                 apps.append(name)
         self._save({**self.config, "apps": apps})
-        if self.running and self.config.get("mode") == "split":
+        if self._restartable and self.config.get("mode") == "split":
             self.restart()
         return self.state()
 
@@ -307,7 +307,7 @@ class ProxyManager:
         if mode not in MODES:
             raise ChimeraValueError('err.proxy.manager.mode_must_be_pac_split_or_tun')
         self._save({**self.config, "mode": mode})
-        if self.running:
+        if self._restartable:
             self.restart()
         return self.state()
 
@@ -646,6 +646,24 @@ class ProxyManager:
         return self._ours_alive or bool(self._system_pids())
 
     @staticmethod
+    def _own_pids() -> list[int]:
+        """sing-box из нашей папки: свой процесс или остаток прошлой сессии Chimera. Если путь
+        к exe узнать нельзя (нет прав), процесс считается чужим — лучше не тронуть, чем убить чужой."""
+        own = os.path.normcase(str(SINGBOX_EXE.resolve()))
+        result = []
+        for pid in ProxyManager._system_pids():
+            path = winproc.image_path(pid)
+            if path and os.path.normcase(path) == own:
+                result.append(pid)
+        return result
+
+    @property
+    def _restartable(self) -> bool:
+        """После смены настроек перезапускаем только свой sing-box, а не запускаем свой
+        поверх чужого клиента."""
+        return self.running and (self._ours_alive or bool(self._own_pids()))
+
+    @staticmethod
     def _system_pids() -> list[int]:
         """PID всех живых sing-box.exe — ToolHelp32Snapshot вместо tasklist
         (см. modules/winproc.py): тот же охват чужих/прошлосессионных процессов,
@@ -728,17 +746,19 @@ class ProxyManager:
 
     @staticmethod
     def _kill_leftovers() -> None:
-        if not ProxyManager._system_pids():
+        """Добить свой sing-box, оставшийся от прошлой сессии. Чужой — из другой папки,
+        у другой программы — не трогаем: раньше остановка снимала все sing-box.exe в системе."""
+        pids = ProxyManager._own_pids()
+        if not pids:
             return
-        try:
-            subprocess.run(
-                ["taskkill", "/F", "/T", "/IM", "sing-box.exe"],
-                capture_output=True, creationflags=_CREATE_NO_WINDOW,
-            )
-        except OSError:
-            pass
+        for pid in pids:
+            try:
+                subprocess.run(["taskkill", "/F", "/T", "/PID", str(pid)],
+                               capture_output=True, creationflags=_CREATE_NO_WINDOW)
+            except OSError:
+                pass
         for _ in range(20):
-            if not ProxyManager._system_pids():
+            if not set(pids) & set(ProxyManager._own_pids()):
                 return
             time.sleep(0.15)
 
