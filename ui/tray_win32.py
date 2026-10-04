@@ -11,6 +11,7 @@ from ui import tray_model
 
 ICON = Path(__file__).resolve().parent.parent / "assets" / "logo" / "chimera.ico"
 CALLBACK = 0x8001
+TICK_MS = 1500   # как часто трей смотрит, не закончилось ли самолечение в фоне
 
 
 class Tray:
@@ -20,6 +21,7 @@ class Tray:
         self.ready = threading.Event()
         self.available = False
         self.hwnd = None
+        self.autotune_news = tray_model.AutotuneNews()
         self.thread = threading.Thread(target=self._run, daemon=True, name="chimera-tray")
         self.thread.start()
         self.ready.wait(3)
@@ -52,6 +54,10 @@ class Tray:
             reply = json.loads(self.api.dispatch(method, json.dumps(args)))
             if not reply.get("ok"):
                 raise RuntimeError(errors.localized(reply))
+
+    def news(self):
+        """(заголовок, текст) нового итога самолечения или None."""
+        return self.autotune_news.update(self.api.hub.snapshot().get("autotune"))
 
     def close(self):
         if self.hwnd:
@@ -113,11 +119,18 @@ class Tray:
         shell.Shell_NotifyIconW.argtypes = [w.DWORD, ctypes.POINTER(IconData)]
         kernel.GetModuleHandleW.argtypes = [w.LPCWSTR]
         kernel.GetModuleHandleW.restype = w.HMODULE
+        user.SetTimer.argtypes = [w.HWND, ctypes.c_size_t, w.UINT, ctypes.c_void_p]
+        user.SetTimer.restype = ctypes.c_size_t
         user.RegisterWindowMessageW.argtypes = [w.LPCWSTR]
         taskbar_created = user.RegisterWindowMessageW("TaskbarCreated")
         instance = kernel.GetModuleHandleW(None)
         name = f"ChimeraTray_{id(self)}"
         nid = IconData()
+
+        def balloon(title, text, error=False):
+            nid.flags |= 0x10
+            nid.title, nid.info, nid.info_flags = title[:63], text[:255], 3 if error else 1
+            shell.Shell_NotifyIconW(1, ctypes.byref(nid))
 
         def execute(command):
             if not self.command_lock.acquire(blocking=False):
@@ -126,11 +139,18 @@ class Tray:
                 self.command(command)
             except Exception as e:
                 applog.write(f"Команда трея: {e}")
-                nid.flags |= 0x10
-                nid.title, nid.info, nid.info_flags = "Chimera", str(e)[:255], 3
-                shell.Shell_NotifyIconW(1, ctypes.byref(nid))
+                balloon("Chimera", str(e), error=True)
             finally:
                 self.command_lock.release()
+
+        def tick():
+            try:
+                news = self.news()
+            except Exception as e:   # исключение не должно вылететь из оконной процедуры
+                applog.write(f"Трей: итог самолечения не прочитан: {e}")
+                return
+            if news:
+                balloon(*news)
 
         def popup(hwnd):
             menu = user.CreatePopupMenu()
@@ -153,6 +173,9 @@ class Tray:
                     self.show()
                 elif lp == 0x205:
                     popup(hwnd)
+                return 0
+            if msg == 0x0113:   # WM_TIMER
+                tick()
                 return 0
             if msg == taskbar_created:
                 shell.Shell_NotifyIconW(0, ctypes.byref(nid))
@@ -177,6 +200,7 @@ class Tray:
             nid.size, nid.window, nid.id = ctypes.sizeof(nid), self.hwnd, 1
             nid.flags, nid.message, nid.icon, nid.tip = 1 | 2 | 4, CALLBACK, icon, "Chimera"
             self.available = bool(shell.Shell_NotifyIconW(0, ctypes.byref(nid)))
+            user.SetTimer(self.hwnd, 1, TICK_MS, None)
             self.ready.set()
             message = w.MSG()
             while user.GetMessageW(ctypes.byref(message), None, 0, 0) > 0:

@@ -107,6 +107,7 @@ class Tray(QObject):
         super().__init__()
         self.app, self.window, self.api, self.bridge = app, window, api, bridge
         self.busy = set()  # модули, по которым команда ещё выполняется
+        self.autotune_news = tray_model.AutotuneNews()
 
         self.icon = QSystemTrayIcon(QIcon(str(APP_ICON)), app)
         self.icon.setToolTip("Chimera")  # только имя: состояние — в меню, не в подсказке
@@ -161,6 +162,9 @@ class Tray(QObject):
             self.retranslate()
         states = self.api.hub.snapshot()
         self.status.setText(tray_model.summary(states)[2])
+        news = self.autotune_news.update(states.get("autotune"))
+        if news:
+            self.icon.showMessage(*news, QSystemTrayIcon.MessageIcon.Information, 10000)
         for key, action in self.toggles.items():
             action.setChecked(tray_model.is_on(key, states.get(key)))
             action.setEnabled(key not in self.busy)

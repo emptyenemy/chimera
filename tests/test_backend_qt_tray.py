@@ -157,3 +157,15 @@ def test_close_quits_without_tray(app, config, monkeypatch):
     window.show()
     window.close()
     assert quits == [1]
+
+
+def test_a_background_fix_shows_a_tray_message(app, config, monkeypatch):
+    states = {"autotune": {"active": None, "last": None}}
+    _, _, tray = _tray(app, states)
+    messages = []
+    monkeypatch.setattr(tray.icon, "showMessage", lambda *a: messages.append(a[:2]))
+    states["autotune"] = {"active": {"id": "a", "phase": "done", "trigger": "watch", "report": {"services": [
+        {"name": "youtube", "fix": {"kind": "hosts", "id": "comss"}, "after": {"ok": True}}]}}, "last": None}
+    tray.refresh()
+    tray.refresh()
+    assert messages == [("Chimera починила сама", "youtube снова открывается: hosts через comss")]

@@ -102,3 +102,59 @@ def test_panic_summary_uses_codes_when_present_and_text_otherwise():
     with i18n.using("en"):
         assert tm.panic_summary(data).splitlines() == [
             "hosts: Administrator rights are required to edit the hosts file.", "dns: чужой текст"]
+
+
+# --- итог самолечения в фоне ----------------------------------------------------------------
+
+def _session(sid, phase="done", trigger="watch", rows=()):
+    return {"active": {"id": sid, "phase": phase, "trigger": trigger, "report": {"services": list(rows)}}, "last": None}
+
+
+FIXED = {"name": "youtube", "fix": {"kind": "strategy", "id": "alt"}, "after": {"ok": True}}
+BROKEN = {"name": "discord", "fix": None, "after": {"ok": False}}
+
+
+def test_a_background_fix_is_announced_once():
+    news = tm.AutotuneNews()
+    assert news.update(None) is None
+    assert news.update(_session("a", rows=[FIXED])) == ("Chimera починила сама", "youtube снова открывается: стратегия alt")
+    assert news.update(_session("a", rows=[FIXED])) is None
+    # «Готово» переносит ту же сессию в last — повтора нет
+    assert news.update({"active": None, "last": {**_session("a")["active"], "phase": "kept"}}) is None
+
+
+def test_results_from_before_the_tray_started_are_not_announced():
+    news = tm.AutotuneNews()
+    assert news.update(_session("old", rows=[FIXED])) is None
+    assert news.update(_session("old", rows=[FIXED])) is None
+
+
+def test_a_fix_running_when_the_tray_starts_is_announced_when_it_ends():
+    news = tm.AutotuneNews()
+    assert news.update(_session("b", phase="running")) is None
+    assert news.update(_session("b", rows=[FIXED, BROKEN]))[0] == "Chimera починила не всё"
+
+
+def test_only_background_results_are_announced():
+    news = tm.AutotuneNews()
+    news.update(None)
+    assert news.update(_session("c", trigger="user", rows=[FIXED])) is None
+
+
+def test_a_failed_background_fix_says_so():
+    news = tm.AutotuneNews()
+    news.update(None)
+    with i18n.using("en"):
+        assert news.update(_session("d", rows=[BROKEN])) == (
+            "Self-healing did not help", "discord does not open; details on the Auto-setup page")
+
+
+def test_the_webview_tray_reads_news_from_the_hub_without_a_window():
+    from ui.tray_win32 import Tray
+    states = {}
+    tray = Tray.__new__(Tray)   # без потока и значка: только чтение итога
+    tray.api = type("Api", (), {"hub": type("Hub", (), {"snapshot": staticmethod(lambda: states)})()})()
+    tray.autotune_news = tm.AutotuneNews()
+    assert tray.news() is None
+    states["autotune"] = _session("w", rows=[FIXED])
+    assert tray.news()[0] == "Chimera починила сама"

@@ -80,3 +80,42 @@ def toggle_command(key: str, data: dict | None, on: bool) -> tuple[str, list]:
     if key in ("proxy", "tg"):
         return f"{key}_{'start' if on else 'stop'}", []
     raise KeyError(key)
+
+
+# семейство строк `chimera fix`: способ починки по его виду (strategy, hosts, dns, proxy)
+FIX_VIA = "cli.fix.via"
+
+
+class AutotuneNews:
+    """Итог самолечения в фоне (modules/autotune/watch.py) — одно уведомление на сессию.
+
+    Окно в это время обычно закрыто в трей, а подбор меняет систему: человек должен узнать,
+    что и чем Chimera починила сама. Сессии, закончившиеся до запуска трея, не показываются."""
+
+    def __init__(self):
+        self.seen = None
+        self.started = False
+
+    def update(self, state: dict | None) -> tuple[str, str] | None:
+        """(заголовок, текст) нового итога или None. state — источник хаба autotune."""
+        state = state or {}
+        session = state.get("active") or state.get("last")
+        if not self.started:
+            self.started = True
+            # идущий сейчас подбор ещё закончится — его итог покажем
+            if session and session.get("phase") != "running":
+                self.seen = session.get("id")
+            return None
+        if (not session or session.get("trigger") != "watch" or session.get("phase") != "done"
+                or session.get("id") == self.seen):
+            return None
+        self.seen = session.get("id")
+        rows = [r for r in (session.get("report") or {}).get("services") or [] if not r.get("skipped")]
+        fixed = [r for r in rows if r.get("fix") and (r.get("after") or {}).get("ok")]
+        broken = [r for r in rows if not (r.get("after") or {}).get("ok")]
+        lines = [t("tray.autotune.row_fixed", name=r["name"], via=t(f"{FIX_VIA}.{r['fix']['kind']}", id=r["fix"]["id"]))
+                 for r in fixed]
+        lines += [t("tray.autotune.row_broken", name=r["name"]) for r in broken]
+        title = t("tray.autotune.fixed") if fixed and not broken else (
+            t("tray.autotune.partly") if fixed else t("tray.autotune.failed"))
+        return title, "\n".join(lines)
