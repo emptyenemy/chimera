@@ -1280,6 +1280,8 @@ class Api:
             info = domains.rename_list(old, new)
             if old in (self.proxy.config.get("lists") or []):
                 self.proxy.set_lists([new if n == old else n for n in self.proxy.config["lists"]])
+            if old in (self.proxy.config.get("direct_lists") or []):
+                self.proxy.set_direct_lists([new if n == old else n for n in self.proxy.config["direct_lists"]])
             if old in (self.winws.config.get("lists") or []):
                 self.winws.set_lists([new if n == old else n for n in self.winws.config["lists"]])
             assignments = self.hosts.assignments()
@@ -1640,6 +1642,13 @@ class Api:
     def proxy_set_lists(self, names):
         try:
             return _ok(self.proxy.set_lists(names))
+        except Exception as e:
+            return _err(e)
+
+    @_auto_snapshot(('proxy',))
+    def proxy_set_direct_lists(self, names):
+        try:
+            return _ok(self.proxy.set_direct_lists(names))
         except Exception as e:
             return _err(e)
 

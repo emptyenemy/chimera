@@ -271,6 +271,18 @@
     await click('proxy-sub-refresh');
     await wait(() => el('proxy-server-1')?.dataset.state === 'selected', 'Refresh lost the servers');
     steps.push({ name: 'Proxy subscription: servers listed, fastest picked, manual choice, refresh', ok: true });
+    need(!el('proxy-direct'), 'Always-direct card shown in PAC mode');
+    await api('proxy_set_mode', 'split'); await api('hub_refresh', ['proxy']);
+    await go('proxy', 'proxy-direct-queue-b');
+    await click('proxy-direct-queue-b');
+    await wait(async () => (await api('proxy_state')).direct_lists.includes('queue-b'), 'Always-direct list not saved');
+    need(el('proxy-direct-queue-b').getAttribute('aria-checked') === 'true', 'Always-direct checkbox not checked');
+    await click('proxy-direct-queue-b');
+    await wait(async () => !(await api('proxy_state')).direct_lists.includes('queue-b'), 'Always-direct list not removed');
+    await wait(() => el('proxy-direct-queue-b').getAttribute('aria-checked') === 'false', 'Always-direct checkbox stuck');
+    await api('proxy_set_mode', 'pac'); await api('hub_refresh', ['proxy']);
+    await wait(() => !el('proxy-direct'), 'Always-direct card left in PAC mode');
+    steps.push({ name: 'Always-direct lists toggle in TUN modes and hide in PAC', ok: true });
     await go('lists', 'list-row-queue-b'); await click('list-row-queue-b');
     await wait(() => el('lists-textarea'), 'Recovery editor missing');
     const recovering = (await api('lists_read', 'queue-b')) + 'recover.example\n';

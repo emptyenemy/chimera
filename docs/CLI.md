@@ -99,6 +99,7 @@
 | Прокси → Серверы подписки → Выбрать быстрее | `chimera proxy fastest` | app |
 | Прокси → Обновить подписку | `chimera proxy subscription` | app |
 | Прокси → выбор списков | `chimera proxy lists [списки…]` | app |
+| Прокси → Всегда напрямую | `chimera proxy direct [списки…]` | app |
 | Прокси → приложения | `chimera proxy apps [приложения…]` | app |
 | Прокси → «Запущенные программы» | `chimera proxy apps-running` | read |
 | Прокси → автозапуск | `chimera proxy autostart <on|off>` | app |
@@ -767,6 +768,16 @@ chimera proxy subscription
 
 ```
 chimera proxy lists youtube telegram
+```
+
+#### `chimera proxy direct [списки…]`
+
+Какие списки всегда идут мимо прокси, даже в TUN (без имён — очистить). Применяется сразу. Уровень: изменение приложения.
+
+- `списки` — имена списков
+
+```
+chimera proxy direct russia-direct
 ```
 
 #### `chimera proxy apps [приложения…]`

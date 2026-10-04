@@ -31,7 +31,7 @@ Updates install only when requested in Settings. The updater keeps your build va
 The tools work independently and share domain lists:
 
 - **Strategies (zapret2 / winws2)**: DPI bypass through [bol-van/zapret2](https://github.com/bol-van/zapret2), with strategies ported from [Flowseal/zapret-discord-youtube](https://github.com/Flowseal/zapret-discord-youtube).
-- **Proxy (sing-box)**: every protocol of the core, from VLESS, VMess, Trojan and Shadowsocks to Hysteria2, TUIC and WireGuard, for selected domains. A provider subscription works too: Chimera downloads its servers and picks the fastest. PAC mode works without administrator rights; TUN supports routing by application or all traffic.
+- **Proxy (sing-box)**: every protocol of the core, from VLESS, VMess, Trojan and Shadowsocks to Hysteria2, TUIC and WireGuard, for selected domains. A provider subscription works too: Chimera downloads its servers and picks the fastest. Russian banks, government portals and marketplaces bypass the proxy even in full TUN. PAC mode works without administrator rights; TUN supports routing by application or all traffic.
 - **Telegram proxy**: local MTProto proxy powered by [Flowseal/tg-ws-proxy](https://github.com/Flowseal/tg-ws-proxy).
 - **Hosts**: override system hosts entries using alternative DNS providers such as xbox, comss and malw.
 - **DNS**: select system DNS, measure server response times and try changes with automatic rollback.

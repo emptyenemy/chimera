@@ -58,10 +58,19 @@ DOMAINS_RULESET_PATH = paths.data_path("singbox-domains.json")
 IPS_RULESET_PATH = paths.data_path("singbox-ips.json")
 DOMAINS_TAG = "chimera-domains"
 IPS_TAG = "chimera-ips"
+# «Всегда напрямую»: домены и подсети этих списков не идут через прокси ни в каком режиме
+DIRECT_DOMAINS_RULESET_PATH = paths.data_path("singbox-direct-domains.json")
+DIRECT_IPS_RULESET_PATH = paths.data_path("singbox-direct-ips.json")
+DIRECT_DOMAINS_TAG = "chimera-direct-domains"
+DIRECT_IPS_TAG = "chimera-direct-ips"
 # Пустое условие в правиле — ошибка или «подходит всё», поэтому пустые списки пишем
 # заглушками, которые не совпадут ни с чем (TEST-NET-3 и зарезервированный .invalid).
 DOMAIN_PLACEHOLDER = "chimera.invalid"
 IP_PLACEHOLDER = "203.0.113.113/32"
+
+
+def _direct_rule() -> dict:
+    return {"rule_set": [DIRECT_DOMAINS_TAG, DIRECT_IPS_TAG], "outbound": "direct"}
 
 # ветка реестра WinINet: туда пишем AutoConfigURL, чтобы браузеры подхватили PAC
 _INET_SETTINGS = r"Software\Microsoft\Windows\CurrentVersion\Internet Settings"
@@ -79,9 +88,10 @@ SINGBOX_SHA256 = "c2d8bfff918755808781dfdeeb8581b6c91eb3a243d9a7b55483cfc0c0684d
 
 # mode: "pac" | "split" | "tun" — см. докстринг модуля; apps — имена процессов для split.
 # subscription — адрес подписки провайдера (секрет, как и link), servers — её серверы ссылками;
-# link — выбранный из них или вставленный вручную (тогда подписки нет)
+# link — выбранный из них или вставленный вручную (тогда подписки нет);
+# direct_lists — «всегда напрямую»: банки и госсервисы не пускают зарубежные IP прокси
 DEFAULTS = {"link": "", "lists": [], "apps": [], "autostart": False, "mode": "pac", "socks_port": 2080,
-            "subscription": "", "servers": []}
+            "subscription": "", "servers": [], "direct_lists": ["russia-direct"]}
 MODES = ("pac", "split", "tun")
 
 # Общий TUN-адаптер выборочного и полного режимов.
@@ -268,9 +278,12 @@ class ProxyManager:
         """Пишет домены и подсети выбранных списков в файлы правил sing-box.
         Замена файла атомарная (tmp + os.replace): ядро не должно прочесть половину."""
         dom, nets = self._split()
+        direct_dom, direct_nets = self._split_direct()
         for path, key, items, placeholder in (
             (DOMAINS_RULESET_PATH, "domain_suffix", dom, DOMAIN_PLACEHOLDER),
             (IPS_RULESET_PATH, "ip_cidr", nets, IP_PLACEHOLDER),
+            (DIRECT_DOMAINS_RULESET_PATH, "domain_suffix", direct_dom, DOMAIN_PLACEHOLDER),
+            (DIRECT_IPS_RULESET_PATH, "ip_cidr", direct_nets, IP_PLACEHOLDER),
         ):
             body = {"version": 3, "rules": [{key: list(items) or [placeholder]}]}
             atomic_write_text(path, json.dumps(body, ensure_ascii=False, indent=2))
@@ -280,6 +293,8 @@ class ProxyManager:
         return [
             {"type": "local", "tag": DOMAINS_TAG, "format": "source", "path": str(DOMAINS_RULESET_PATH)},
             {"type": "local", "tag": IPS_TAG, "format": "source", "path": str(IPS_RULESET_PATH)},
+            {"type": "local", "tag": DIRECT_DOMAINS_TAG, "format": "source", "path": str(DIRECT_DOMAINS_RULESET_PATH)},
+            {"type": "local", "tag": DIRECT_IPS_TAG, "format": "source", "path": str(DIRECT_IPS_RULESET_PATH)},
         ]
 
     def set_autostart(self, value: bool) -> dict:
@@ -392,6 +407,17 @@ class ProxyManager:
             return [], []
         return domains.split_lists(self.config["lists"])
 
+    def _split_direct(self) -> tuple[list[str], list[str]]:
+        names = [n for n in (self.config.get("direct_lists") or []) if n in domains.available_lists()]
+        return domains.split_lists(names) if names else ([], [])
+
+    def set_direct_lists(self, names) -> dict:
+        """Списки «всегда напрямую»: их домены и подсети идут мимо прокси, в том числе в TUN."""
+        valid = {i["name"] for i in domains.list_info()}
+        self._save({**self.config, "direct_lists": [n for n in (names or []) if n in valid]})
+        self.reload_lists()  # правила — в файлах, ядро перечитает их само
+        return self.state()
+
     def _domains(self) -> list[str]:
         return self._split()[0]
 
@@ -430,7 +456,8 @@ class ProxyManager:
             dns = {
                 "servers": dns_servers,
                 # IP в DNS-правилах не нужны — их резолвить нечего
-                "rules": [{"rule_set": [DOMAINS_TAG], "server": "dns-proxy"}],
+                "rules": [{"rule_set": [DIRECT_DOMAINS_TAG], "server": "dns-direct"},
+                          {"rule_set": [DOMAINS_TAG], "server": "dns-proxy"}],
                 "final": "dns-direct",
                 "strategy": "prefer_ipv4",
             }
@@ -440,6 +467,7 @@ class ProxyManager:
             }
             route_rules = [
                 {"action": "sniff"},
+                _direct_rule(),
                 {"rule_set": [DOMAINS_TAG], "outbound": "proxy"},
                 {"rule_set": [IPS_TAG], "outbound": "proxy"},
             ]
@@ -457,8 +485,12 @@ class ProxyManager:
             # иначе отвалятся роутер/принтеры/соседние устройства.
             dns = {
                 "servers": dns_servers,
-                "final": "dns-proxy",  # весь DNS через прокси — без утечек
+                # «напрямую» резолвим своим DNS: банку нужен его российский адрес, а не зарубежный
+                "rules": [{"rule_set": [DIRECT_DOMAINS_TAG], "server": "dns-direct"}],
+                "final": "dns-proxy",  # весь остальной DNS через прокси — без утечек
                 "strategy": "prefer_ipv4",
+                # соединение без SNI (приложение банка) узнаётся по домену, который ядро ему выдало
+                "reverse_mapping": True,
             }
             inbound = dict(_TUN_INBOUND)
             route = {
@@ -466,8 +498,10 @@ class ProxyManager:
                     {"action": "sniff"},
                     {"protocol": "dns", "action": "hijack-dns"},
                     {"ip_is_private": True, "outbound": "direct"},
+                    _direct_rule(),
                 ],
-                "final": "proxy",  # всё, кроме локалки, — в туннель
+                "rule_set": self._ruleset_refs(),
+                "final": "proxy",  # всё, кроме локалки и «напрямую», — в туннель
                 "auto_detect_interface": True,
                 "default_domain_resolver": {"server": "dns-proxy"},
             }
@@ -500,7 +534,7 @@ class ProxyManager:
         всё равно уходят в прокси по имени процесса."""
         apps = list(self.config.get("apps") or [])
 
-        dns_rules = []
+        dns_rules = [{"rule_set": [DIRECT_DOMAINS_TAG], "server": "dns-direct"}]
         if apps:
             dns_rules.append({"process_name": apps, "server": "dns-proxy"})
         dns_rules.append({"rule_set": [DOMAINS_TAG], "server": "dns-proxy"})
@@ -515,8 +549,9 @@ class ProxyManager:
         rules = [
             {"action": "sniff"},
             {"protocol": "dns", "action": "hijack-dns"},
-            # локалка раньше правил по приложениям: браузер ходит и на роутер
+            # локалка и «напрямую» раньше правил по приложениям: браузер ходит и на роутер, и в банк
             {"ip_is_private": True, "outbound": "direct"},
+            _direct_rule(),
         ]
         if apps:
             rules.append({"process_name": apps, "outbound": "proxy"})
@@ -795,6 +830,7 @@ class ProxyManager:
             "servers": self._server_rows(),
             "last_switch": self.last_switch,
             "lists": self.config["lists"],
+            "direct_lists": list(self.config.get("direct_lists") or []),
             "apps": list(self.config.get("apps") or []),
             "domains": len(_dom),
             "ips": len(_nets),

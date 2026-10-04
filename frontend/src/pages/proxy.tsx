@@ -55,6 +55,7 @@ interface ProxyView {
   link?: string
   parsed?: { label?: string; protocol?: string; server?: string; security?: string; transport?: string } | null
   lists?: string[]
+  direct_lists?: string[]
   apps?: string[]
   domains?: number
   ips?: number
@@ -518,9 +519,38 @@ function AppsCard({ st }: { st: ProxyView }) {
 
 // --- списки для маршрутизации через прокси --------------------------------------
 
+function ListChecks({ all, selected, prefix, legend, onToggle }: {
+  all: string[]
+  selected: string[]
+  prefix: string
+  legend: string
+  onToggle: (name: string, on: boolean) => void
+}) {
+  const sel = new Set(selected)
+  return (
+    <FieldSet>
+      <FieldLegend className="sr-only">{legend}</FieldLegend>
+      <FieldGroup className="grid grid-cols-[repeat(auto-fill,minmax(180px,1fr))] gap-x-4 gap-y-3">
+        {all.map((name) => (
+          <Field key={name} orientation="horizontal">
+            <Checkbox
+              id={`${prefix}-${name}`}
+              data-testid={`${prefix}-${name}`}
+              checked={sel.has(name)}
+              onCheckedChange={(on) => onToggle(name, on)}
+            />
+            <FieldLabel htmlFor={`${prefix}-${name}`} className="font-normal">
+              {name}
+            </FieldLabel>
+          </Field>
+        ))}
+      </FieldGroup>
+    </FieldSet>
+  )
+}
+
 function ListsCard({ st }: { st: ProxyView }) {
   const all = st.all_lists ?? []
-  const sel = new Set(st.lists ?? [])
 
   const toggle = (name: string, on: boolean) => {
     void setTransport(name, "proxy", on, { notifyInfo: false, errorTitle: t("proxy.lists.failed") })
@@ -549,25 +579,42 @@ function ListsCard({ st }: { st: ProxyView }) {
             </EmptyContent>
           </Empty>
         ) : (
-          <FieldSet>
-            <FieldLegend className="sr-only">{t("proxy.lists.title")}</FieldLegend>
-            <FieldGroup className="grid grid-cols-[repeat(auto-fill,minmax(180px,1fr))] gap-x-4 gap-y-3">
-              {all.map((name) => (
-                <Field key={name} orientation="horizontal">
-                  <Checkbox
-                    id={`proxy-list-${name}`}
-                    data-testid={`proxy-list-${name}`}
-                    checked={sel.has(name)}
-                    onCheckedChange={(on) => toggle(name, on)}
-                  />
-                  <FieldLabel htmlFor={`proxy-list-${name}`} className="font-normal">
-                    {name}
-                  </FieldLabel>
-                </Field>
-              ))}
-            </FieldGroup>
-          </FieldSet>
+          <ListChecks all={all} selected={st.lists ?? []} prefix="proxy-list" legend={t("proxy.lists.title")} onToggle={toggle} />
         )}
+      </CardContent>
+    </Card>
+  )
+}
+
+// --- «всегда напрямую»: банки и госсервисы мимо туннеля --------------------------
+
+function saveDirect(name: string, on: boolean) {
+  const change = (value: unknown) => {
+    const lists = ((value as ProxyView | undefined)?.direct_lists ?? []).filter(n => n !== name)
+    return { direct_lists: on ? [...lists, name] : lists }
+  }
+  return optimistic("proxy", change, () => api("proxy_set_direct_lists", change(store.confirmed("proxy")).direct_lists), {
+    errorTitle: t("proxy.direct.failed"),
+  }).catch(() => {})
+}
+
+function DirectCard({ st }: { st: ProxyView }) {
+  const all = st.all_lists ?? []
+  if (!all.length) return null
+  return (
+    <Card size="sm" data-testid="proxy-direct">
+      <CardHeader>
+        <CardTitle>{t("proxy.direct.title")}</CardTitle>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-3">
+        <FieldDescription>{t("proxy.direct.desc")}</FieldDescription>
+        <ListChecks
+          all={all}
+          selected={st.direct_lists ?? []}
+          prefix="proxy-direct"
+          legend={t("proxy.direct.title")}
+          onToggle={(name, on) => void saveDirect(name, on)}
+        />
       </CardContent>
     </Card>
   )
@@ -612,6 +659,7 @@ export function ProxyPage() {
           {!!st.servers?.length && <SubscriptionCard st={st} />}
           {modeOf(st) === "split" && <AppsCard st={st} />}
           {modeOf(st) !== "tun" && <ListsCard st={st} />}
+          {modeOf(st) !== "pac" && <DirectCard st={st} />}
         </>
       )}
       <LogCard />

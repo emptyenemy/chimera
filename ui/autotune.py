@@ -31,8 +31,10 @@ class AutotuneOps:
     # --- каталог и проверка -------------------------------------------------------------
 
     def services(self):
+        # «всегда напрямую» — банки и госсервисы: их не разблокируют, им нужен российский IP
+        direct = set(self.api.proxy.config.get("direct_lists") or [])
         return [{"name": i["name"], "targets": targets_mod.targets(i["name"], i["entries"])}
-                for i in domains.list_index()]
+                for i in domains.list_index() if i["name"] not in direct]
 
     def targets(self, name):
         return targets_mod.targets(name, domains.load_list(name))

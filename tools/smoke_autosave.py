@@ -191,6 +191,7 @@ def main(*, layout=False, screenshot=None, filters_only=False):
                                                        "tg_set_config", "tg_set_advanced", "lists_save", "lists_create",
                                                        "lists_rename", "lists_delete", "proxy_set_lists", "winws_set_lists", "proxy_set_link",
                                                        "proxy_select_server", "proxy_fastest_server", "proxy_refresh_subscription",
+                                                       "proxy_set_mode", "proxy_set_direct_lists",
                                                        "dns_set_probe_config", "upstream_update", "hosts_set_background", "game_filter_set",
                                                        "data_update"}:
                     return super().dispatch(method, args_json)

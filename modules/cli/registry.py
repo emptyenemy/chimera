@@ -247,6 +247,8 @@ ACTIONS: tuple[Action, ...] = (
     _a("proxy", "subscription", "proxy_refresh_subscription", level=APP, examples=("chimera proxy subscription",)),
     _a("proxy", "lists", "proxy_set_lists", (Arg("списки", "names", optional=True),), APP,
        ("chimera proxy lists youtube telegram",)),
+    _a("proxy", "direct", "proxy_set_direct_lists", (Arg("списки", "names", optional=True),), APP,
+       ("chimera proxy direct russia-direct",)),
     _a("proxy", "apps", "proxy_set_apps", (Arg("приложения", "names", optional=True),), APP,
        ("chimera proxy apps Discord.exe chrome.exe",)),
     _a("proxy", "apps-running", "proxy_apps_snapshot", examples=("chimera proxy apps-running",)),

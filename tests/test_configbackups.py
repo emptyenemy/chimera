@@ -733,6 +733,14 @@ def test_auto_list_inventory_changes_restore_connections(live, method, args):
     assert full_snapshot(live) == old
 
 
+def test_rename_moves_the_always_direct_list_and_restores_it(live):
+    live.api.proxy.set_direct_lists(["discord"])
+    assert live.api.lists_rename("discord", "renamed")["ok"]
+    assert live.api.proxy.config["direct_lists"] == ["renamed"]
+    assert not cb.restore(cb.list_backups()[0]["id"], True, live.ops)["errors"]
+    assert live.api.proxy.config["direct_lists"] == ["discord"]
+
+
 def test_auto_provider_add_and_delete_restore_related_hosts(live):
     assert live.api.hosts_add_provider("Local", "", ["1.1.1.1"])["ok"]
     backup = cb.list_backups()[0]

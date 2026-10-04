@@ -211,6 +211,9 @@ def normalize(sid, raw):
             if (not isinstance(full["subscription"], str) or not isinstance(full["servers"], list)
                     or not all(isinstance(s, str) for s in full["servers"])):
                 _bad()
+            direct = full["direct_lists"]
+            if not isinstance(direct, list) or not all(isinstance(n, str) and domains.NAME_RE.fullmatch(n) for n in direct):
+                _bad()
             _port(full["socks_port"])
             portable = {k: full[k] for k in ("mode", "lists", "apps")}
         elif sid == "telegram":

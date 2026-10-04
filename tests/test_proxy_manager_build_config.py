@@ -11,6 +11,7 @@ import pytest
 
 from modules.proxy import manager as proxy_manager
 from modules.proxy.manager import (
+    DIRECT_DOMAINS_RULESET_PATH, DIRECT_DOMAINS_TAG, DIRECT_IPS_RULESET_PATH, DIRECT_IPS_TAG,
     DOMAINS_RULESET_PATH, DOMAINS_TAG, IPS_RULESET_PATH, IPS_TAG, ProxyManager,
 )
 
@@ -19,9 +20,14 @@ from modules.proxy.manager import (
 DOM_ROUTE = {"rule_set": [DOMAINS_TAG], "outbound": "proxy"}
 IP_ROUTE = {"rule_set": [IPS_TAG], "outbound": "proxy"}
 DOM_DNS = {"rule_set": [DOMAINS_TAG], "server": "dns-proxy"}
+# «всегда напрямую» стоит раньше прокси в любом режиме
+DIRECT_ROUTE = {"rule_set": [DIRECT_DOMAINS_TAG, DIRECT_IPS_TAG], "outbound": "direct"}
+DIRECT_DNS = {"rule_set": [DIRECT_DOMAINS_TAG], "server": "dns-direct"}
 RULE_SETS = [
     {"type": "local", "tag": DOMAINS_TAG, "format": "source", "path": str(DOMAINS_RULESET_PATH)},
     {"type": "local", "tag": IPS_TAG, "format": "source", "path": str(IPS_RULESET_PATH)},
+    {"type": "local", "tag": DIRECT_DOMAINS_TAG, "format": "source", "path": str(DIRECT_DOMAINS_RULESET_PATH)},
+    {"type": "local", "tag": DIRECT_IPS_TAG, "format": "source", "path": str(DIRECT_IPS_RULESET_PATH)},
 ]
 
 VLESS_LINK = "vless://uuid-1@1.2.3.4:443?security=none&type=tcp#test"
@@ -61,11 +67,11 @@ def test_build_config_pac_mode_routes_domains_and_ips_separately(pm, monkeypatch
     assert cfg["inbounds"][0]["listen_port"] == 2080
 
     assert cfg["route"]["rule_set"] == RULE_SETS
-    assert cfg["route"]["rules"] == [{"action": "sniff"}, DOM_ROUTE, IP_ROUTE]
+    assert cfg["route"]["rules"] == [{"action": "sniff"}, DIRECT_ROUTE, DOM_ROUTE, IP_ROUTE]
     assert cfg["route"]["final"] == "direct"
 
     # DNS: наши домены идут через прокси-DNS, IP в DNS-правилах не нужны
-    assert cfg["dns"]["rules"] == [DOM_DNS]
+    assert cfg["dns"]["rules"] == [DIRECT_DNS, DOM_DNS]
 
     assert cfg["outbounds"][0]["type"] == "vless"
     assert cfg["outbounds"][0]["tag"] == "proxy"
@@ -81,8 +87,8 @@ def test_build_config_pac_mode_without_lists_still_references_rule_sets(pm, monk
     pm.config["mode"] = "pac"
 
     cfg = pm.build_config()
-    assert cfg["route"]["rules"] == [{"action": "sniff"}, DOM_ROUTE, IP_ROUTE]
-    assert cfg["dns"]["rules"] == [DOM_DNS]
+    assert cfg["route"]["rules"] == [{"action": "sniff"}, DIRECT_ROUTE, DOM_ROUTE, IP_ROUTE]
+    assert cfg["dns"]["rules"] == [DIRECT_DNS, DOM_DNS]
 
 
 def test_build_config_tun_mode_ignores_lists_and_routes_everything_to_proxy(pm, monkeypatch):
@@ -98,12 +104,15 @@ def test_build_config_tun_mode_ignores_lists_and_routes_everything_to_proxy(pm, 
 
     assert cfg["inbounds"][0]["type"] == "tun"
     assert cfg["route"]["final"] == "proxy"
-    # список игнорируется в TUN — domain_suffix/ip_cidr правил по спискам нет
+    # список игнорируется в TUN — правил «в прокси» по спискам нет, только «напрямую»
+    assert DOM_ROUTE not in cfg["route"]["rules"] and IP_ROUTE not in cfg["route"]["rules"]
     assert _route_rule(cfg["route"], "domain_suffix") is None
     assert _route_rule(cfg["route"], "ip_cidr") is None
-    assert "rule_set" not in cfg["route"]
+    assert cfg["route"]["rule_set"] == RULE_SETS
     private_rule = _route_rule(cfg["route"], "ip_is_private")
     assert private_rule == {"ip_is_private": True, "outbound": "direct"}
+    assert cfg["route"]["rules"].index(DIRECT_ROUTE) > cfg["route"]["rules"].index(private_rule)
+    assert cfg["dns"]["rules"] == [DIRECT_DNS]
     dns_rule = _route_rule(cfg["route"], "protocol")
     assert dns_rule == {"protocol": "dns", "action": "hijack-dns"}
     assert cfg["dns"]["final"] == "dns-proxy"
@@ -195,7 +204,8 @@ def test_build_config_old_modes_ignore_apps(pm, monkeypatch):
         cfg = pm.build_config()
         assert _route_rule(cfg["route"], "process_name") is None
         assert "find_process" not in cfg["route"]
-        assert "reverse_mapping" not in cfg["dns"]
+        # IP -> домен помнит только TUN: в PAC ядро видит лишь соединения от браузера с доменом
+        assert ("reverse_mapping" in cfg["dns"]) == (mode == "tun")
 
 
 def test_split_mode_is_not_pac_and_needs_admin(pm):
@@ -228,6 +238,8 @@ def rs_paths(tmp_path, monkeypatch):
     dom, ips = tmp_path / "domains.json", tmp_path / "ips.json"
     monkeypatch.setattr(proxy_manager, "DOMAINS_RULESET_PATH", dom)
     monkeypatch.setattr(proxy_manager, "IPS_RULESET_PATH", ips)
+    monkeypatch.setattr(proxy_manager, "DIRECT_DOMAINS_RULESET_PATH", tmp_path / "direct-domains.json")
+    monkeypatch.setattr(proxy_manager, "DIRECT_IPS_RULESET_PATH", tmp_path / "direct-ips.json")
     return dom, ips
 
 
@@ -268,7 +280,8 @@ def test_write_rulesets_replaces_files_atomically(pm, monkeypatch, rs_paths):
 
     dom, _ = rs_paths
     assert "b.example" in dom.read_text(encoding="utf-8")
-    assert sorted(p.name for p in dom.parent.iterdir()) == ["domains.json", "ips.json"]
+    assert sorted(p.name for p in dom.parent.iterdir()) == ["direct-domains.json", "direct-ips.json",
+                                                            "domains.json", "ips.json"]
 
 
 def _running(monkeypatch, pm):

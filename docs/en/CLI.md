@@ -99,6 +99,7 @@ Levels exist so that remote channels can be restricted. The proxy link is hidden
 | Proxy → Subscription servers → Pick the fastest | `chimera proxy fastest` | app |
 | Proxy → Refresh subscription | `chimera proxy subscription` | app |
 | Proxy → list selection | `chimera proxy lists [lists…]` | app |
+| Proxy → Always direct | `chimera proxy direct [lists…]` | app |
 | Proxy → apps | `chimera proxy apps [apps…]` | app |
 | Proxy → “Running programs” | `chimera proxy apps-running` | read |
 | Proxy → autostart | `chimera proxy autostart <on|off>` | app |
@@ -767,6 +768,16 @@ Which lists go through the proxy (no names clears them). Applied right away. Lev
 
 ```
 chimera proxy lists youtube telegram
+```
+
+#### `chimera proxy direct [lists…]`
+
+Which lists always bypass the proxy, even in TUN (no names clears them). Applied right away. Level: changes the app.
+
+- `lists` — list names
+
+```
+chimera proxy direct russia-direct
 ```
 
 #### `chimera proxy apps [apps…]`

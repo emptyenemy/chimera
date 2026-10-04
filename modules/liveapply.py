@@ -34,7 +34,7 @@ def hosts_uses(hosts, name: str) -> bool:
 def _uses(names: Iterable[str], winws, proxy, hosts) -> tuple[bool, bool, bool]:
     names = list(names)
     return (any(_has(winws.config.get("lists"), n) for n in names),
-            any(_has(proxy.config.get("lists"), n) for n in names),
+            any(_has(proxy.config.get("lists"), n) or _has(proxy.config.get("direct_lists"), n) for n in names),
             any(hosts_uses(hosts, n) for n in names))
 
 
@@ -65,6 +65,8 @@ def lists_removed(name: str, winws, proxy, hosts) -> list:
     use_winws, use_proxy, use_hosts = _uses([name], winws, proxy, hosts)
     if use_proxy:
         apply_safely(errors, "proxy", lambda: proxy.set_lists(proxy.config["lists"]))
+        if _has(proxy.config.get("direct_lists"), name):
+            apply_safely(errors, "proxy", lambda: proxy.set_direct_lists(proxy.config["direct_lists"]))
     if use_winws:
         apply_safely(errors, "winws", lambda: winws.set_lists(winws.config["lists"]))
     if use_hosts:
