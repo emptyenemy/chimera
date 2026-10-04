@@ -22,6 +22,7 @@ from modules import (
     cheburcheck,
     control,
     configbackups,
+    dataupdate,
     verifiedconfig,
     doctor,
     domainrec,
@@ -434,7 +435,7 @@ class Api:
             refresh = method in ("config_backup_restore", "config_import_apply", "config_set", "tg_regen_secret",
                                  "winws_start", "game_filter_set", "ipset_set", "ipset_update", "appearance_apply",
                                  "trial_start", "trial_confirm", "trial_revert",
-                                 "autotune_start", "autotune_cancel", "autotune_revert", "autotune_keep")
+                                 "autotune_start", "autotune_cancel", "autotune_revert", "autotune_keep", "data_update")
             refresh |= method.startswith(("proxy_set_", "tg_set_", "winws_set_", "lists_", "hosts_", "dns_")) and not self.is_read(method)
             if refresh:
                 self.proxy.config = self.proxy._load()
@@ -569,6 +570,49 @@ class Api:
     def selfupdate_state(self):
         return _ok(self.updater.snapshot())
 
+    # --- стратегии и списки по воздуху (modules/dataupdate.py) -------------------------
+
+    def data_check(self):
+        """Есть ли выпуск стратегий и списков новее установленного и что он изменит."""
+        try:
+            remote = self._backup_owner("data_check")
+            return remote if remote is not None else _ok(dataupdate.DataUpdater().check())
+        except Exception as e:
+            return _err(e)
+
+    def data_update(self):
+        """Поставить выпуск данных. Свои правки пользователя остаются; списки применяются
+        сразу, запущенная стратегия перезапускается, если поменялись файлы стратегий."""
+        try:
+            with self._mutation_lock:
+                remote = self._backup_owner("data_update")
+                if remote is not None:
+                    return remote
+
+                def lists_of(changed):
+                    return [Path(rel).stem for rel in changed if rel.startswith("lists/")]
+
+                def before(changed):
+                    # снимок списков до записи: обновление данных откатывается из истории бэкапов
+                    configbackups.create_snapshot(ShareOps(self).backup_state((), lists_of(changed)), kind="auto")
+
+                result = dataupdate.DataUpdater().install(before=before)
+                changed = result["added"] + result["updated"]
+                names = [n for n in lists_of(changed) if n in domains.available_lists()]
+                result["apply_errors"] = liveapply.lists_changed(names, self.winws, self.proxy, self.hosts) if names else []
+                result["restarted"] = False
+                strategy_files = [rel for rel in changed
+                                  if rel.startswith("strategies/") and not rel.startswith("strategies/hostlists/")]
+                if strategy_files and self.winws.running:
+                    try:
+                        self._restart_winws_if_running()
+                        result["restarted"] = True
+                    except ChimeraError as e:
+                        result["restart_error"] = str(e)
+                return _ok(result)
+        except Exception as e:
+            return _err(e)
+
     def selfupdate_check(self):
         try:
             return _ok(self.updater.check())
@@ -688,6 +732,7 @@ class Api:
         (("selfupdate_",), ("selfupdate",)),
         (("trial_",), ("trial", "winws", "proxy", "hosts")),
         (("autotune_",), ("autotune", "winws", "proxy", "hosts", "dnsStatus")),
+        (("data_",), ("winws", "proxy", "hosts")),
         (("panic_", "config_import_", "config_backup_restore"), ("winws", "proxy", "tg", "hosts", "dns", "dnsStatus", "filters")),
     )
     # чтения ничего не меняют — после них хаб не дёргаем
@@ -704,7 +749,7 @@ class Api:
     _READ_NAMES = frozenset({"tg_check_update", "upstream_check_updates", "doctor_run", "doctor_report", "providers_list",
                              "config_export", "config_import_preview", "config_backups", "config_backup_preview", "config_backup_compare", "config_verified",
                               "appearance_preview", "route_explain", "lists_validate", "lists_index",
-                              "autotune_catalog", "autotune_diagnose"})
+                              "autotune_catalog", "autotune_diagnose", "data_check"})
 
     @classmethod
     def is_read(cls, method: str) -> bool:

@@ -902,3 +902,27 @@ def test_fix_automatically_is_a_regular_setting(capsys, running):
     api, _ = running
     assert run(capsys, "config", "set", "autotune_watch", "true")[0] == 0
     assert api.called("config_set") == [["autotune_watch", True]]
+
+def test_data_check_shows_what_a_release_changes(capsys, running):
+    api, _ = running
+    api.extra["data_check"] = {"current": "2026.10.01", "latest": "2026.10.05", "update": True, "installable": True,
+                               "plan": {"add": ["lists/new.txt"], "update": ["strategies/alt.txt"], "keep": ["lists/youtube.txt"]},
+                               "error": None}
+    code, out, _ = run(capsys, "data", "check")
+    assert code == 0 and "2026.10.01" in out and "добавится 1, обновится 1" in out
+    assert "lists/youtube.txt" in out
+
+
+def test_data_check_reports_why_it_could_not_check(capsys, running):
+    api, _ = running
+    api.extra["data_check"] = {"current": None, "error": "err.data.network"}
+    code, _, err = run(capsys, "data", "check")
+    assert code == 1 and "GitHub" in err
+
+
+def test_data_update_reports_the_restart(capsys, running):
+    api, _ = running
+    api.extra["data_update"] = {"version": "2026.10.05", "added": [], "updated": ["strategies/alt.txt"], "kept": [],
+                                "restarted": True, "apply_errors": []}
+    code, out, _ = run(capsys, "data", "update")
+    assert code == 0 and "перезапущена" in out and api.called("data_update") == [[]]

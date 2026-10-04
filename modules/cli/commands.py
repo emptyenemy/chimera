@@ -857,6 +857,38 @@ def h_fix_check(ctx, act, ns):
     return Result(data, lines, exit_code=1 if broken or data.get("offline") else 0)
 
 
+# --- стратегии и списки по воздуху -------------------------------------------------------------------
+
+def h_data_check(ctx, act, ns):
+    info = ctx.call("data_check")
+    if info.get("error"):
+        raise CliError.of(info["error"], "unavailable", 1)
+    lines = [t("cli.data.current", version=info.get("current") or "—")]
+    plan = info.get("plan") or {}
+    if not info.get("update"):
+        lines.append(t("cli.data.latest"))
+    else:
+        lines.append(t("cli.data.available", version=info["latest"], add=len(plan.get("add", [])),
+                       update=len(plan.get("update", [])), keep=len(plan.get("keep", []))))
+        lines += [t("cli.data.kept", path=p) for p in plan.get("keep", [])]
+        if not info.get("installable"):
+            lines.append(t("cli.data.app_too_old", version=info.get("min_app") or "?"))
+    return Result(info, lines)
+
+
+def h_data_update(ctx, act, ns):
+    res = ctx.call("data_update")
+    lines = [t("cli.data.installed", version=res["version"], add=len(res["added"]), update=len(res["updated"]),
+               keep=len(res["kept"]))]
+    lines += [t("cli.data.kept", path=p) for p in res["kept"]]
+    if res.get("restarted"):
+        lines.append(t("cli.data.restarted"))
+    if res.get("restart_error"):
+        lines.append(res["restart_error"])
+    lines += [t("cli.lists.apply_error", module=e["module"], error=e["error"]) for e in res.get("apply_errors") or []]
+    return Result(res, lines, exit_code=1 if res.get("apply_errors") or res.get("restart_error") else 0)
+
+
 def h_trial_start(ctx, act, ns):
     kind, target, seconds, domains = arg_values(act, ns)
     checks = [name.strip() for name in domains.split(",")] if domains is not None else None
@@ -865,6 +897,7 @@ def h_trial_start(ctx, act, ns):
 
 HANDLERS = {
     "trial_start": h_trial_start, "explain": h_explain, "fix_run": h_fix_run, "fix_check": h_fix_check,
+    "data_check": h_data_check, "data_update": h_data_update,
     "status": h_status, "version": h_version, "start": h_start, "tui": h_tui, "stop": h_stop, "restart": h_restart,
     "sources_check": h_sources_check, "config_get": h_config_get, "config_set": h_config_set,
     "lang_show": h_lang_show, "lang_set": h_lang_set, "lang_catalog": h_lang_catalog,

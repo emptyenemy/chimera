@@ -1,13 +1,26 @@
 """Собрать переносимую папку после Nuitka; все пути ограничены build/."""
 import json
 import shutil
+import subprocess
 import sys
+import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
-from modules import selfupdate  # noqa: E402
+from modules import dataupdate, selfupdate  # noqa: E402
 from tools import fetch_bins  # noqa: E402
+
+
+def data_version() -> str:
+    """Версия данных сборки — дата последнего коммита (ГГГГ.ММ.ДД). Выпуски данных того же дня
+    получают номер ГГГГ.ММ.ДД.N и поэтому всегда новее."""
+    try:
+        out = subprocess.run(["git", "log", "-1", "--format=%cd", "--date=format:%Y.%m.%d"], cwd=ROOT,
+                             capture_output=True, text=True, timeout=15).stdout.strip()
+    except (OSError, subprocess.SubprocessError):
+        out = ""
+    return out if dataupdate.version_key(out) else time.strftime("%Y.%m.%d")
 
 
 def finish(flavor: str):
@@ -43,6 +56,8 @@ def finish(flavor: str):
         fetch_bins.use_qt_runtime(output)
     else:
         shutil.copytree(ROOT / "bin/webview2", output / "bin/webview2")
+    # данные, с которыми выходит сборка: от них обновление по воздуху отличает свои правки пользователя
+    dataupdate.write_shipped(output, data_version())
     selfupdate.write_manifest(output)
     print(f"Done: {output / 'Chimera.exe'}")
     return output

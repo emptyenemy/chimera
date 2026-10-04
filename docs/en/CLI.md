@@ -76,6 +76,8 @@ Levels exist so that remote channels can be restricted. The proxy link is hidden
 | Auto-setup → Cancel | `chimera fix cancel` | system |
 | Auto-setup → Undo | `chimera fix revert` | system |
 | Auto-setup → Done | `chimera fix keep` | app |
+| Settings → Updates → Strategies and lists → Check | `chimera data check` | read |
+| Settings → Updates → Strategies and lists → Update | `chimera data update` | system |
 | Strategies: header, Overview | `chimera winws state` | read |
 | Strategies: card list | `chimera winws strategies` | read |
 | Strategies → “Start” / Overview → toggle | `chimera winws start [strategy]` | system |
@@ -1533,6 +1535,27 @@ Keep the auto-setup result and forget the original state. Level: changes the app
 
 ```
 chimera fix keep
+```
+
+### data
+
+Over-the-air strategies and lists: updates without a new program version..
+
+#### `chimera data check`
+
+Whether a strategies-and-lists release newer than the installed one exists and what it changes. Your own list edits are not overwritten; the command shows which files stay as they are. Changes nothing. Level: read-only.
+
+```
+chimera data check
+chimera data check --json
+```
+
+#### `chimera data update`
+
+Install fresh strategies and lists. Files you changed stay; lists apply at once and a running strategy restarts. A snapshot of the lists is saved to the backup history before writing. Level: changes the system.
+
+```
+chimera data update
 ```
 
 ## Files

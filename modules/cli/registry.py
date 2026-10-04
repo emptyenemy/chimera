@@ -100,7 +100,7 @@ class Action:
 GROUPS = LazyMap((
     "status", "start", "tui", "stop", "restart", "version", "update", "autostart", "discord", "sources", "config",
     "lang", "winws", "proxy", "tg", "hosts", "dns", "panic", "doctor", "lists", "check", "logs", "service",
-    "path", "docs", "agent-info", "trial", "explain", "providers", "fix"), "cli.group")
+    "path", "docs", "agent-info", "trial", "explain", "providers", "fix", "data"), "cli.group")
 
 # Что не превращается в команду и почему. Тест паритета падает на любом публичном методе
 # Api, которого нет ни в таблице действий, ни здесь.
@@ -192,6 +192,12 @@ ACTIONS: tuple[Action, ...] = (
     _a("fix", "cancel", "autotune_cancel", level=SYSTEM, examples=("chimera fix cancel",)),
     _a("fix", "revert", "autotune_revert", level=SYSTEM, examples=("chimera fix revert",)),
     _a("fix", "keep", "autotune_keep", level=APP, examples=("chimera fix keep",)),
+
+    # --- стратегии и списки по воздуху ------------------------------------------------
+    _a("data", "check", handler="data_check", methods=("data_check",),
+       examples=("chimera data check", "chimera data check --json")),
+    _a("data", "update", handler="data_update", methods=("data_update",), level=SYSTEM,
+       examples=("chimera data update",)),
 
     # --- обход DPI ------------------------------------------------------------------
     _a("winws", "state", "winws_state", examples=("chimera winws state",)),
