@@ -182,6 +182,13 @@
     need((await api('dns_probe_config')).bypass.includes('recover.example'), 'Probe retry did not persist draft');
     steps.push({ name: 'Failed DNS probe drafts survive navigation and can be retried', ok: true });
 
+    need(!el('nav-dot-dns'), 'DNS dot lit before the program changed DNS');
+    await api('__smoke_dns_active', [7]); await api('hub_refresh', ['dnsStatus']);
+    await wait(() => el('nav-dot-dns'), 'DNS dot did not light up after the program changed DNS');
+    await api('__smoke_dns_active', []); await api('hub_refresh', ['dnsStatus']);
+    await wait(() => !el('nav-dot-dns'), 'DNS dot stayed lit after DNS was reset');
+    steps.push({ name: 'Sidebar DNS dot follows the DNS set by the program', ok: true });
+
     await go('lists', 'lists-new');
     await wait(() => el('list-row-sample'), 'Sample list missing');
     el('lists-new').click(); el('lists-new').click();

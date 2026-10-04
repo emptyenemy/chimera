@@ -43,6 +43,7 @@ def main(*, layout=False, screenshot=None, filters_only=False):
         failures = []
         probe = {"bypass": ["old.example"], "ad": "ad.example"}
         probe_failures, probe_reads = [], []
+        dns_active = []  # адаптеры, где «стоит DNS программы»: питает точку у DNS в сайдбаре
         sources = [{"name": name, "kind": "tag", "current": "1", "latest": "2", "update": True, "updatable": True}
                    for name in ("Source A", "Source B")]
         source_checks, source_updates = [], []
@@ -64,6 +65,9 @@ def main(*, layout=False, screenshot=None, filters_only=False):
 
             def dns_state(self):
                 return api_mod._ok({"adapters": [], "providers": []})
+
+            def dns_status(self):
+                return api_mod._ok({"active": list(dns_active)})
 
             def dns_probe_config(self):
                 probe_reads.append(True)
@@ -149,6 +153,9 @@ def main(*, layout=False, screenshot=None, filters_only=False):
                     elif action == "release-update":
                         release_update.set()
                     return json.dumps(api_mod._ok({"checks": len(source_checks), "updates": len(source_updates)}))
+                if method == "__smoke_dns_active":
+                    dns_active[:] = json.loads(args_json)[0]
+                    return json.dumps(api_mod._ok(list(dns_active)))
                 if method == "__smoke_probe_failures":
                     return json.dumps(api_mod._ok(len(probe_failures)))
                 if method == "__smoke_link_count":
