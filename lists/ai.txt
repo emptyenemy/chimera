@@ -2,3 +2,4 @@
 fal.ai
 fal.media
 elevenlabs.io
+openrouter.ai
