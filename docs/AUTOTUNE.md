@@ -80,6 +80,22 @@ SNI и HTTP-запрос, через тот маршрут, которым са�
 и быстрый режим обычно заканчивается на первой попытке. Совпадение ключа у разных
 сетей безвредно: запомненный вариант просто проверяется первым.
 
+## Карта провайдеров
+
+После запомненного для сети идут варианты, которые сработали у других пользователей того же
+провайдера, потом все остальные. Карта меняет только порядок: перебор и проверки те же.
+
+- **Откуда.** Кнопка «Поделиться результатом» на итоге (или `chimera fix report`) открывает
+  на GitHub форму issue с готовым отчётом: номер сети провайдера, что было с каждым сервисом и
+  чем его починили. Адресов, доменов и ссылок в отчёте нет, публикует его сам человек.
+  `tools/provider_map.py` собирает из issues с меткой `autotune-report` файл
+  `strategies/provider-map.json`: каждый автор считается один раз на провайдера, в карту идут
+  только встроенные сервисы. Карта приходит пользователям с обновлением данных.
+- **Провайдер** — номер сети (AS) по данным RIPEstat, открытого сервиса реестра RIPE NCC.
+  Его спрашивают, только когда в карте есть провайдеры или по кнопке отчёта, раз на сеть: ответ
+  хранится в памяти сети. Пока полный TUN прокси несёт весь трафик, не спрашивают вовсе:
+  RIPEstat увидел бы сервер прокси.
+
 ## Самолечение в фоне
 
 Переключатель «Чинить автоматически» на странице (или `chimera config set autotune_watch true`).
@@ -106,6 +122,7 @@ chimera fix cancel                # прервать подбор и верну�
 chimera fix revert                # вернуть состояние до последней автонастройки
 chimera fix keep                  # оставить результат и забыть исходное состояние
 chimera fix services              # сервисы и их проверочные адреса
+chimera fix report                # отчёт для issue: что сработало у вашего провайдера
 ```
 
 `chimera fix` ждёт окончания и печатает ход подбора; `--json` — итоговое состояние.
@@ -118,8 +135,10 @@ chimera fix services              # сервисы и их проверочны�
 | алгоритм: диагноз, шаги, выбор, отчёт | `modules/autotune/engine.py` |
 | сессия: поток, отмена, откат, запись на диск | `modules/autotune/manager.py` |
 | память сетей | `modules/autotune/memory.py` |
+| провайдер (RIPEstat) и карта провайдеров | `modules/autotune/provider.py`, `strategies/provider-map.json` |
+| отчёт для issue | `modules/autotune/report.py`, сборка карты — `tools/provider_map.py` |
 | операции над модулями и проверка | `ui/autotune.py` (`AutotuneOps`) |
-| методы окна | `ui/api.py`: `autotune_state`, `autotune_catalog`, `autotune_diagnose`, `autotune_start`, `autotune_cancel`, `autotune_revert`, `autotune_keep`; источник хаба `autotune` |
+| методы окна | `ui/api.py`: `autotune_state`, `autotune_catalog`, `autotune_diagnose`, `autotune_start`, `autotune_cancel`, `autotune_revert`, `autotune_keep`, `autotune_share`; источник хаба `autotune` |
 | интерфейс | `frontend/src/pages/autotune.tsx` |
 
 Алгоритм не знает про Windows: он получает операции (`apply_strategy`, `assign_hosts`,

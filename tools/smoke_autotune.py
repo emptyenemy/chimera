@@ -59,6 +59,7 @@ def stand(lang="ru", theme="dark"):
         }, strategies=("general", "alt"), hosts=("xbox", "comss"), dns_plain=(), dns_unblock=())
         check = net.check
         net.check = lambda domain: (gate.wait(30), check(domain))[1]
+        opened = []   # ссылки «Поделиться»: браузер не открываем, только запоминаем
 
         class CheckApi(api_mod.Api):
             def dispatch(self, method, args_json):
@@ -70,9 +71,13 @@ def stand(lang="ru", theme="dark"):
                         gate.set()
                     elif action == "watch-fix":   # как будто самолечение заметило отвал
                         self._autotune.start(["youtube"], "fast", trigger="watch")
-                    return json.dumps({"ok": True, "data": {"net": net.state, "restored": len(net.restored)}})
+                    return json.dumps({"ok": True, "data": {"net": net.state, "restored": len(net.restored),
+                                                            "opened": opened}})
+                if method == "open_url":
+                    opened.append(json.loads(args_json)[0])
+                    return json.dumps({"ok": True, "data": None})
                 allowed = {"hub_snapshot", "hub_watch", "hub_refresh", "autotune_start", "autotune_cancel",
-                           "autotune_revert", "autotune_keep", "config_set"}
+                           "autotune_revert", "autotune_keep", "autotune_share", "config_set"}
                 if self.is_read(method) or method in allowed:
                     return super().dispatch(method, args_json)
                 return json.dumps({"ok": False, "error": "Operation outside auto-setup check"})

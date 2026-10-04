@@ -46,6 +46,14 @@
     need(after.strategy === "alt" && after.hosts.openai === "comss", "Result was not applied");
     steps.push({ name: "Set up everything: progress, menu dot, blocked changes, result per service", ok: true });
 
+    await click("autotune-share");
+    await wait(async () => (await smoke("state")).opened.length === 1, "Share did not open the issue form");
+    const form = (await smoke("state")).opened[0];
+    need(form.startsWith("https://github.com/emptyenemy/chimera/issues/new?") && form.includes("template=autotune-report.md"),
+      "Share opened something else than the issue form");
+    need(form.includes("chimera-report") && form.includes("youtube"), "Issue form lacks the report");
+    steps.push({ name: "Share opens a prefilled GitHub issue form and sends nothing itself", ok: true });
+
     await click("autotune-revert");
     await wait(() => el("autotune-last")?.dataset.phase === "reverted", "Revert did not finish");
     const reverted = (await smoke("state")).net;

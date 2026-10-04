@@ -44,14 +44,37 @@ def load(key, path=PATH) -> dict:
             if isinstance(fix, dict) and isinstance(fix.get("kind"), str) and isinstance(fix.get("id"), str)}
 
 
+def provider(key, path=PATH) -> dict | None:
+    """Провайдер сети, если его уже узнавали (modules/autotune/provider.py)."""
+    network = _read(path).get(key) if key else None
+    found = network.get("provider") if isinstance(network, dict) else None
+    if isinstance(found, dict) and type(found.get("asn")) is int and isinstance(found.get("name"), str):
+        return {"asn": found["asn"], "name": found["name"]}
+    return None
+
+
 def remember(key, fixes, path=PATH, now=time.time) -> None:
     if not key or not fixes:
         return
+
+    def change(network):
+        services = network.get("services") if isinstance(network.get("services"), dict) else {}
+        services.update({name: {"kind": fix["kind"], "id": fix["id"]} for name, fix in fixes.items()})
+        network["services"] = services
+    _update(key, change, path, now)
+
+
+def remember_provider(key, found, path=PATH, now=time.time) -> None:
+    if key and found:
+        _update(key, lambda network: network.update(provider={"asn": found["asn"], "name": found["name"]}), path, now)
+
+
+def _update(key, change, path, now) -> None:
     data = _read(path)
-    network = data.get(key) if isinstance(data.get(key), dict) else {}
-    services = network.get("services") if isinstance(network.get("services"), dict) else {}
-    services.update({name: {"kind": fix["kind"], "id": fix["id"]} for name, fix in fixes.items()})
-    data[key] = {"services": services, "at": now()}
+    network = dict(data[key]) if isinstance(data.get(key), dict) else {}
+    change(network)
+    network["at"] = now()
+    data[key] = network
     # старые сети вытесняются, файл не растёт бесконечно
     keep = sorted(data, key=lambda k: data[k].get("at", 0) if isinstance(data[k], dict) else 0, reverse=True)
     data = {k: data[k] for k in keep[:MAX_NETWORKS]}

@@ -8,8 +8,8 @@
 import time
 from copy import deepcopy
 
-from modules import blockcheck, configbackups, domains
-from modules.autotune import memory, targets as targets_mod
+from modules import blockcheck, configbackups, dataupdate, domains
+from modules.autotune import memory, provider as provider_mod, targets as targets_mod
 from modules.errors import ChimeraError
 from modules.hosts.manager import BLOCK_RE, replace_block
 from ui.shareops import ShareOps
@@ -221,3 +221,20 @@ class AutotuneOps:
 
     def restore_proxy(self):
         self._restore_proxy(self._before)
+
+    # --- провайдер и отчёт -----------------------------------------------------------------
+
+    @staticmethod
+    def provider_map():
+        return provider_mod.load_map()
+
+    def lookup_provider(self):
+        proxy = self.api.proxy
+        if proxy.running and proxy.config.get("mode") == "tun":
+            return None   # весь трафик в туннеле: RIPEstat увидел бы адрес сервера прокси
+        return provider_mod.lookup()
+
+    @staticmethod
+    def about():
+        from modules.version import VERSION
+        return {"app": VERSION, "data": dataupdate.DataUpdater().installed()}

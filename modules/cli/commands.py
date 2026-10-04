@@ -857,6 +857,13 @@ def h_fix_check(ctx, act, ns):
     return Result(data, lines, exit_code=1 if broken or data.get("offline") else 0)
 
 
+def h_fix_report(ctx, act, ns):
+    report = ctx.call("autotune_share")
+    tail = (t("cli.fix.report_url", url=report["url"]) if report.get("url")
+            else t("cli.fix.report_copy", url=report["form"]))
+    return Result(report, [report["text"], "", tail])
+
+
 # --- стратегии и списки по воздуху -------------------------------------------------------------------
 
 def h_data_check(ctx, act, ns):
@@ -905,6 +912,7 @@ def h_trial_start(ctx, act, ns):
 
 HANDLERS = {
     "trial_start": h_trial_start, "explain": h_explain, "fix_run": h_fix_run, "fix_check": h_fix_check,
+    "fix_report": h_fix_report,
     "data_check": h_data_check, "data_update": h_data_update, "proxy_servers": h_proxy_servers,
     "status": h_status, "version": h_version, "start": h_start, "tui": h_tui, "stop": h_stop, "restart": h_restart,
     "sources_check": h_sources_check, "config_get": h_config_get, "config_set": h_config_set,

@@ -53,8 +53,9 @@ def test_changed_strategy_files_restart_the_running_strategy(api):
     assert ("restart", "general") in api.log and res["restarted"] is True
 
 
-def test_hostlists_are_reread_by_winws_and_need_no_restart(api):
-    FakeUpdater.result = {"version": "2026.10.05", "added": [], "updated": ["strategies/hostlists/list-general.txt"], "kept": []}
+@pytest.mark.parametrize("rel", ["strategies/hostlists/list-general.txt", "strategies/provider-map.json"])
+def test_files_winws_rereads_or_never_reads_need_no_restart(api, rel):
+    FakeUpdater.result = {"version": "2026.10.05", "added": [], "updated": [rel], "kept": []}
     assert api.data_update()["data"]["restarted"] is False and not [e for e in api.log if e[0] == "restart"]
 
 

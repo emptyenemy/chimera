@@ -606,8 +606,9 @@ class Api:
                 names = [n for n in lists_of(changed) if n in domains.available_lists()]
                 result["apply_errors"] = liveapply.lists_changed(names, self.winws, self.proxy, self.hosts) if names else []
                 result["restarted"] = False
-                strategy_files = [rel for rel in changed
-                                  if rel.startswith("strategies/") and not rel.startswith("strategies/hostlists/")]
+                # карта провайдеров — подсказка автонастройке, winws её не читает
+                strategy_files = [rel for rel in changed if rel.startswith("strategies/")
+                                  and not rel.startswith("strategies/hostlists/") and not rel.endswith(".json")]
                 if strategy_files and self.winws.running:
                     try:
                         self._restart_winws_if_running()
@@ -754,7 +755,7 @@ class Api:
     _READ_NAMES = frozenset({"tg_check_update", "upstream_check_updates", "doctor_run", "doctor_report", "providers_list",
                              "config_export", "config_import_preview", "config_backups", "config_backup_preview", "config_backup_compare", "config_verified",
                               "appearance_preview", "route_explain", "lists_validate", "lists_index",
-                              "autotune_catalog", "autotune_diagnose", "data_check",
+                              "autotune_catalog", "autotune_diagnose", "autotune_share", "data_check",
                               "proxy_ping_servers"})
 
     @classmethod
@@ -882,6 +883,14 @@ class Api:
         try:
             remote = self._backup_owner("autotune_keep")
             return remote if remote is not None else _ok(self._autotune.keep())
+        except Exception as e:
+            return _err(e)
+
+    def autotune_share(self):
+        """Отчёт о последнем подборе для issue на GitHub: текст и ссылка на форму, ничего не отправляется."""
+        try:
+            remote = self._backup_owner("autotune_share")
+            return remote if remote is not None else _ok(self._autotune.share())
         except Exception as e:
             return _err(e)
 

@@ -76,6 +76,7 @@
 | Автонастройка → Отменить | `chimera fix cancel` | system |
 | Автонастройка → Вернуть как было | `chimera fix revert` | system |
 | Автонастройка → Готово | `chimera fix keep` | app |
+| Автонастройка → Поделиться результатом | `chimera fix report` | read |
 | Настройки → Обновление → Стратегии и списки → Проверить | `chimera data check` | read |
 | Настройки → Обновление → Стратегии и списки → Обновить | `chimera data update` | system |
 | Стратегии: шапка, Обзор | `chimera winws state` | read |
@@ -1585,6 +1586,15 @@ chimera fix revert
 
 ```
 chimera fix keep
+```
+
+#### `chimera fix report`
+
+Отчёт о последней автонастройке для issue на GitHub: что у вашего провайдера сработало. Ничего не отправляет. Уровень: чтение.
+
+```
+chimera fix report
+chimera fix report --json
 ```
 
 ### data

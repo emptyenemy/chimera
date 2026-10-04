@@ -33,6 +33,7 @@ class FakeOps:
         self.calls, self.fail_apply, self.hooks = [], set(), {}
         self._dns_before = None
         self.restored = []
+        self.providers, self.provider, self.lookups = {}, None, 0   # карта провайдеров и ответ RIPEstat
 
     # --- каталог и проверка -------------------------------------------------------------
 
@@ -52,6 +53,17 @@ class FakeOps:
 
     def network_key(self):
         return "net"
+
+    def provider_map(self):
+        return self.providers
+
+    def lookup_provider(self):
+        self.lookups += 1
+        return self.provider
+
+    @staticmethod
+    def about():
+        return {"app": "1.1.0", "data": "2026.10.01.1"}
 
     # --- состояние целиком ----------------------------------------------------------------
 

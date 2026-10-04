@@ -38,7 +38,8 @@ MAX_BYTES = 32 << 20   # данные — сотни килобайт; боль�
 _HTTP_TIMEOUT = 15
 
 # что входит в данные (пути от корня программы, через /)
-PATTERNS = ("strategies/*.txt", "strategies/hostlists/*.txt", "strategies/assets/*.bin", "lists/*.txt")
+PATTERNS = ("strategies/*.txt", "strategies/hostlists/*.txt", "strategies/assets/*.bin", "lists/*.txt",
+            "strategies/provider-map.json")
 # файлы пользователя рядом с данными: их не публикуем и не трогаем
 USER_FILES = ("strategies/hostlists/ipset-all.txt", "strategies/assets/ACTIVE_DISCORD_UDP.bin",
               "strategies/assets/ACTIVE_GAME_UDP.bin")

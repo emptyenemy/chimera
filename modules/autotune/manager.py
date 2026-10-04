@@ -19,6 +19,8 @@ from copy import deepcopy
 
 from modules import control
 from modules.autotune import memory as memory_mod
+from modules.autotune import provider as provider_mod
+from modules.autotune import report as report_mod
 from modules.autotune.engine import MODES, Cancelled, Engine
 from modules.errors import ChimeraError
 
@@ -183,18 +185,45 @@ class AutotuneManager:
                 rec["log"] = (rec["log"] + [event])[-LOG_LIMIT:]
         self.changed()
 
-    def _run(self, record_id, cancel):
+    def _network_key(self):
         try:
-            key = self.ops.network_key()
+            return self.ops.network_key()
         except Exception:
-            key = None
+            return None
+
+    def _provider(self, key):
+        """Провайдер сети: из памяти, а если не узнавали — у RIPEstat (сеть, вне блокировок)."""
+        found = memory_mod.provider(key, self.memory_path)
+        if found is None:
+            try:
+                found = self.ops.lookup_provider()
+            except Exception:
+                found = None
+            memory_mod.remember_provider(key, found, self.memory_path)
+        return found
+
+    def _hints(self, key):
+        """Подсказки карты провайдеров; пока карта пуста, RIPEstat не спрашиваем вовсе."""
+        try:
+            providers = self.ops.provider_map()
+        except Exception:
+            providers = {}
+        if not providers:
+            return None, {}
+        found = self._provider(key)
+        return found, provider_mod.hints(providers, found)
+
+    def _run(self, record_id, cancel):
+        key = self._network_key()
+        provider, hints = self._hints(key)
         with self._records:
             rec = self.active
             if rec is None or rec["id"] != record_id:
                 return
             services, mode = rec["services"], rec["mode"]
+            rec["provider"] = provider
         engine = self.engine(_GuardedOps(self.ops, self.lock, cancel), mode=mode,
-                             memory=memory_mod.load(key, self.memory_path),
+                             memory=memory_mod.load(key, self.memory_path), hints=hints,
                              progress=lambda event: self._progress(record_id, event), cancel=cancel)
         try:
             report = engine.run(services)
@@ -258,6 +287,17 @@ class AutotuneManager:
         if failed:
             raise ChimeraError("err.autotune.rollback")
         return self.state()
+
+    def share(self):
+        """Отчёт о последнем подборе для issue на GitHub. Ничего не отправляет: только текст и ссылка."""
+        with self._records:
+            rec = self.active if self.active is not None and self.active.get("report") else self.last
+            if rec is None or not rec.get("report"):
+                raise ChimeraError("err.autotune.nothing_to_share")
+            rec = deepcopy({k: rec.get(k) for k in ("mode", "report", "provider")})
+        if rec["provider"] is None:
+            rec["provider"] = self._provider(self._network_key())
+        return report_mod.build(rec, self.ops.about())
 
     def keep(self):
         with self._records:

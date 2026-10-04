@@ -2,12 +2,13 @@
    у владельца модулей (приложение или служба), страница только запускает её и рисует
    состояние из хаба (ключ autotune). Диагноз и каталог — в сторе, переживают уход. */
 
-import { useEffect } from "react"
+import { useEffect, useState } from "react"
 import {
   CircleAlertIcon,
   GaugeIcon,
   RotateCcwIcon,
   SearchCheckIcon,
+  Share2Icon,
   SparklesIcon,
   WandSparklesIcon,
   WrenchIcon,
@@ -29,6 +30,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { api } from "@/lib/bridge"
+import { copyText } from "@/lib/clipboard"
 import { fmtNum } from "@/lib/format"
 import { t } from "@/lib/i18n"
 import { notify } from "@/lib/notify"
@@ -77,6 +79,21 @@ async function act(method: string, args: unknown[], failKey: string) {
     await api(method, ...args)
   } catch (e) {
     notify.error(t(failKey), errText(e))
+  }
+}
+
+// Отчёт уходит только формой issue в браузере: публикует его сам человек
+async function share() {
+  try {
+    const report = await api<{ url: string | null; form: string; text: string }>("autotune_share")
+    if (report.url) {
+      await api("open_url", report.url)
+      return
+    }
+    await copyText(report.text)
+    await api("open_url", report.form)
+  } catch (e) {
+    notify.error(t("autotune.shareFailed"), errText(e))
   }
 }
 
@@ -258,6 +275,7 @@ function ResultRow({ row }: { row: ReportRow }) {
 }
 
 function ResultCard({ session }: { session: Session }) {
+  const [sharing, setSharing] = useState(false)
   const report = session.report
   const rows = (report?.services ?? []).filter((r) => !r.skipped)
   const fixed = rows.filter((r) => r.fix && r.after?.ok).length
@@ -301,7 +319,15 @@ function ResultCard({ session }: { session: Session }) {
               {t("autotune.result.revert")}
             </Button>
           )}
+          {rows.length > 0 && !report?.offline && (
+            <Button variant="outline" data-testid="autotune-share" disabled={sharing}
+              onClick={() => { setSharing(true); void share().finally(() => setSharing(false)) }}>
+              {sharing ? <Spinner data-icon="inline-start" /> : <Share2Icon data-icon="inline-start" />}
+              {t("autotune.result.share")}
+            </Button>
+          )}
         </div>
+        {rows.length > 0 && !report?.offline && <FieldDescription>{t("autotune.result.shareHint")}</FieldDescription>}
       </CardContent>
     </Card>
   )

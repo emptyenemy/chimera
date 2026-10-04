@@ -192,6 +192,8 @@ ACTIONS: tuple[Action, ...] = (
     _a("fix", "cancel", "autotune_cancel", level=SYSTEM, examples=("chimera fix cancel",)),
     _a("fix", "revert", "autotune_revert", level=SYSTEM, examples=("chimera fix revert",)),
     _a("fix", "keep", "autotune_keep", level=APP, examples=("chimera fix keep",)),
+    _a("fix", "report", handler="fix_report", methods=("autotune_share",),
+       examples=("chimera fix report", "chimera fix report --json")),
 
     # --- стратегии и списки по воздуху ------------------------------------------------
     _a("data", "check", handler="data_check", methods=("data_check",),

@@ -76,6 +76,7 @@ Levels exist so that remote channels can be restricted. The proxy link is hidden
 | Auto-setup → Cancel | `chimera fix cancel` | system |
 | Auto-setup → Undo | `chimera fix revert` | system |
 | Auto-setup → Done | `chimera fix keep` | app |
+| Auto-setup → Share the result | `chimera fix report` | read |
 | Settings → Updates → Strategies and lists → Check | `chimera data check` | read |
 | Settings → Updates → Strategies and lists → Update | `chimera data update` | system |
 | Strategies: header, Overview | `chimera winws state` | read |
@@ -1585,6 +1586,15 @@ Keep the auto-setup result and forget the original state. Level: changes the app
 
 ```
 chimera fix keep
+```
+
+#### `chimera fix report`
+
+Report of the last auto-setup for a GitHub issue: what worked on your provider. Sends nothing. Level: read-only.
+
+```
+chimera fix report
+chimera fix report --json
 ```
 
 ### data
