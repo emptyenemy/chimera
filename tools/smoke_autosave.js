@@ -150,7 +150,7 @@
     Bridge.call = realCall;
     steps.push({ name: 'Queued Hosts intervals preserve newer drafts and blank input restores the default', ok: true });
 
-    await go('dns', 'dns-advanced-toggle'); await click('dns-advanced-toggle');
+    await go('providers', 'providers-probe-settings-toggle'); await click('providers-probe-settings-toggle');
     await wait(() => el('dns-probe-error'), 'Probe read error not displayed');
     await click('dns-probe-retry'); await wait(() => el('dns-probe-bypass'), 'Probe read retry failed');
     steps.push({ name: 'DNS probe read failures offer a working retry', ok: true });
@@ -169,13 +169,13 @@
     need(probeWrites === 2, 'Probe blur duplicated a save');
     Bridge.call = realCall;
     input('dns-probe-ad', 'leave.example'); await sleep(20); Pages.go('dashboard');
-    await wait(async () => (await api('dns_probe_config')).ad === 'leave.example', 'Leaving DNS lost pending edits');
+    await wait(async () => (await api('dns_probe_config')).ad === 'leave.example', 'Leaving Providers lost pending probe edits');
     steps.push({ name: 'DNS probe writes serialize, deduplicate blur and flush on navigation', ok: true });
-    await go('dns', 'dns-advanced-toggle'); await click('dns-advanced-toggle');
+    await go('providers', 'providers-probe-settings-toggle'); await click('providers-probe-settings-toggle');
     await wait(() => el('dns-probe-bypass'), 'Probe editor not restored');
     input('dns-probe-bypass', 'recover.example'); await sleep(20); Pages.go('dashboard');
     await wait(async () => (await api('__smoke_probe_failures')) === 1, 'Failed probe save not exercised');
-    await go('dns', 'dns-advanced-toggle'); await click('dns-advanced-toggle');
+    await go('providers', 'providers-probe-settings-toggle'); await click('providers-probe-settings-toggle');
     await wait(() => el('dns-probe-error') && el('dns-probe-bypass')?.value === 'recover.example', 'Failed probe draft lost after navigation');
     await click('dns-probe-retry');
     await wait(() => !el('dns-probe-error'), 'Probe save retry failed');
