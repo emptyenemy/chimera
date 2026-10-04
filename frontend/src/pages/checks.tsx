@@ -1,14 +1,18 @@
-/* Проверка сайтов: одно поле — один ответ по каждому сайту. Внутри две проверки идут
+/* Проверка: одно поле — один ответ по каждому сайту. Внутри две проверки идут
    параллельно — есть ли сайт в реестре РКН (cheburcheck) и открывается ли он прямо сейчас
    с этой машины с учётом обхода (blockcheck), — а в таблице они сведены в итог словами:
    «Открывается», «Работает через обход», «Заблокирован» и т.п.
+
+   Поле заодно и поиск: по набранному предлагаются списки, где такой домен есть, и сами
+   домены — выбор подсказки запускает проверку списка или сайта.
 
    Состояние живёт вне компонента (как у прежней страницы): проверка не прерывается,
    если уйти на другую страницу, а результаты ждут возвращения. Списки стримятся пушами,
    поэтому перерисовка таблицы сгруппирована по времени, а строки мемоизированы. */
 
-import { memo, useEffect, useSyncExternalStore } from "react"
-import { CircleCheckIcon, SearchIcon, TriangleAlertIcon } from "lucide-react"
+import { memo, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react"
+import { Autocomplete } from "@base-ui/react/autocomplete"
+import { CircleCheckIcon, GlobeIcon, ListIcon, SearchIcon, TriangleAlertIcon } from "lucide-react"
 import { cn } from "cn"
 
 import { Page } from "@/components/app/page"
@@ -22,7 +26,6 @@ import { Empty, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empt
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field"
 import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group"
 import { Progress } from "@/components/ui/progress"
-import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Spinner } from "@/components/ui/spinner"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
@@ -68,9 +71,10 @@ interface RunState {
   reachDone: number
 }
 
-interface ListInfo {
+interface ListIndex {
   name: string
   count: number
+  entries: string[]
 }
 
 interface View {
@@ -79,7 +83,7 @@ interface View {
   input: string
   onlyProblems: boolean
   registryDown: string | null
-  listNames: ListInfo[] | null
+  lists: ListIndex[] | null
 }
 
 const PARALLEL = 4 // для введённых вручную: реестр публичный, не долбим его
@@ -91,7 +95,7 @@ const s: View = {
   input: "",
   onlyProblems: false,
   registryDown: null,
-  listNames: null,
+  lists: null,
 }
 let snap: View = { ...s }
 const listeners = new Set<() => void>()
@@ -150,6 +154,58 @@ function parseTargets(text: string): string[] {
   }
   return [...seen]
 }
+
+// --- подсказки: списки и домены по набранному ---------------------------------------------
+
+type Suggestion =
+  | { kind: "list"; name: string; count: number; hits: string[]; byName: boolean }
+  | { kind: "site"; domain: string }
+
+interface SuggestionGroup {
+  value: string
+  items: Suggestion[]
+}
+
+const MAX_LISTS = 8
+const MAX_SITES = 6
+const IP_LIKE = /^[\d.:a-f]+(\/\d+)?$/i
+
+const lastToken = (text: string) => text.split(/[\s,;]+/).at(-1) ?? ""
+
+// что сейчас набирается: последний адрес в поле, без схемы, www и пути
+function query(text: string): string {
+  return lastToken(text)
+    .toLowerCase()
+    .replace(/^[a-z][a-z\d+.-]*:\/\//, "")
+    .replace(/^www\./, "")
+    .split(/[/?#]/)[0]
+}
+
+function suggest(lists: ListIndex[] | null, text: string): SuggestionGroup[] {
+  const q = query(text)
+  if (q.length < 2 || !lists) return []
+  const found: Extract<Suggestion, { kind: "list" }>[] = []
+  const sites = new Set<string>()
+  for (const l of lists) {
+    const hits = l.entries.map((e) => e.toLowerCase().replace(/^\./, "")).filter((e) => e.includes(q))
+    const byName = l.name.toLowerCase().includes(q)
+    if (!byName && !hits.length) continue
+    found.push({ kind: "list", name: l.name, count: l.count, hits, byName })
+    for (const h of hits) if (!IP_LIKE.test(h)) sites.add(h)
+  }
+  // совпало имя — список про это и есть; дальше — где совпадений больше
+  found.sort((a, b) => Number(b.byName) - Number(a.byName) || b.hits.length - a.hits.length || a.name.localeCompare(b.name))
+  const domains = [...sites]
+    .sort((a, b) => Number(!a.startsWith(q)) - Number(!b.startsWith(q)) || a.length - b.length || a.localeCompare(b))
+    .slice(0, MAX_SITES)
+    .map((domain): Suggestion => ({ kind: "site", domain }))
+  const groups: SuggestionGroup[] = []
+  if (found.length) groups.push({ value: "lists", items: found.slice(0, MAX_LISTS) })
+  if (domains.length) groups.push({ value: "sites", items: domains })
+  return groups
+}
+
+const suggestionText = (it: Suggestion) => (it.kind === "list" ? it.name : it.domain)
 
 // --- итог по двум проверкам --------------------------------------------------------------
 
@@ -326,17 +382,30 @@ onPush("blockDone", (p) => acceptDone("reach", p as StreamDone))
 onPush("cheburDone", (p) => acceptDone("rkn", p as StreamDone))
 
 let listReadGeneration = 0
-async function loadListNames(): Promise<void> {
+async function loadLists(): Promise<void> {
   const generation = ++listReadGeneration
   try {
-    const names = await api<ListInfo[]>("lists_all")
+    const lists = await api<ListIndex[]>("lists_index")
     if (generation !== listReadGeneration) return
-    s.listNames = names
+    s.lists = lists
   } catch {
     if (generation !== listReadGeneration) return
-    s.listNames = s.listNames ?? []
+    s.lists = s.lists ?? []
   }
   emit()
+}
+
+// выбранный из подсказок домен встаёт вместо недописанного адреса
+function pickSuggestion(it: Suggestion): void {
+  if (s.run) return
+  if (it.kind === "list") {
+    void checkList(it.name)
+    return
+  }
+  const token = lastToken(s.input)
+  s.input = (token ? s.input.slice(0, -token.length) : s.input) + it.domain
+  emit()
+  void checkTyped()
 }
 
 let registryReadGeneration = 0
@@ -510,64 +579,138 @@ function Results({ view }: { view: View }) {
   )
 }
 
+// совпавшая с запросом часть — жирным
+function Match({ text, q }: { text: string; q: string }) {
+  const i = q ? text.toLowerCase().indexOf(q) : -1
+  if (i < 0) return <>{text}</>
+  return (
+    <>
+      {text.slice(0, i)}
+      <b className="font-semibold text-foreground">{text.slice(i, i + q.length)}</b>
+      {text.slice(i + q.length)}
+    </>
+  )
+}
+
+function SuggestionBody({ it, q }: { it: Suggestion; q: string }) {
+  if (it.kind === "site")
+    return (
+      <>
+        <GlobeIcon className="text-muted-foreground" />
+        <span className="truncate font-mono text-[13px] text-muted-foreground">
+          <Match text={it.domain} q={q} />
+        </span>
+      </>
+    )
+  const more = it.hits.length - 3
+  return (
+    <>
+      <ListIcon className="mt-0.5 self-start text-muted-foreground" />
+      <div className="flex min-w-0 flex-1 flex-col">
+        <span className="flex items-baseline gap-2">
+          <span className="font-medium">
+            <Match text={it.name} q={q} />
+          </span>
+          <span className="text-xs text-muted-foreground tabular-nums">{fmtNum(it.count)}</span>
+        </span>
+        {it.hits.length > 0 && (
+          <span className="truncate text-xs text-muted-foreground">
+            {it.hits.slice(0, 3).join(", ")}
+            {more > 0 && ` +${fmtNum(more)}`}
+          </span>
+        )}
+      </div>
+    </>
+  )
+}
+
 function CheckForm({ view }: { view: View }) {
-  const { run, input, listNames, registryDown } = view
-  const items = [
-    { label: listNames == null ? t("checks.list.loading") : t("checks.list.placeholder"), value: null as string | null },
-    ...(listNames ?? []).map((l) => ({ label: t("checks.list.option", { name: l.name, count: fmtNum(l.count) }), value: l.name as string | null })),
-  ]
+  const { run, input, lists, registryDown } = view
+  const groups = useMemo(() => suggest(lists, input), [lists, input])
+  const [open, setOpen] = useState(false)
+  const highlighted = useRef<Suggestion | undefined>(undefined)
+  const anchor = useRef<HTMLDivElement>(null)
+  const shown = open && groups.length > 0 && !run
+  const q = query(input)
   return (
     <Card>
       <CardContent className="flex flex-col gap-3">
-        <FieldGroup>
-          <Field orientation="horizontal" className="flex-wrap">
-            <InputGroup className="min-w-60 flex-1">
-              <InputGroupAddon>
-                <SearchIcon />
-              </InputGroupAddon>
-              <InputGroupInput
-                data-testid="checks-input"
-                aria-label={t("checks.input.label")}
-                placeholder={t("checks.input.placeholder")}
-                value={input}
-                autoComplete="off"
-                spellCheck={false}
-                onChange={(e) => {
-                  s.input = e.target.value
-                  emit()
-                }}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") void checkTyped()
-                }}
-              />
-            </InputGroup>
-            <Button data-testid="checks-run" disabled={!!run} onClick={() => void checkTyped()}>
-              {run && <Spinner data-icon="inline-start" />}
-              {t("checks.run")}
-            </Button>
-            <Select
-              items={items}
-              value={null}
-              disabled={!!run || !listNames?.length}
-              onValueChange={(v) => {
-                if (v) void checkList(v)
-              }}
-            >
-              <SelectTrigger data-testid="checks-list" aria-label={t("checks.list.placeholder")} className="w-56">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent alignItemWithTrigger={false}>
-                <SelectGroup>
-                  {(listNames ?? []).map((l) => (
-                    <SelectItem key={l.name} value={l.name} data-testid={`checks-list-${l.name}`}>
-                      {t("checks.list.option", { name: l.name, count: fmtNum(l.count) })}
-                    </SelectItem>
-                  ))}
-                </SelectGroup>
-              </SelectContent>
-            </Select>
-          </Field>
-        </FieldGroup>
+        <Autocomplete.Root
+          items={groups}
+          filter={null}
+          value={input}
+          open={shown}
+          itemToStringValue={suggestionText}
+          onOpenChange={(next) => {
+            setOpen(next)
+            if (!next) highlighted.current = undefined
+          }}
+          onItemHighlighted={(it) => {
+            highlighted.current = it
+          }}
+          onValueChange={(value, details) => {
+            if (details.reason === "item-press") return // выбор подсказки обрабатывает сам пункт
+            s.input = value
+            emit()
+          }}
+        >
+          <FieldGroup>
+            <Field orientation="horizontal" className="flex-wrap">
+              <InputGroup ref={anchor} className="min-w-60 flex-1">
+                <InputGroupAddon>
+                  <SearchIcon />
+                </InputGroupAddon>
+                <Autocomplete.Input
+                  render={<InputGroupInput />}
+                  data-testid="checks-input"
+                  aria-label={t("checks.input.label")}
+                  placeholder={t("checks.input.placeholder")}
+                  autoComplete="off"
+                  spellCheck={false}
+                  onKeyDown={(e) => {
+                    // Enter по подсвеченной подсказке выбирает её, иначе проверяет набранное
+                    if (e.key === "Enter" && !(shown && highlighted.current)) void checkTyped()
+                  }}
+                />
+              </InputGroup>
+              <Button data-testid="checks-run" disabled={!!run} onClick={() => void checkTyped()}>
+                {run && <Spinner data-icon="inline-start" />}
+                {t("checks.run")}
+              </Button>
+            </Field>
+          </FieldGroup>
+          <Autocomplete.Portal>
+            <Autocomplete.Positioner anchor={anchor} sideOffset={4} className="isolate z-50">
+              <Autocomplete.Popup
+                data-testid="checks-suggestions"
+                className="max-h-[min(var(--available-height),24rem)] w-(--anchor-width) overflow-y-auto rounded-md bg-popover text-popover-foreground shadow-md ring-1 ring-foreground/10 duration-100 data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95"
+              >
+                <Autocomplete.List className="p-1">
+                  {(group: SuggestionGroup) => (
+                    <Autocomplete.Group key={group.value} items={group.items}>
+                      <Autocomplete.GroupLabel className="px-2 py-1.5 text-xs text-muted-foreground">
+                        {t(group.value === "lists" ? "checks.suggest.lists" : "checks.suggest.sites")}
+                      </Autocomplete.GroupLabel>
+                      <Autocomplete.Collection>
+                        {(it: Suggestion) => (
+                          <Autocomplete.Item
+                            key={`${it.kind}:${suggestionText(it)}`}
+                            value={it}
+                            data-testid={`checks-suggest-${it.kind}-${suggestionText(it)}`}
+                            onClick={() => pickSuggestion(it)}
+                            className="flex w-full cursor-default items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-hidden select-none data-highlighted:bg-accent data-highlighted:text-accent-foreground [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4"
+                          >
+                            <SuggestionBody it={it} q={q} />
+                          </Autocomplete.Item>
+                        )}
+                      </Autocomplete.Collection>
+                    </Autocomplete.Group>
+                  )}
+                </Autocomplete.List>
+              </Autocomplete.Popup>
+            </Autocomplete.Positioner>
+          </Autocomplete.Portal>
+        </Autocomplete.Root>
         {registryDown && (
           <Alert data-testid="checks-registry-down">
             <TriangleAlertIcon />
@@ -582,7 +725,7 @@ function CheckForm({ view }: { view: View }) {
 export function ChecksPage() {
   const view = useView()
   useEffect(() => {
-    void loadListNames()
+    void loadLists()
     void loadRegistryStatus()
   }, [])
   return (

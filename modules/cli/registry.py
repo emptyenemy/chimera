@@ -106,7 +106,7 @@ GROUPS = LazyMap((
 # Api, которого нет ни в таблице действий, ни здесь.
 EXCLUDED = LazyMap((
     "dispatch", "shutdown", "app_elevate", "open_url", "tg_open_link", "hub_snapshot", "hub_watch", "hub_refresh",
-    "block_check_start", "chebur_check_start", "dns_status"), "cli.excluded")
+    "block_check_start", "chebur_check_start", "dns_status", "lists_index"), "cli.excluded")
 
 ONOFF = Arg("значение", "bool")
 

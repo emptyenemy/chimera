@@ -409,6 +409,7 @@
   "cli.excluded.hub_refresh": "подписка окна на push-события состояния",
   "cli.excluded.hub_snapshot": "подписка окна на push-события состояния",
   "cli.excluded.hub_watch": "подписка окна на push-события состояния",
+  "cli.excluded.lists_index": "поиск по спискам на странице проверки в окне; записи списка показывает `chimera lists show <список>`",
   "cli.excluded.open_url": "открывает ссылку в браузере на компьютере пользователя; в терминале адрес и так виден",
   "cli.excluded.shutdown": "гашение модулей при выходе из окна; в терминале это `chimera stop`",
   "cli.excluded.tg_open_link": "открывает Telegram на этом компьютере; ссылку даёт `chimera tg link`",

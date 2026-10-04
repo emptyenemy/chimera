@@ -6,7 +6,7 @@ import ts from "typescript"
 const source = readFileSync(new URL("../src/pages/checks.tsx", import.meta.url), "utf8")
   .split("// --- отображение")[0].replace(/^import .*$/gm, "")
 const js = ts.transpileModule(
-  `const { api, onPush, notify, t } = globalThis.__checksHarness;\n${source}\nexport { checkList, checkTyped, parseTargets, loadListNames, loadRegistryStatus, s };`,
+  `const { api, onPush, notify, t } = globalThis.__checksHarness;\n${source}\nexport { checkList, checkTyped, parseTargets, loadLists, loadRegistryStatus, suggest, pickSuggestion, s };`,
   { compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 } }
 ).outputText
 let instance = 0
@@ -155,14 +155,45 @@ test("manual targets reject broken domain labels, credentials and unsupported pr
   assert.deepEqual(page.parseTargets(".bad.example broken..example -bad.example bad-.example ftp://example.com user:password@example.com https://example.com:99999"), [])
 })
 
-test("returning to Checks cannot replace newer list names with a late read", async () => {
+test("returning to Checks cannot replace newer lists with a late read", async () => {
   const { page, calls } = await setup()
-  const old = page.loadListNames(), fresh = page.loadListNames()
-  calls[1].resolve([{ name: "new", count: 2 }])
+  const old = page.loadLists(), fresh = page.loadLists()
+  assert.equal(calls[0].method, "lists_index")
+  calls[1].resolve([{ name: "new", count: 2, entries: ["a.test", "b.test"] }])
   await fresh
-  calls[0].resolve([{ name: "old", count: 1 }])
+  calls[0].resolve([{ name: "old", count: 1, entries: ["c.test"] }])
   await old
-  assert.deepEqual(page.s.listNames, [{ name: "new", count: 2 }])
+  assert.deepEqual(page.s.lists.map(l => l.name), ["new"])
+})
+
+const LISTS = [
+  { name: "google", count: 3, entries: ["google.com", "youtube-nocookie.com", "1.2.3.4"] },
+  { name: "youtube", count: 3, entries: ["youtube.com", "youtu.be", "ytimg.com"] },
+  { name: "other", count: 2, entries: [".m.youtube.com", "example.com"] },
+]
+
+test("search suggests lists by name first, then by matching entries, and their domains", async () => {
+  const { page } = await setup()
+  const [lists, sites] = page.suggest(LISTS, "YouTube")
+  assert.deepEqual(lists.items.map(l => l.name), ["youtube", "google", "other"])
+  assert.deepEqual(lists.items[2].hits, ["m.youtube.com"])
+  assert.deepEqual(sites.items.map(s => s.domain), ["youtube.com", "youtube-nocookie.com", "m.youtube.com"])
+})
+
+test("search looks only at the address being typed and ignores links and short queries", async () => {
+  const { page } = await setup()
+  assert.deepEqual(page.suggest(LISTS, "y"), [])
+  assert.deepEqual(page.suggest(LISTS, "youtube.com "), [])
+  assert.deepEqual(page.suggest(LISTS, "discord.com https://www.ytimg.com/path")[0].items.map(l => l.name), ["youtube"])
+  assert.deepEqual(page.suggest(LISTS, "1.2.3"), [{ value: "lists", items: [{ kind: "list", name: "google", count: 3, hits: ["1.2.3.4"], byName: false }] }])
+})
+
+test("a picked domain replaces the unfinished address and starts the check", async () => {
+  const { page, calls } = await setup()
+  page.s.input = "discord.com youtu"
+  page.pickSuggestion({ kind: "site", domain: "youtube.com" })
+  assert.equal(page.s.input, "discord.com youtube.com")
+  assert.deepEqual(calls.filter(c => c.method === "block_check_one").map(c => c.args[0]), ["discord.com", "youtube.com"])
 })
 
 test("an old registry status cannot hide a newer unavailable status", async () => {

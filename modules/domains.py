@@ -97,6 +97,16 @@ def list_info() -> list[dict]:
     return [{"name": name, "count": len(load_list(name))} for name in available_lists() if NAME_RE.fullmatch(name)]
 
 
+def list_index() -> list[dict]:
+    """Списки вместе с записями — для поиска по ним в окне (списки маленькие, сотни строк)."""
+    result = []
+    for name in available_lists():
+        if NAME_RE.fullmatch(name):
+            entries = load_list(name)
+            result.append({"name": name, "count": len(entries), "entries": entries})
+    return result
+
+
 def read_raw(name: str) -> str:
     path = _safe_path(name)
     if not path.exists():

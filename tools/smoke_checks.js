@@ -136,26 +136,30 @@
   await step("проверка домена", async () => { await api("block_check_one", "example.com"); }, { network: true });
   await step("реестр РКН", async () => { await api("chebur_status"); }, { network: true });
 
-  // страница «Проверка сайтов» целиком: список -> две потоковые проверки на бэкенде ->
-  // пуши -> сведённая таблица; самый короткий список, чтобы не ждать
+  // страница «Проверка» целиком: поиск -> подсказка списка -> две потоковые проверки на
+  // бэкенде -> пуши -> сведённая таблица; самый короткий список, чтобы не ждать
   let listSmokeName = "";
-  await step("проверка сайтов: выбор списка", async () => {
+  await step("проверка: список из поиска", async () => {
     Pages.go("checks");
-    for (let i = 0; i < 50 && !document.querySelector('[data-testid="checks-list"]'); i++) await sleep(100);
-    const trigger = document.querySelector('[data-testid="checks-list"]');
-    need(trigger, "нет выбора списка");
-    const lists = await api("lists_all");
+    for (let i = 0; i < 50 && !document.querySelector('[data-testid="checks-input"]'); i++) await sleep(100);
+    const field = document.querySelector('[data-testid="checks-input"]');
+    need(field, "нет поля поиска");
+    const lists = await api("lists_index");
     const small = [...lists].filter(l => l.count > 0).sort((a, b) => a.count - b.count)[0];
     need(small, "нет непустых списков");
-    trigger.click();
-    for (let i = 0; i < 50 && !document.querySelector(`[data-testid="checks-list-${small.name}"]`); i++) await sleep(100);
-    const option = document.querySelector(`[data-testid="checks-list-${small.name}"]`);
-    need(option, "не открылся список shadcn");
+    field.focus();
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set.call(field, small.name);
+    // как набор с клавиатуры: ввод без inputType Base UI считает автозаполнением и подсказок не открывает
+    field.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText", data: small.name }));
+    const id = `[data-testid="checks-suggest-list-${small.name}"]`;
+    for (let i = 0; i < 50 && !document.querySelector(id); i++) await sleep(100);
+    const option = document.querySelector(id);
+    need(option, "поиск не предложил список");
     option.click();
     listSmokeName = small.name;
     return small.name;
   });
-  await step("проверка сайтов: поток результатов", async () => {
+  await step("проверка: поток результатов", async () => {
     need(listSmokeName, "список не выбран");
     for (let i = 0; i < 300 && !document.querySelector('[data-testid="checks-summary"]'); i++) await sleep(200);
     const summary = document.querySelector('[data-testid="checks-summary"]')?.textContent || "";

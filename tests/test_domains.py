@@ -60,6 +60,13 @@ def test_list_info_counts(lists_dir):
     assert info == [{"name": "svc", "count": 2}]
 
 
+def test_list_index_carries_entries_for_search(lists_dir):
+    write_list(lists_dir, "svc", "a.com  # main\n\nb.com\n")
+    assert domains.list_index() == [{"name": "svc", "count": 2, "entries": ["a.com", "b.com"]}]
+    from ui.api import Api
+    assert Api.is_read("lists_index")  # поиск не должен дёргать хаб, как запись в списки
+
+
 # --- CRUD: create/save/delete/rename ------------------------------------------
 
 

@@ -8,7 +8,8 @@
   const input = value => {
     const node = el('checks-input');
     Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(node, value);
-    node.dispatchEvent(new Event('input', { bubbles: true }));
+    // inputType как у набора с клавиатуры: ввод без него Base UI считает автозаполнением и подсказок не открывает
+    node.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText', data: value }));
   };
   const api = async (method, ...args) => {
     const reply = JSON.parse(await Bridge.call(method, JSON.stringify(args)));
@@ -18,7 +19,7 @@
   const realCall = Bridge.call;
   try {
     Pages.go('checks');
-    await wait(() => el('checks-run') && !el('checks-list').disabled, 'Checks page not loaded');
+    await wait(() => el('checks-run') && el('checks-input'), 'Checks page not loaded');
     input('.broken..example, ftp://example.com'); await sleep(50); await click('checks-run');
     need((await api('__smoke_checks', 'state')).manual.length === 0, 'Invalid input reached the checker');
     steps.push({ name: 'Malformed targets do not start network checks', ok: true });
@@ -41,7 +42,9 @@
     steps.push({ name: 'International domains, URLs and IPv4/IPv6 work; foreign streams are ignored', ok: true });
 
     await api('__smoke_checks', 'hold');
-    await click('checks-list'); await click('checks-list-bulk');
+    el('checks-input').focus(); input('bulk');
+    await wait(() => el('checks-suggest-list-bulk'), 'Search did not suggest the list');
+    el('checks-suggest-list-bulk').click(); await sleep(60);
     await wait(async () => { const s = await api('__smoke_checks', 'state'); return s.finished.block && s.finished.rkn; }, 'Bulk workers did not finish');
     const state = await api('__smoke_checks', 'state');
     need(state.block === 1100 && state.rkn === 1100 && state.events > 2200, 'Bulk snapshot or event overflow not exercised');

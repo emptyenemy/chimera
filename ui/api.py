@@ -673,7 +673,7 @@ class Api:
     # сверка с апстримом — только сеть, хотя в имени и есть «update»
     _READ_NAMES = frozenset({"tg_check_update", "upstream_check_updates", "doctor_run", "doctor_report", "providers_list",
                              "config_export", "config_import_preview", "config_backups", "config_backup_preview", "config_backup_compare", "config_verified",
-                              "appearance_preview", "route_explain", "lists_validate"})
+                              "appearance_preview", "route_explain", "lists_validate", "lists_index"})
 
     @classmethod
     def is_read(cls, method: str) -> bool:
@@ -1003,6 +1003,13 @@ class Api:
                 it["hosts"] = it["name"] in hosts_lists
                 it["winws"] = it["name"] in winws_lists
             return _ok(info)
+        except Exception as e:
+            return _err(e)
+
+    def lists_index(self):
+        """Записи всех списков разом: поиск на странице проверки ищет по ним без запросов."""
+        try:
+            return _ok(domains.list_index())
         except Exception as e:
             return _err(e)
 

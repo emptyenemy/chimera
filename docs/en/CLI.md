@@ -175,6 +175,7 @@ Not turned into commands (with reasons):
 - `block_check_start` — results arrive as push events in the window; in the CLI `chimera check list <list>` does the same
 - `chebur_check_start` — results arrive as push events in the window; in the CLI `chimera check list <list>` does the same
 - `dns_status` — feeds the dot next to DNS in the window menu; `chimera dns state` shows adapters and their DNS
+- `lists_index` — list search on the window's Checks page; `chimera lists show <list>` shows list entries
 
 ## Commands in detail
 

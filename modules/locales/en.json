@@ -409,6 +409,7 @@
   "cli.excluded.hub_refresh": "the window's subscription to state push events",
   "cli.excluded.hub_snapshot": "the window's subscription to state push events",
   "cli.excluded.hub_watch": "the window's subscription to state push events",
+  "cli.excluded.lists_index": "list search on the window's Checks page; `chimera lists show <list>` shows list entries",
   "cli.excluded.open_url": "opens a link in the browser on the user's computer; in a terminal the address is already visible",
   "cli.excluded.shutdown": "stops the modules when the window closes; in a terminal that is `chimera stop`",
   "cli.excluded.tg_open_link": "opens Telegram on this computer; `chimera tg link` gives you the link",

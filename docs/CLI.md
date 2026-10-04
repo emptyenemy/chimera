@@ -175,6 +175,7 @@
 - `block_check_start` — результаты приходят push-событиями окна; в CLI то же делает `chimera check list <список>`
 - `chebur_check_start` — результаты приходят push-событиями окна; в CLI то же делает `chimera check list <список>`
 - `dns_status` — питает точку у пункта DNS в меню окна; адаптеры и их DNS показывает `chimera dns state`
+- `lists_index` — поиск по спискам на странице проверки в окне; записи списка показывает `chimera lists show <список>`
 
 ## Команды подробно
 
