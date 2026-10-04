@@ -113,7 +113,7 @@ python tools/fetch_bins.py
 релизу. Устройство — `modules/dataupdate.py`.
 
 - **Карта провайдеров.** Перед выпуском данных `python tools/provider_map.py` пересобирает
-  `strategies/provider-map.json` из отчётов автонастройки в issues ([подробности](AUTOTUNE.md#карта-провайдеров)).
+  `strategies/provider-map.json` из отчётов автонастройки в обсуждениях ([подробности](AUTOTUNE.md#карта-провайдеров)).
 - **Выпуск.** `build\build-clean313\Scripts\python.exe tools/release_data.py` собирает архив
   `chimera-data-<версия>.zip` и манифест `chimera-data-<версия>.json` (SHA256 каждого файла) из
   рабочей копии и сравнивает с прошлым выпуском; `--publish` выкладывает релиз `data-ГГГГ.ММ.ДД.N`

@@ -1,6 +1,7 @@
-"""Отчёт об автонастройке для issue на GitHub: таблица для людей и строка JSON для карты провайдеров.
+"""Отчёт об автонастройке для обсуждений на GitHub (Discussions): таблица для людей и строка JSON
+для карты провайдеров. Не issues: там проблемы, а это опыт — «у меня на этом провайдере сработало».
 
-Ничего не отправляется само: ссылка открывает форму нового issue с готовым текстом, человек
+Ничего не отправляется само: ссылка открывает форму нового обсуждения с готовым текстом, человек
 видит его целиком и сам решает, публиковать ли. В отчёте нет адресов, доменов и ссылок —
 только номер сети, имена сервисов и вариантов, которые их починили. Из отчётов собирается
 strategies/provider-map.json (tools/provider_map.py).
@@ -13,7 +14,8 @@ from urllib.parse import urlencode
 from modules.i18n import t
 
 REPO = "emptyenemy/chimera"
-TEMPLATE = "autotune-report.md"
+# категория обсуждений; заведут отдельную «Отчёты автонастройки» — поменять здесь
+CATEGORY = "show-and-tell"
 MARK = "chimera-report"
 MARK_RE = re.compile(r"<!--\s*" + MARK + r"\s+(\{.*?\})\s*-->", re.S)
 URL_LIMIT = 7500   # длиннее GitHub форму не откроет; такой отчёт копируется руками
@@ -36,7 +38,7 @@ def data(rec, about) -> dict:
 
 
 def build(rec, about) -> dict:
-    """{"title", "text", "url", "form"}: url — форма нового issue с отчётом (None, если текст
+    """{"title", "text", "url", "form"}: url — форма нового обсуждения с отчётом (None, если текст
     в адрес не влез), form — та же форма пустой, куда текст вставляется руками."""
     info = data(rec, about)
     provider = rec.get("provider")
@@ -59,13 +61,13 @@ def build(rec, about) -> dict:
               f"<!-- {MARK} {json.dumps(info, ensure_ascii=False, separators=(',', ':'))} -->"]
     text = "\n".join(lines)
     title = t("msg.autotune.report.title", provider=provider["name"] if provider else "?")
-    url = f"https://github.com/{REPO}/issues/new?" + urlencode({"template": TEMPLATE, "title": title, "body": text})
-    form = f"https://github.com/{REPO}/issues/new?" + urlencode({"template": TEMPLATE})
+    url = f"https://github.com/{REPO}/discussions/new?" + urlencode({"category": CATEGORY, "title": title, "body": text})
+    form = f"https://github.com/{REPO}/discussions/new?" + urlencode({"category": CATEGORY})
     return {"title": title, "text": text, "url": url if len(url) <= URL_LIMIT else None, "form": form}
 
 
 def parse(body: str) -> dict | None:
-    """Строка JSON из текста issue; чужой или испорченный текст — None."""
+    """Строка JSON из текста обсуждения; чужой или испорченный текст — None."""
     m = MARK_RE.search(body or "")
     if not m:
         return None

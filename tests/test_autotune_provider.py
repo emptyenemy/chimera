@@ -1,4 +1,4 @@
-"""Карта провайдеров: номер сети, подсказки порядка, отчёт для issue и сборка карты из отчётов."""
+"""Карта провайдеров: номер сети, подсказки порядка, отчёт для обсуждений и сборка карты из отчётов."""
 
 import json
 import threading
@@ -111,7 +111,7 @@ def test_with_a_map_the_provider_is_asked_once_per_network_and_its_hints_lead(ma
     assert ops.lookups == 1
 
 
-def test_share_builds_an_issue_form_with_a_machine_readable_line(make):
+def test_share_builds_a_discussion_form_with_a_machine_readable_line(make):
     mgr, ops = make()
     with pytest.raises(ChimeraError):
         mgr.share()
@@ -120,8 +120,8 @@ def test_share_builds_an_issue_form_with_a_machine_readable_line(make):
     assert ops.lookups == 1     # провайдера узнают по кнопке, если подбор его не спрашивал
     assert "AS25513 · MGTS" in shared["text"] and "| youtube |" in shared["text"]
     query = parse_qs(urlsplit(shared["url"]).query)
-    assert shared["url"].startswith(f"https://github.com/{report.REPO}/issues/new?")
-    assert query["template"] == [report.TEMPLATE] and query["body"] == [shared["text"]]
+    assert shared["url"].startswith(f"https://github.com/{report.REPO}/discussions/new?")
+    assert query["category"] == [report.CATEGORY] and query["body"] == [shared["text"]]
     info = report.parse(shared["text"])
     assert info["asn"] == 25513 and info["app"] == "1.1.0" and info["mode"] == "fast"
     assert info["services"]["youtube"] == {"before": ["dpi"], "ok": True, "fix": {"kind": "strategy", "id": "alt2"}}
@@ -133,7 +133,7 @@ def test_a_report_too_long_for_a_link_is_copied_by_hand(monkeypatch):
     monkeypatch.setattr(report, "URL_LIMIT", 100)
     rec = {"mode": "fast", "provider": None, "report": {"services": []}}
     shared = report.build(rec, {"app": "1.1.0", "data": None})
-    assert shared["url"] is None and shared["form"].endswith(f"template={report.TEMPLATE}")
+    assert shared["url"] is None and shared["form"].endswith(f"category={report.CATEGORY}")
 
 
 @pytest.mark.parametrize("body", ["", "просто текст", "<!-- chimera-report {oops} -->",
@@ -184,3 +184,25 @@ def test_no_lookup_while_the_full_tunnel_carries_all_traffic(monkeypatch):
     assert ops.lookup_provider() is None
     Proxy.config = {"mode": "split"}
     assert ops.lookup_provider() == MGTS
+
+
+def test_reports_are_read_from_every_page_of_the_report_category():
+    import json as _json
+    from types import SimpleNamespace
+    pages = [
+        {"pageInfo": {"hasNextPage": True, "endCursor": "c1"},
+         "nodes": [{"number": 1, "body": "a", "category": {"slug": report.CATEGORY}},
+                   {"number": 2, "body": "b", "category": {"slug": "q-a"}}]},
+        {"pageInfo": {"hasNextPage": False, "endCursor": None},
+         "nodes": [{"number": 3, "body": "c", "category": {"slug": report.CATEGORY}}]},
+    ]
+    calls = []
+
+    def run(args, **kwargs):
+        calls.append(args)
+        page = pages[len(calls) - 1]
+        return SimpleNamespace(stdout=_json.dumps({"data": {"repository": {"discussions": page}}}))
+
+    assert [r["number"] for r in provider_map.fetch_reports(run)] == [1, 3]
+    assert "after=c1" in calls[1] and not any(a.startswith("after=") for a in calls[0])
+

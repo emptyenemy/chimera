@@ -1,7 +1,7 @@
 """Карта провайдеров из отчётов автонастройки: strategies/provider-map.json.
 
-Отчёты — issues с меткой autotune-report: их открывает кнопка «Поделиться результатом»
-(modules/autotune/report.py). Из каждого берётся строка JSON в конце текста. Один автор
+Отчёты — обсуждения (Discussions) в категории report.CATEGORY: их открывает кнопка
+«Поделиться результатом» (modules/autotune/report.py). Из каждого берётся строка JSON в конце текста. Один автор
 считается один раз на провайдера — по самому свежему отчёту, чтобы десяток повторов
 не перевесил остальных. В карту идут только встроенные сервисы (списки из lists/):
 свои списки у других пользователей не встретятся.
@@ -26,22 +26,39 @@ sys.path.insert(0, str(ROOT))
 
 from modules.autotune import provider as provider_mod, report as report_mod  # noqa: E402
 
-LABEL = "autotune-report"
 TOP = 5   # вариантов на сервис: дальше порядок перебора и так обычный
+QUERY = """
+query($owner: String!, $name: String!, $after: String) {
+  repository(owner: $owner, name: $name) {
+    discussions(first: 100, after: $after, orderBy: {field: CREATED_AT, direction: ASC}) {
+      pageInfo { hasNextPage endCursor }
+      nodes { number body createdAt author { login } category { slug } }
+    }
+  }
+}"""
 
 
-def fetch_issues() -> list[dict]:
-    out = subprocess.run(["gh", "issue", "list", "-R", report_mod.REPO, "--label", LABEL, "--state", "all",
-                          "--limit", "2000", "--json", "number,body,author,createdAt"],
-                         capture_output=True, text=True, encoding="utf-8", check=True).stdout
-    return json.loads(out)
+def fetch_reports(run=subprocess.run) -> list[dict]:
+    """Обсуждения категории отчётов, все страницы."""
+    owner, name = report_mod.REPO.split("/")
+    reports, after = [], None
+    while True:
+        args = ["gh", "api", "graphql", "-f", f"query={QUERY}", "-F", f"owner={owner}", "-F", f"name={name}"]
+        if after:
+            args += ["-f", f"after={after}"]
+        reply = json.loads(run(args, capture_output=True, text=True, encoding="utf-8", check=True).stdout)
+        page = reply["data"]["repository"]["discussions"]
+        reports += [node for node in page["nodes"] if (node.get("category") or {}).get("slug") == report_mod.CATEGORY]
+        if not page["pageInfo"]["hasNextPage"]:
+            return reports
+        after = page["pageInfo"]["endCursor"]
 
 
-def build(issues: list[dict], services: set[str], today: str) -> dict:
+def build(reports: list[dict], services: set[str], today: str) -> dict:
     latest = {}   # (автор, номер сети) -> отчёт
-    for issue in sorted(issues, key=lambda i: i.get("createdAt") or ""):
-        info = report_mod.parse(issue.get("body") or "")
-        author = (issue.get("author") or {}).get("login") or f"#{issue.get('number')}"
+    for report in sorted(reports, key=lambda r: r.get("createdAt") or ""):
+        info = report_mod.parse(report.get("body") or "")
+        author = (report.get("author") or {}).get("login") or f"#{report.get('number')}"
         if info:
             latest[(author, info["asn"])] = info
     providers = {}
@@ -71,7 +88,7 @@ def main() -> None:
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
     services = {p.stem for p in (ROOT / "lists").glob("*.txt")}
-    data = build(fetch_issues(), services, date.today().isoformat())
+    data = build(fetch_reports(), services, date.today().isoformat())
     text = json.dumps(data, ensure_ascii=False, indent=1) + "\n"
     if args.dry_run:
         print(text)

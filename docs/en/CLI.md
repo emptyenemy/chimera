@@ -1590,7 +1590,7 @@ chimera fix keep
 
 #### `chimera fix report`
 
-Report of the last auto-setup for a GitHub issue: what worked on your provider. Sends nothing. Level: read-only.
+Report of the last auto-setup for GitHub Discussions: what worked on your provider. Sends nothing. Level: read-only.
 
 ```
 chimera fix report

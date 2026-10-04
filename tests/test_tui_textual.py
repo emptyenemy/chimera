@@ -247,7 +247,7 @@ class FakeRemote:
         return self.autotune
 
     def m_autotune_share(self):
-        return {"title": "t", "text": "отчёт", "url": "https://github.com/emptyenemy/chimera/issues/new?x", "form": "f"}
+        return {"title": "t", "text": "отчёт", "url": "https://github.com/emptyenemy/chimera/discussions/new?x", "form": "f"}
 
     def m_config_verified(self):
         return {"backup": None, "error": None}
@@ -689,7 +689,7 @@ def test_autotune_screen_runs_keeps_checks_and_shares_from_the_keyboard(monkeypa
         await until(pilot, lambda: ("autotune_start", (None, "fast")) in remote.calls)
         await until(pilot, lambda: "стратегия alt" in shown(app))
         await pilot.press("7")                      # поделиться
-        await until(pilot, lambda: opened == ["https://github.com/emptyenemy/chimera/issues/new?x"])
+        await until(pilot, lambda: opened == ["https://github.com/emptyenemy/chimera/discussions/new?x"])
         await pilot.press("1")                      # готово — оставить
         await until(pilot, lambda: "autotune_keep" in remote.methods())
         await pilot.press("escape")

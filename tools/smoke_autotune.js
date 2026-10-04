@@ -47,12 +47,12 @@
     steps.push({ name: "Set up everything: progress, menu dot, blocked changes, result per service", ok: true });
 
     await click("autotune-share");
-    await wait(async () => (await smoke("state")).opened.length === 1, "Share did not open the issue form");
+    await wait(async () => (await smoke("state")).opened.length === 1, "Share did not open the discussion form");
     const form = (await smoke("state")).opened[0];
-    need(form.startsWith("https://github.com/emptyenemy/chimera/issues/new?") && form.includes("template=autotune-report.md"),
-      "Share opened something else than the issue form");
-    need(form.includes("chimera-report") && form.includes("youtube"), "Issue form lacks the report");
-    steps.push({ name: "Share opens a prefilled GitHub issue form and sends nothing itself", ok: true });
+    need(form.startsWith("https://github.com/emptyenemy/chimera/discussions/new?") && form.includes("category=show-and-tell"),
+      "Share opened something else than the discussion form");
+    need(form.includes("chimera-report") && form.includes("youtube"), "Discussion form lacks the report");
+    steps.push({ name: "Share opens a prefilled GitHub discussion and sends nothing itself", ok: true });
 
     await click("autotune-revert");
     await wait(() => el("autotune-last")?.dataset.phase === "reverted", "Revert did not finish");

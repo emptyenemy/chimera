@@ -82,7 +82,7 @@ async function act(method: string, args: unknown[], failKey: string) {
   }
 }
 
-// Отчёт уходит только формой issue в браузере: публикует его сам человек
+// Отчёт уходит только формой обсуждения в браузере: публикует его сам человек
 async function share() {
   try {
     const report = await api<{ url: string | null; form: string; text: string }>("autotune_share")
