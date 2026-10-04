@@ -31,6 +31,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { fmtNum } from "@/lib/format"
 import { t } from "@/lib/i18n"
+import { router } from "@/lib/router"
 import { useStore } from "@/lib/store"
 import {
   s,
@@ -44,6 +45,7 @@ import {
   verdict,
   isProblem,
   cloudflareProblems,
+  refusedByRegion,
   checkTyped,
   loadLists,
   pickSuggestion,
@@ -147,28 +149,40 @@ interface ProxyBrief {
   all_lists?: string[]
 }
 
-// Сайты за Cloudflare не открываются — один список у прокси вместо записи каждого сайта
+// Сайты за Cloudflare не открываются: что режет РКН — к стратегиям (скорость не режется),
+// что само не пускает из России — к прокси; для всех разом — один список, а не каждый сайт
 function CloudflareAlert({ results }: { results: Map<string, Row> }) {
   const proxy = useStore<ProxyBrief>("proxy")
   const sites = cloudflareProblems(results)
   if (!sites.length || !proxy?.all_lists?.includes("cloudflare") || proxy.lists?.includes("cloudflare")) return null
+  const refused = sites.filter((site) => refusedByRegion(results.get(site)))
+  const cut = sites.filter((site) => !refused.includes(site))
+  const named = (list: string[]) => list.slice(0, 3).join(", ") + (list.length > 3 ? "…" : "")
   const ready = !!proxy.parsed
   const tun = proxy.mode === "split" || proxy.mode === "tun"
-  const named = sites.slice(0, 3).join(", ") + (sites.length > 3 ? "…" : "")
   return (
     <Alert data-testid="checks-cloudflare">
       <CloudIcon />
       <AlertTitle>{t("checks.cf.title")}</AlertTitle>
       <AlertDescription>
-        <p>{t("checks.cf.desc", { sites: named })}</p>
+        {cut.length > 0 && <p data-testid="checks-cloudflare-cut">{t("checks.cf.cut", { sites: named(cut) })}</p>}
+        {refused.length > 0 && <p data-testid="checks-cloudflare-refused">{t("checks.cf.refused", { sites: named(refused) })}</p>}
+        <p>{t("checks.cf.proxy")}</p>
         {!ready && <p>{t("checks.cf.noProxy")}</p>}
         {ready && !tun && <p>{t("checks.cf.pac")}</p>}
-        {ready && tun && (
-          <Button size="sm" variant="outline" className="mt-2" data-testid="checks-cloudflare-proxy"
-            onClick={() => void setTransport("cloudflare", "proxy", true)}>
-            {t("checks.cf.action")}
-          </Button>
-        )}
+        <div className="mt-2 flex flex-wrap gap-2">
+          {cut.length > 0 && (
+            <Button size="sm" data-testid="checks-cloudflare-strategies" onClick={() => router.go("strategies")}>
+              {t("checks.cf.strategies")}
+            </Button>
+          )}
+          {ready && tun && (
+            <Button size="sm" variant="outline" data-testid="checks-cloudflare-proxy"
+              onClick={() => void setTransport("cloudflare", "proxy", true)}>
+              {t("checks.cf.action")}
+            </Button>
+          )}
+        </div>
       </AlertDescription>
     </Alert>
   )

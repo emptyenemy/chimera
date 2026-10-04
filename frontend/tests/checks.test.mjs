@@ -215,5 +215,8 @@ test("sites behind Cloudflare that fail are found by our networks or by the regi
     ["pending.example", { rkn: { cdn: ["cloudflare"] }, reach: null }],
   ])
   assert.deepEqual(page.cloudflareProblems(results), ["medium.com", "patreon.com"])
+  // режет РКН — к стратегиям; сам не пускает из России (403/451) — только прокси
+  assert.equal(page.refusedByRegion(results.get("medium.com")), false)
+  assert.equal(page.refusedByRegion(results.get("patreon.com")), true)
 })
 

@@ -62,6 +62,8 @@
     steps.push({ name: 'Problem filter and final summary work after recovery', ok: true });
     input('cf.example'); await sleep(50); await click('checks-run');
     await wait(() => el('checks-cloudflare-proxy'), 'Cloudflare hint did not appear for a blocked site behind it');
+    need(el('checks-cloudflare-cut') && el('checks-cloudflare-strategies') && !el('checks-cloudflare-refused'),
+      'A site cut by the censor is not sent to the strategies first');
     await click('checks-cloudflare-proxy');
     await wait(async () => (await api('proxy_state')).lists.includes('cloudflare'), 'Cloudflare list was not routed through the proxy');
     await wait(() => !el('checks-cloudflare'), 'Cloudflare hint stayed after the list was connected');

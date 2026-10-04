@@ -226,9 +226,13 @@ export const isProblem = (r: Row) => verdict(r.rkn, r.reach).tone !== "success" 
 export const behindCloudflare = (r: Row) =>
   r.reach?.cdn === "cloudflare" || !!r.rkn?.cdn?.some((name) => /cloudflare/i.test(name))
 
-/** Не открывающиеся сайты за Cloudflare: их чинит один список у прокси, а не каждый отдельно. */
+/** Не открывающиеся сайты за Cloudflare: их чинит одно решение на все, а не запись каждого. */
 export const cloudflareProblems = (results: Map<string, Row>): string[] =>
   [...results].filter(([, r]) => isProblem(r) && behindCloudflare(r)).map(([site]) => site)
+
+/** Сайт сам не пускает из России (403/451, как DeepL): обход DPI не поможет, только прокси.
+    Остальное режет РКН — там лучше стратегия: скорость не режется, как через прокси. */
+export const refusedByRegion = (r: Row | undefined) => r?.reach?.status === "denied"
 
 // --- проверка ----------------------------------------------------------------------------
 
