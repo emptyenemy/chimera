@@ -798,6 +798,25 @@ def _fix_reason(row) -> str:
     return ", ".join(t(f"{FIX_REASON}.{r}") for r in reasons) or t("cli.fix.reason.error")
 
 
+def _fix_progress(current) -> str:
+    return t("cli.fix.progress", step=t(f"{FIX_STEP}.{current['step']}"), candidate=current["candidate"],
+             n=current["index"] + 1, total=current["total"])
+
+
+def _fix_check_lines(data) -> list[str]:
+    """Строки диагноза `fix check` (их же показывает автонастройка в TUI)."""
+    lines = [t("cli.fix.offline")] if data.get("offline") else []
+    for row in data.get("services") or []:
+        if row.get("skipped"):
+            lines.append(t("cli.fix.row.skipped", name=row["name"]))
+        elif row.get("ok"):
+            lines.append(t("cli.fix.row.ok", name=row["name"]))
+        else:
+            lines.append(t("cli.fix.row.check", name=row["name"], reason=_fix_reason(row),
+                           covered=row.get("covered", 0), total=row.get("total", 0)))
+    return lines
+
+
 def _fix_session_lines(session) -> list[str]:
     if session is None:
         return [t("cli.fix.none")]
@@ -828,8 +847,7 @@ def h_fix_run(ctx, act, ns):
     while (state.get("active") or {}).get("phase") == "running":
         current = state["active"].get("current")
         if not ctx.json and current and current != shown:
-            print(t("cli.fix.progress", step=t(f"{FIX_STEP}.{current['step']}"), candidate=current["candidate"],
-                    n=current["index"] + 1, total=current["total"]), flush=True)
+            print(_fix_progress(current), flush=True)
             shown = current
         time.sleep(FIX_POLL)
         state = ctx.call("autotune_state")
@@ -844,15 +862,7 @@ def h_fix_run(ctx, act, ns):
 def h_fix_check(ctx, act, ns):
     (services,) = arg_values(act, ns)
     data = ctx.call("autotune_diagnose", services or None)
-    lines = [t("cli.fix.offline")] if data.get("offline") else []
-    for row in data.get("services") or []:
-        if row.get("skipped"):
-            lines.append(t("cli.fix.row.skipped", name=row["name"]))
-        elif row.get("ok"):
-            lines.append(t("cli.fix.row.ok", name=row["name"]))
-        else:
-            lines.append(t("cli.fix.row.check", name=row["name"], reason=_fix_reason(row),
-                           covered=row.get("covered", 0), total=row.get("total", 0)))
+    lines = _fix_check_lines(data)
     broken = [r for r in data.get("services") or [] if r.get("ok") is False]
     return Result(data, lines, exit_code=1 if broken or data.get("offline") else 0)
 
