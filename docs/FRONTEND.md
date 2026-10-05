@@ -4,15 +4,25 @@
 
 Для программы Node не нужен. Он нужен, чтобы собрать и править интерфейс: Node 22+, пакетный менеджер npm.
 
+Проверка типов и обе сборки используют стабильный TypeScript 7 (`tsc`). Пакет
+`@typescript/native` — npm-алиас `typescript@7`; `typescript` — алиас
+`@typescript/typescript6`, который предоставляет API TypeScript 6 для ESLint и
+тестов. В TypeScript 7.0 прежнего JS API нет, а `typescript-eslint` пока требует
+TypeScript `<6.1`. Скрипт `typecheck` вызывает
+`node node_modules/@typescript/native/bin/tsc -b` напрямую, чтобы результат не
+зависел от порядка установки npm-команд `tsc`; обе сборки вызывают `typecheck`.
+Пакет совместимости даёт отдельную команду `tsc6`. Это
+[официальная схема совместной установки](https://devblogs.microsoft.com/typescript/announcing-typescript-7-0/#running-side-by-side-with-typescript-6-0).
+
 ## Сборка и проверки
 
 ```powershell
 cd frontend
 npm ci              # зависимости строго по package-lock.json
-npm run typecheck   # tsc -b
+npm run typecheck   # TypeScript 7, project references
 npm test            # локализация, очереди сохранений, оформление и состояние
 npm run lint        # eslint (код shadcn в src/components/ui и src/hooks не проверяется)
-npm run build       # tsc -b + vite build -> ../ui/web-next
+npm run build       # typecheck + vite build -> ../ui/web-next
 ```
 
 Из корня то же одной командой: `build.bat ui` — только интерфейс в `ui/web-next`, без проверки Python/Nuitka и без exe (`npm ci` — лишь если нет `node_modules`).
