@@ -10,9 +10,9 @@ import urllib.request
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-VERSION = "154.0.4258.48"
-URL = "https://msedge.sf.dl.delivery.mp.microsoft.com/filestreamingservice/files/621dd012-b3d6-4b8b-a6b7-fc3938bfe9d4/Microsoft.WebView2.FixedVersionRuntime.154.0.4258.48.x64.cab"
-SHA256 = "e2356456a8f02e606a731cd7646a604ed3676a9e392bd867b0207a8c3dc2d4f4"
+VERSION = "154.0.4258.53"
+URL = "https://msedge.sf.dl.delivery.mp.microsoft.com/filestreamingservice/files/0b89c3a3-0043-4746-b39e-65830da7744d/Microsoft.WebView2.FixedVersionRuntime.154.0.4258.53.x64.cab"
+SHA256 = "ec12b2db6423d127fb8e1935d34e2e68abc70fe8ecb1f6162ba1c1ccc2825f6d"
 DEST = ROOT / "bin" / "webview2"
 REQUIRED = ("msedgewebview2.exe", "msedge.dll", "icudtl.dat", "resources.pak")
 

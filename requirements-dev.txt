@@ -5,7 +5,7 @@ nuitka==4.2.2
 # Тесты (tests/, запуск: python -m pytest -q).
 pytest>=9.1.1
 # Линтер (ruff check .); pyproject.toml задаёт правила и исключения.
-ruff>=0.16.9
+ruff>=0.16.10
 # Генератор логотипа tools/make_logo.py: контуры линий (shapely) и растр для ICO (pillow).
 shapely>=2.1.2
 pillow>=12.3.0
