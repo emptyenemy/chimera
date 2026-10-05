@@ -886,13 +886,14 @@ chimera tg regen-secret
 
 #### `chimera tg advanced <настройки…>`
 
-Продвинутые настройки ядра: ключ=значение (значение — JSON или строка). Уровень: изменение приложения.
+Продвинутые настройки ядра: ключ=значение (JSON или строка). cfproxy_h2_media=true/false включает/выключает HTTP/2 для медиа через Cloudflare; по умолчанию true. Уровень: изменение приложения.
 
 - `настройки` — ключ=значение …
 
 ```
 chimera tg advanced fake_tls_domain=example.com
 chimera tg advanced fallback_cfproxy=false
+chimera tg advanced cfproxy_h2_media=false
 ```
 
 #### `chimera tg check-update`

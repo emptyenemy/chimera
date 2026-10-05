@@ -62,6 +62,24 @@
     await go('telegram', 'tg-port');
     await click('tg-advanced-toggle');
     await wait(() => el('tg-adv-fake-tls'), 'Advanced input missing');
+    const h2Switch = 'tg-adv-switch-cfproxy_h2_media';
+    need(el(h2Switch)?.getAttribute('aria-checked') === 'true', 'HTTP/2 must be enabled by default');
+    let h2Replies = 0;
+    Bridge.call = async (method, args) => {
+      const response = await realCall(method, args);
+      if (method === 'tg_set_advanced' && Object.hasOwn(JSON.parse(args)[0], 'cfproxy_h2_media')) {
+        await sleep(160); h2Replies++;
+      }
+      return response;
+    };
+    await click(h2Switch); await click(h2Switch);
+    await wait(() => h2Replies === 2, 'Queued HTTP/2 toggles did not complete');
+    need((await api('tg_state')).cfproxy_h2_media && el(h2Switch).getAttribute('aria-checked') === 'true', 'Late reply reverted the HTTP/2 setting');
+    Bridge.call = realCall;
+    await click(h2Switch);
+    await wait(async () => (await api('tg_state')).cfproxy_h2_media === false, 'HTTP/2 switch was not saved');
+    need(el(h2Switch).getAttribute('aria-checked') === 'false', 'HTTP/2 switch did not show the saved value');
+    steps.push({ name: 'HTTP/2 media toggles persist and survive delayed replies', ok: true });
     input('tg-adv-fake-tls', 'tls.example');
     await sleep(20); Pages.go('dashboard');
     await wait(async () => (await api('tg_state')).fake_tls_domain === 'tls.example', 'Leaving Telegram lost advanced draft');

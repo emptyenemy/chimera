@@ -1602,7 +1602,7 @@ class Api:
 
     @_auto_snapshot(('telegram',))
     def tg_set_advanced(self, options):
-        """Продвинутые настройки ядра (CF-proxy/worker домены, Fake TLS, dc-ip, ...).
+        """Настройки ядра (HTTP/2 для медиа, CF-proxy/worker домены, Fake TLS, dc-ip).
         Ядро читает их при старте, поэтому запущенный прокси перезапускается сам."""
         try:
             data = self.tg.set_advanced(options)

@@ -28,6 +28,7 @@ def tg(tmp_path, monkeypatch):
 def test_defaults_match_upstream_proxyconfig(tg):
     assert tg.config["disable_secure"] is False
     assert tg.config["fallback_cfproxy"] is True
+    assert tg.config["cfproxy_h2_media"] is True
     assert tg.config["cfproxy_user_domains"] == []
     assert tg.config["cfproxy_worker_domains"] == []
     assert tg.config["fake_tls_domain"] == ""
@@ -46,6 +47,7 @@ def test_old_state_file_without_new_keys_gets_defaults(tmp_path, monkeypatch):
     assert tg.config["host"] == "1.2.3.4"          # старое значение сохранилось
     assert tg.config["fallback_cfproxy"] is True    # новый ключ - дефолт
     assert tg.config["dc_redirects"] == DEFAULTS["dc_redirects"]
+    assert tg.config["cfproxy_h2_media"] is True
 
 
 # --- _validate_domain / _normalize_domains --------------------------------------

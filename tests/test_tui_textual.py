@@ -130,6 +130,10 @@ class FakeRemote:
         self.tg["running"] = False
         return {}
 
+    def m_tg_set_advanced(self, options):
+        self.tg.update(options)
+        return dict(self.tg)
+
     def m_tg_stats(self):
         return {"connections": 3}
 
@@ -723,3 +727,15 @@ def test_fix_one_service_picks_from_the_catalog():
         await until(pilot, lambda: ("autotune_start", (["discord"], "fast")) in remote.calls)
     drive(scenario)
 
+
+
+def test_telegram_http2_toggle_changes_saved_flag_in_both_directions():
+    async def scenario(app, pilot, remote):
+        await online(pilot, app)
+        await pilot.press('ctrl+7', '2')
+        await until(pilot, lambda: ('tg_set_advanced', ({'cfproxy_h2_media': False},)) in remote.calls)
+        await until(pilot, lambda: app.data('tg').get('cfproxy_h2_media') is False)
+        await pilot.press('2')
+        await until(pilot, lambda: ('tg_set_advanced', ({'cfproxy_h2_media': True},)) in remote.calls)
+        await until(pilot, lambda: app.data('tg').get('cfproxy_h2_media') is True)
+    drive(scenario)

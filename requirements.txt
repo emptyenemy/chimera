@@ -8,6 +8,8 @@ cryptography>=41.0
 # безусловно (корневые сертификаты для запросов к GitHub), без пакета ядро не
 # импортируется вообще. В сборке — через --include-package в build.bat.
 certifi>=2026.6
+# HTTP/2 для медиа tg-ws-proxy 1.11; тот же httpx и extra, что закреплены в апстриме.
+httpx[http2]==0.28.1
 # Полноэкранный терминальный интерфейс `chimera tui` (tui/textual_app.py). Тянет rich,
 # markdown-it-py, pygments. Без пакета `chimera tui` откатывается на простое меню (--simple).
 # В сборке — через --include-package в build.bat.

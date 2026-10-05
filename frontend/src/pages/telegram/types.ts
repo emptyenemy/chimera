@@ -7,6 +7,7 @@ export interface TgFull extends TgState {
   link?: string
   disable_secure?: boolean
   fallback_cfproxy?: boolean
+  cfproxy_h2_media?: boolean
   cfproxy_user_domains?: string[]
   cfproxy_worker_domains?: string[]
   fake_tls_domain?: string

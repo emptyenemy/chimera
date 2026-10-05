@@ -361,10 +361,10 @@ def test_tg_config_merges_with_current_settings(capsys, running):
 
 def test_tg_advanced_parses_key_values(capsys, running):
     api, _ = running
-    code, _, _ = run(capsys, "tg", "advanced", "fallback_cfproxy=false", "fake_tls_domain=example.com",
+    code, _, _ = run(capsys, "tg", "advanced", "fallback_cfproxy=false", "cfproxy_h2_media=false", "fake_tls_domain=example.com",
                      "cfproxy_user_domains=a.example,b.example")
     assert code == 0
-    assert api.called("tg_set_advanced") == [[{"fallback_cfproxy": False, "fake_tls_domain": "example.com",
+    assert api.called("tg_set_advanced") == [[{"fallback_cfproxy": False, "cfproxy_h2_media": False, "fake_tls_domain": "example.com",
                                                "cfproxy_user_domains": ["a.example", "b.example"]}]]
 
 

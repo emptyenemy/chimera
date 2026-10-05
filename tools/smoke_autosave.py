@@ -37,7 +37,7 @@ def main(*, layout=False, screenshot=None, filters_only=False):
         from ui.backend_browser import _Handler, _Hub
         hub = _Hub()
         tg = {"host": "127.0.0.1", "port": 19443, "secret": "ab" * 16, "autostart": False,
-              "running": False, "installed": True, "fake_tls_domain": "example.org"}
+              "running": False, "installed": True, "fake_tls_domain": "example.org", "cfproxy_h2_media": True}
         link_calls = []
         game_calls, game_failures = [], []
         failures = []
@@ -255,6 +255,7 @@ def main(*, layout=False, screenshot=None, filters_only=False):
                 assert not (domains.LISTS_DIR / "renamed.txt").exists()
                 assert "recorded.example" in domains.read_raw("queue-b")
                 assert tg["port"] == 19444 and tg["autostart"]
+                assert tg["cfproxy_h2_media"] is False
                 assert probe == {"bypass": ["recover.example"], "ad": "leave.example"}
                 assert len(source_checks) == 1 and source_updates == ["Source A"]
                 assert appconfig.load()["auto_elevate"] and appconfig.load()["close_to_tray"]

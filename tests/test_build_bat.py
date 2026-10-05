@@ -123,3 +123,9 @@ def test_cli_modules_are_reachable_from_main():
 def test_intermediate_build_dir_is_removed():
     assert "--remove-output" in BUILD_BAT
     assert "--output-dir=build/%FLAVOR%" in BUILD_BAT
+
+
+def test_tg_http2_dynamic_dependencies_are_explicitly_in_build():
+    # Build invariant: imports from the external .py core are invisible to Nuitka.
+    packages = set(re.findall(r"--include-package=([\w.]+)", BUILD_BAT))
+    assert {"httpx", "httpcore", "anyio", "idna", "h11", "h2", "hpack", "hyperframe"} <= packages

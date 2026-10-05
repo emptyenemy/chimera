@@ -886,13 +886,14 @@ chimera tg regen-secret
 
 #### `chimera tg advanced <settings…>`
 
-Advanced core settings: key=value (the value is JSON or a string). Level: changes the app.
+Advanced core settings: key=value (JSON or a string). cfproxy_h2_media=true/false enables/disables HTTP/2 for media through Cloudflare; the default is true. Level: changes the app.
 
 - `settings` — key=value …
 
 ```
 chimera tg advanced fake_tls_domain=example.com
 chimera tg advanced fallback_cfproxy=false
+chimera tg advanced cfproxy_h2_media=false
 ```
 
 #### `chimera tg check-update`

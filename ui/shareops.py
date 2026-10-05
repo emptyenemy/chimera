@@ -17,7 +17,7 @@ from modules.tgproxy import manager as tg_manager
 from modules.winws import filters
 from modules.winws import manager as winws_manager
 
-_TG_ADVANCED = ("disable_secure", "fallback_cfproxy", "cfproxy_user_domains", "cfproxy_worker_domains",
+_TG_ADVANCED = ("disable_secure", "fallback_cfproxy", "cfproxy_h2_media", "cfproxy_user_domains", "cfproxy_worker_domains",
                 "fake_tls_domain", "dc_redirects", "proxy_protocol", "force_test_dc")
 
 

@@ -227,8 +227,9 @@ def _tg_menu(m: Menu) -> None:
         m.print(_tr('tui.app.1_start'))
         m.print(_tr('tui.app.2_stop'))
         m.print(_tr('tui.app.3_log_tail'))
+        m.print('4) ' + _tr('tui.tg.h2.off' if d.get('cfproxy_h2_media', True) else 'tui.tg.h2.on'))
         m.print(_tr('tui.app.0_back'))
-        c = m.choice({"0", "1", "2", "3"})
+        c = m.choice({"0", "1", "2", "3", "4"})
         if c == "0":
             return
         if c == "1":
@@ -237,6 +238,9 @@ def _tg_menu(m: Menu) -> None:
             m.run(m.api.tg_stop, ok_msg=_tr('tui.app.stopped_153'))
         elif c == "3":
             _tail_log(m, m.api.tg_log)
+        elif c == "4":
+            m.run(m.api.tg_set_advanced, {'cfproxy_h2_media': not d.get('cfproxy_h2_media', True)},
+                  ok_msg=_tr('tui.app.done'))
 
 
 # --- hosts --------------------------------------------------------------------

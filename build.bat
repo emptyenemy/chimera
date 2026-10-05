@@ -89,6 +89,14 @@ python -m nuitka ^
     --include-data-files=upstream/tg-ws-proxy/proxy=upstream/tg-ws-proxy/proxy/=*.py ^
     --include-package=cryptography ^
     --include-package=certifi ^
+    --include-package=httpx ^
+    --include-package=httpcore ^
+    --include-package=anyio ^
+    --include-package=idna ^
+    --include-package=h11 ^
+    --include-package=h2 ^
+    --include-package=hpack ^
+    --include-package=hyperframe ^
     --include-module=ui.backend_browser ^
     --include-module=modules.service ^
     --include-module=modules._build_flavor ^

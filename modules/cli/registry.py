@@ -279,7 +279,8 @@ ACTIONS: tuple[Action, ...] = (
     _a("tg", "regen-secret", "tg_regen_secret", level=APP, examples=("chimera tg regen-secret",)),
     _a("tg", "advanced", handler="tg_advanced", methods=("tg_set_advanced",), level=APP,
        args=(Arg("настройки", "names1"),),
-       examples=("chimera tg advanced fake_tls_domain=example.com", "chimera tg advanced fallback_cfproxy=false")),
+       examples=("chimera tg advanced fake_tls_domain=example.com", "chimera tg advanced fallback_cfproxy=false",
+                 "chimera tg advanced cfproxy_h2_media=false")),
     _a("tg", "check-update", "tg_check_update", examples=("chimera tg check-update",)),
 
     # --- hosts ------------------------------------------------------------------------

@@ -44,6 +44,7 @@ DEFAULTS = {
     # старые state.json без этих ключей просто дополняются дефолтами при загрузке.
     "disable_secure": False,           # --no-secure: порт 80 для CF-proxy/worker
     "fallback_cfproxy": True,          # --no-cfproxy инвертирован
+    "cfproxy_h2_media": True,           # --no-h2 инвертирован: HTTP/2 для медиа через CF
     "cfproxy_user_domains": [],        # --cfproxy-domain (свои CF-домены вместо авто-пула)
     "cfproxy_worker_domains": [],      # --cfproxy-worker-domain
     "fake_tls_domain": "",             # --fake-tls-domain: включает ee-secret маскировку
@@ -53,7 +54,7 @@ DEFAULTS = {
 }
 
 _SECRET_RE = re.compile(r"^[0-9a-f]{32}$")
-_ADV_BOOL_KEYS = ("disable_secure", "fallback_cfproxy", "proxy_protocol", "force_test_dc")
+_ADV_BOOL_KEYS = ("disable_secure", "fallback_cfproxy", "cfproxy_h2_media", "proxy_protocol", "force_test_dc")
 
 
 def _validate_domain(domain) -> str:
@@ -245,6 +246,7 @@ class TgProxy:
         pc.secret = self.config["secret"]
         pc.disable_secure = bool(self.config.get("disable_secure", False))
         pc.fallback_cfproxy = bool(self.config.get("fallback_cfproxy", True))
+        pc.cfproxy_h2_media = bool(self.config.get("cfproxy_h2_media", True))
         pc.cfproxy_user_domains = list(self.config.get("cfproxy_user_domains") or [])
         pc.cfproxy_worker_domains = list(self.config.get("cfproxy_worker_domains") or [])
         pc.fake_tls_domain = str(self.config.get("fake_tls_domain") or "")
@@ -398,6 +400,7 @@ class TgProxy:
             "active": stats.connections_active,
             "total": stats.connections_total,
             "ws": stats.connections_ws,
+            "h2": stats.connections_h2,
             "tcp_fallback": stats.connections_tcp_fallback,
             "cfproxy": stats.connections_cfproxy,
             "up": human_bytes(stats.bytes_up),

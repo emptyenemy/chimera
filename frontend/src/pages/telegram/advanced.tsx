@@ -19,7 +19,7 @@ import { optimistic, store, useStore } from "@/lib/store"
 import { useDebounced, useDraft } from "@/lib/use-autosave"
 import type { TgFull } from "@/pages/telegram/types"
 
-type SwitchKey = "disable_secure" | "fallback_cfproxy" | "proxy_protocol" | "force_test_dc"
+type SwitchKey = "disable_secure" | "fallback_cfproxy" | "cfproxy_h2_media" | "proxy_protocol" | "force_test_dc"
 
 interface TextDraft {
   cfproxy_user_domains: string
@@ -31,6 +31,7 @@ interface TextDraft {
 const SWITCHES: { key: SwitchKey; on: (st: TgFull) => boolean }[] = [
   { key: "disable_secure", on: (st) => !!st.disable_secure },
   { key: "fallback_cfproxy", on: (st) => st.fallback_cfproxy !== false },
+  { key: "cfproxy_h2_media", on: (st) => st.cfproxy_h2_media !== false },
 ]
 const SWITCHES_TAIL: { key: SwitchKey; on: (st: TgFull) => boolean }[] = [
   { key: "proxy_protocol", on: (st) => !!st.proxy_protocol },

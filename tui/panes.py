@@ -416,7 +416,11 @@ class TgPane(Pane):
             current = str(self.query_one('#tg-summary', Static).render())
             self.summary(current + '\n' + '\n'.join(render(stats)))
         self.menu([('toggle', _tr('tui.panes.stop') if state.get('running') else _tr('tui.panes.start'),
-                    lambda: OverviewPane.toggle(self, 'tg'))])
+                    lambda: OverviewPane.toggle(self, 'tg')),
+                   ('h2', _tr('tui.tg.h2.off') if state.get('cfproxy_h2_media', True) else _tr('tui.tg.h2.on'),
+                    lambda: self.app.act(_tr('tui.tg.h2.title'), 'tg_set_advanced',
+                                         {'cfproxy_h2_media': not state.get('cfproxy_h2_media', True)},
+                                         journal='tg advanced cfproxy_h2_media'))])
 
 
 LOG_LINES = 1000
